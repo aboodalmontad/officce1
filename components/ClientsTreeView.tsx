@@ -1,8 +1,9 @@
 
+
 import React, { useState } from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
 import { formatDate } from '../utils/dateUtils';
-import { ChevronDownIcon, ChevronLeftIcon, PlusIcon } from './icons';
+import { ChevronDownIcon, ChevronLeftIcon, PlusIcon, PencilIcon, TrashIcon } from './icons';
 import SessionsTable from './SessionsTable';
 import CaseAccounting from './CaseAccounting';
 
@@ -12,12 +13,35 @@ interface ClientsTreeViewProps {
     accountingEntries: AccountingEntry[];
     setAccountingEntries: (updater: (prev: AccountingEntry[]) => AccountingEntry[]) => void;
     onAddCase: (clientId: string) => void;
+    onEditCase: (caseItem: Case, client: Client) => void;
+    onDeleteCase: (caseId: string, clientId: string) => void;
     onAddStage: (clientId: string, caseId: string) => void;
+    onEditStage: (stage: Stage, caseItem: Case, client: Client) => void;
+    onDeleteStage: (stageId: string, caseId: string, clientId: string) => void;
     onAddSession: (clientId: string, caseId: string, stageId: string) => void;
+    onEditSession: (session: Session, stage: Stage, caseItem: Case, client: Client) => void;
+    onDeleteSession: (sessionId: string, stageId: string, caseId: string, clientId: string) => void;
     onPostponeSession: (sessionId: string, newDate: Date, reason: string) => void;
+    onEditClient: (client: Client) => void;
+    onDeleteClient: (clientId: string) => void;
 }
 
-const CaseDetails: React.FC<{ client: Client, caseData: Case, onAddStage: () => void, onAddSession: (stageId: string) => void, onPostponeSession: (sessionId: string, newDate: Date, reason: string) => void, accountingEntries: AccountingEntry[], setAccountingEntries: (updater: (prev: AccountingEntry[]) => AccountingEntry[]) => void, setClients: (updater: (prevClients: Client[]) => Client[]) => void }> = ({ client, caseData, onAddStage, onAddSession, onPostponeSession, accountingEntries, setAccountingEntries, setClients }) => {
+interface CaseDetailsProps {
+    client: Client;
+    caseData: Case;
+    onAddStage: () => void;
+    onEditStage: (stage: Stage) => void;
+    onDeleteStage: (stageId: string) => void;
+    onAddSession: (stageId: string) => void;
+    onEditSession: (session: Session, stage: Stage) => void;
+    onDeleteSession: (sessionId: string, stageId: string) => void;
+    onPostponeSession: (sessionId: string, newDate: Date, reason: string) => void;
+    accountingEntries: AccountingEntry[];
+    setAccountingEntries: (updater: (prev: AccountingEntry[]) => AccountingEntry[]) => void;
+    setClients: (updater: (prevClients: Client[]) => Client[]) => void;
+}
+
+const CaseDetails: React.FC<CaseDetailsProps> = ({ client, caseData, onAddStage, onEditStage, onDeleteStage, onAddSession, onEditSession, onDeleteSession, onPostponeSession, accountingEntries, setAccountingEntries, setClients }) => {
     const [activeTab, setActiveTab] = useState('stages');
 
     const handleFeeAgreementChange = (newFeeAgreement: string) => {
@@ -46,9 +70,22 @@ const CaseDetails: React.FC<{ client: Client, caseData: Case, onAddStage: () => 
                         </button>
                     </div>
                     {caseData.stages.map(stage => (
-                        <TreeItem key={stage.id} title={`مرحلة: ${stage.court}`} subtitle={`رقم الأساس: ${stage.caseNumber}${stage.firstSessionDate ? ` | أول جلسة: ${formatDate(stage.firstSessionDate)}` : ''}`} level={0} onAdd={() => onAddSession(stage.id)}>
+                        <TreeItem 
+                            key={stage.id} 
+                            title={`مرحلة: ${stage.court}`} 
+                            subtitle={`رقم الأساس: ${stage.caseNumber}${stage.firstSessionDate ? ` | أول جلسة: ${formatDate(stage.firstSessionDate)}` : ''}`} 
+                            level={0} 
+                            onAdd={() => onAddSession(stage.id)}
+                            onEdit={() => onEditStage(stage)}
+                            onDelete={() => onDeleteStage(stage.id)}
+                        >
                             <div className="p-2">
-                                <SessionsTable sessions={stage.sessions} onPostpone={onPostponeSession} />
+                                <SessionsTable 
+                                    sessions={stage.sessions} 
+                                    onPostpone={onPostponeSession}
+                                    onEdit={(session) => onEditSession(session, stage)}
+                                    onDelete={(sessionId) => onDeleteSession(sessionId, stage.id)}
+                                />
                             </div>
                         </TreeItem>
                     ))}
@@ -67,7 +104,7 @@ const CaseDetails: React.FC<{ client: Client, caseData: Case, onAddStage: () => 
     );
 };
 
-const TreeItem: React.FC<{ title: string, subtitle: string, children?: React.ReactNode, level: number, onAdd?: () => void }> = ({ title, subtitle, children, level, onAdd }) => {
+const TreeItem: React.FC<{ title: string, subtitle: string, children?: React.ReactNode, level: number, onAdd?: () => void, onEdit?: () => void, onDelete?: () => void }> = ({ title, subtitle, children, level, onAdd, onEdit, onDelete }) => {
     const [isOpen, setIsOpen] = useState(false);
     const hasChildren = React.Children.count(children) > 0;
     const indentClass = `ms-${level * 6}`;
@@ -86,29 +123,67 @@ const TreeItem: React.FC<{ title: string, subtitle: string, children?: React.Rea
                         <p className="text-sm text-gray-500 truncate">{subtitle}</p>
                     </div>
                 </div>
-                {onAdd && (
-                    <button onClick={(e) => { e.stopPropagation(); onAdd(); }} className="ms-4 p-1 text-blue-600 rounded-full hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500" aria-label={`إضافة إلى ${title}`}>
-                        <PlusIcon className="w-5 h-5" />
-                    </button>
-                )}
+                <div className="flex items-center flex-shrink-0 ms-4">
+                    {onAdd && (
+                        <button onClick={(e) => { e.stopPropagation(); onAdd(); }} className="p-1 text-blue-600 rounded-full hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500" aria-label={`إضافة إلى ${title}`}>
+                            <PlusIcon className="w-5 h-5" />
+                        </button>
+                    )}
+                    {onEdit && (
+                         <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="p-1 text-gray-500 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-400" aria-label={`تعديل ${title}`}>
+                            <PencilIcon className="w-4 h-4" />
+                        </button>
+                    )}
+                    {onDelete && (
+                         <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="p-1 text-red-500 rounded-full hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-400" aria-label={`حذف ${title}`}>
+                            <TrashIcon className="w-4 h-4" />
+                        </button>
+                    )}
+                </div>
             </div>
             {isOpen && <div>{children}</div>}
         </div>
     );
 };
 
-const ClientsTreeView: React.FC<ClientsTreeViewProps> = ({ clients, setClients, accountingEntries, setAccountingEntries, onAddCase, onAddStage, onAddSession, onPostponeSession }) => {
+const ClientsTreeView: React.FC<ClientsTreeViewProps> = (props) => {
+    const { 
+        clients, setClients, accountingEntries, setAccountingEntries, 
+        onAddCase, onEditCase, onDeleteCase,
+        onAddStage, onEditStage, onDeleteStage,
+        onAddSession, onEditSession, onDeleteSession,
+        onPostponeSession, onEditClient, onDeleteClient
+    } = props;
     return (
         <div className="w-full">
             {clients.map(client => (
-                <TreeItem key={client.id} title={client.name} subtitle={client.contactInfo} level={0} onAdd={() => onAddCase(client.id)}>
+                <TreeItem 
+                    key={client.id} 
+                    title={client.name} 
+                    subtitle={client.contactInfo} 
+                    level={0} 
+                    onAdd={() => onAddCase(client.id)}
+                    onEdit={() => onEditClient(client)}
+                    onDelete={() => onDeleteClient(client.id)}
+                >
                     {client.cases.map(c => (
-                        <TreeItem key={c.id} title={`قضية: ${c.subject}`} subtitle={`الخصم: ${c.opponentName}`} level={1}>
+                        <TreeItem 
+                            key={c.id} 
+                            title={`قضية: ${c.subject}`} 
+                            subtitle={`الخصم: ${c.opponentName}`} 
+                            level={1}
+                            onEdit={() => onEditCase(c, client)}
+                            onDelete={() => onDeleteCase(c.id, client.id)}
+                        >
                             <CaseDetails
                                 client={client}
                                 caseData={c}
                                 onAddStage={() => onAddStage(client.id, c.id)}
+                                onEditStage={(stage) => onEditStage(stage, c, client)}
+                                onDeleteStage={(stageId) => onDeleteStage(stageId, c.id, client.id)}
                                 onAddSession={(stageId) => onAddSession(client.id, c.id, stageId)}
+                                onEditSession={(session, stage) => onEditSession(session, stage, c, client)}
+                                onDeleteSession={(sessionId, stageId) => onDeleteSession(sessionId, stageId, c.id, client.id)}
                                 onPostponeSession={onPostponeSession}
                                 accountingEntries={accountingEntries}
                                 setAccountingEntries={setAccountingEntries}

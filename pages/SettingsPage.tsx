@@ -1,6 +1,7 @@
 
+
 import React, { useRef, useState } from 'react';
-import { ArrowDownTrayIcon, ArrowUpTrayIcon, TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon } from '../components/icons';
+import { ArrowDownTrayIcon, ArrowUpTrayIcon, TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, PlusIcon } from '../components/icons';
 import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
 import { SyncStatus } from '../hooks/useSync';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
@@ -12,20 +13,26 @@ type AppData = {
     adminTasks: AdminTask[];
     appointments: Appointment[];
     accountingEntries: AccountingEntry[];
+    assistants: string[];
 };
 
 interface SettingsPageProps {
-    setFullData: (data: AppData) => void;
+    setFullData: (data: any) => void;
     syncStatus: SyncStatus;
     lastSync: Date | null;
     triggerSync: () => void;
+    assistants: string[];
+    setAssistants: (updater: (prev: string[]) => string[]) => void;
 }
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, lastSync, triggerSync }) => {
+const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, lastSync, triggerSync, assistants, setAssistants }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+    const [isDeleteAssistantModalOpen, setIsDeleteAssistantModalOpen] = useState(false);
+    const [assistantToDelete, setAssistantToDelete] = useState<string | null>(null);
     const isOnline = useOnlineStatus();
+    const [newAssistant, setNewAssistant] = useState('');
 
     const showFeedback = (message: string, type: 'success' | 'error') => {
         setFeedback({ message, type });
@@ -101,11 +108,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
 
     const handleConfirmClearData = () => {
         try {
-            const emptyData: AppData = {
+            const emptyData = {
                 clients: [],
                 adminTasks: [],
                 appointments: [],
-                accountingEntries: []
+                accountingEntries: [],
+                assistants: ['بدون تخصيص']
             };
             setFullData(emptyData);
             showFeedback('تم مسح جميع البيانات بنجاح.', 'success');
@@ -125,6 +133,31 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
         }
     };
 
+    const handleAddAssistant = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (newAssistant && !assistants.includes(newAssistant) && newAssistant !== 'بدون تخصيص') {
+            setAssistants(prev => [...prev, newAssistant.trim()]);
+            setNewAssistant('');
+        }
+    };
+
+    const handleDeleteAssistant = (name: string) => {
+        if (name !== 'بدون تخصيص') {
+            setAssistantToDelete(name);
+            setIsDeleteAssistantModalOpen(true);
+        }
+    };
+
+    const handleConfirmDeleteAssistant = () => {
+        if (assistantToDelete) {
+            setAssistants(prev => prev.filter(a => a !== assistantToDelete));
+            showFeedback(`تم حذف المساعد "${assistantToDelete}" بنجاح.`, 'success');
+        }
+        setIsDeleteAssistantModalOpen(false);
+        setAssistantToDelete(null);
+    };
+
+
     return (
         <div className="space-y-6">
             <h1 className="text-3xl font-bold text-gray-800">الإعدادات</h1>
@@ -137,8 +170,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
             
             <div className="bg-white p-6 rounded-lg shadow space-y-6">
                 <h2 className="text-xl font-bold text-gray-800 border-b pb-3">المزامنة</h2>
-                <div className="flex items-start justify-between">
-                    <div>
+                <div className="flex flex-col lg:flex-row items-start justify-between gap-4">
+                    <div className="flex-grow">
                         <h3 className="font-semibold text-lg">مزامنة البيانات</h3>
                         <p className="text-gray-600 text-sm mt-1">قم بمزامنة بياناتك مع الخادم السحابي للوصول إليها من أي جهاز.</p>
                         <p className="text-gray-500 text-xs mt-2">
@@ -148,7 +181,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
                     <button 
                         onClick={triggerSync}
                         disabled={!isOnline || syncStatus === 'syncing'}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        className="flex-shrink-0 w-full lg:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
                         title={!isOnline ? 'المزامنة تتطلب اتصالاً بالإنترنت' : ''}
                     >
                         {syncStatus === 'syncing' ? <ArrowPathIcon className="w-5 h-5 animate-spin" /> : <CloudArrowUpIcon className="w-5 h-5" />}
@@ -158,14 +191,52 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow space-y-6">
+                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">إدارة المساعدين</h2>
+                <div className="space-y-4">
+                    <div>
+                        <form onSubmit={handleAddAssistant} className="mt-1 flex gap-2">
+                             <input 
+                                type="text" 
+                                id="new-assistant"
+                                value={newAssistant}
+                                onChange={(e) => setNewAssistant(e.target.value)}
+                                className="flex-grow p-2 border border-gray-300 rounded-lg"
+                                placeholder="اسم المساعد الجديد"
+                                aria-label="اسم المساعد الجديد"
+                            />
+                            <button type="submit" className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                                <PlusIcon className="w-5 h-5"/>
+                                <span>إضافة</span>
+                            </button>
+                        </form>
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-medium text-gray-800">قائمة المساعدين</h3>
+                        <ul className="mt-2 space-y-2 max-h-60 overflow-y-auto">
+                            {assistants.map(assistant => (
+                                <li key={assistant} className="flex justify-between items-center p-3 bg-gray-50 rounded-md border">
+                                    <span className="font-medium">{assistant}</span>
+                                    {assistant !== 'بدون تخصيص' && (
+                                        <button onClick={() => handleDeleteAssistant(assistant)} className="p-1 text-red-500 rounded-full hover:bg-red-100" aria-label={`حذف ${assistant}`}>
+                                            <TrashIcon className="w-5 h-5" />
+                                        </button>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow space-y-6">
                 <h2 className="text-xl font-bold text-gray-800 border-b pb-3">إدارة البيانات</h2>
 
-                <div className="flex items-start justify-between">
-                    <div>
+                <div className="flex flex-col lg:flex-row items-start justify-between gap-4">
+                    <div className="flex-grow">
                         <h3 className="font-semibold text-lg">حفظ نسخة احتياطية</h3>
                         <p className="text-gray-600 text-sm mt-1">قم بتنزيل جميع بياناتك (الموكلين، القضايا، الحسابات، إلخ) في ملف واحد. احتفظ بهذا الملف في مكان آمن.</p>
                     </div>
-                    <button onClick={handleBackup} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                    <button onClick={handleBackup} className="flex-shrink-0 w-full lg:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">
                         <ArrowDownTrayIcon className="w-5 h-5" />
                         <span>تنزيل نسخة احتياطية</span>
                     </button>
@@ -173,13 +244,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
                 
                 <hr />
 
-                <div className="flex items-start justify-between">
-                    <div>
+                <div className="flex flex-col lg:flex-row items-start justify-between gap-4">
+                    <div className="flex-grow">
                         <h3 className="font-semibold text-lg">استرجاع نسخة احتياطية</h3>
                         <p className="text-gray-600 text-sm mt-1">قم باستعادة بيانات التطبيق من ملف نسخة احتياطية. <span className="font-bold">تحذير: سيتم استبدال جميع البيانات الحالية.</span></p>
                     </div>
                     <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".json" className="hidden" />
-                    <button onClick={handleRestoreClick} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors">
+                    <button onClick={handleRestoreClick} className="flex-shrink-0 w-full lg:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors">
                         <ArrowUpTrayIcon className="w-5 h-5" />
                         <span>استرجاع من ملف</span>
                     </button>
@@ -235,6 +306,41 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
                                 type="button"
                                 className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors"
                                 onClick={handleConfirmClearData}
+                            >
+                                نعم، قم بالحذف
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isDeleteAssistantModalOpen && assistantToDelete && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => { setIsDeleteAssistantModalOpen(false); setAssistantToDelete(null); }}>
+                    <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                        <div className="text-center">
+                            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
+                                <ExclamationTriangleIcon className="h-8 w-8 text-red-600" aria-hidden="true" />
+                            </div>
+                            <h3 className="text-2xl font-bold text-gray-900">
+                                تأكيد حذف المساعد
+                            </h3>
+                            <p className="text-gray-600 my-4">
+                                هل أنت متأكد من رغبتك في حذف المساعد "{assistantToDelete}"؟<br />
+                                سيتم إزالة هذا المساعد من قائمة التخصيص.
+                            </p>
+                        </div>
+                        <div className="mt-6 flex justify-center gap-4">
+                            <button
+                                type="button"
+                                className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
+                                onClick={() => { setIsDeleteAssistantModalOpen(false); setAssistantToDelete(null); }}
+                            >
+                                إلغاء
+                            </button>
+                            <button
+                                type="button"
+                                className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors"
+                                onClick={handleConfirmDeleteAssistant}
                             >
                                 نعم، قم بالحذف
                             </button>

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { AccountingEntry, Client } from '../types';
 import { formatDate } from '../utils/dateUtils';
-import { PlusIcon, PencilIcon, TrashIcon, SearchIcon } from '../components/icons';
+import { PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon } from '../components/icons';
 
 interface AccountingPageProps {
     accountingEntries: AccountingEntry[];
@@ -13,6 +13,8 @@ const AccountingPage: React.FC<AccountingPageProps> = ({ accountingEntries, setA
     const [modal, setModal] = useState<{ isOpen: boolean; data?: AccountingEntry }>({ isOpen: false });
     const [formData, setFormData] = useState<Partial<AccountingEntry>>({});
     const [searchQuery, setSearchQuery] = useState('');
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [entryToDelete, setEntryToDelete] = useState<AccountingEntry | null>(null);
 
     const financialSummary = useMemo(() => {
         const totalIncome = accountingEntries.filter(e => e.type === 'income').reduce((sum, e) => sum + e.amount, 0);
@@ -68,30 +70,41 @@ const AccountingPage: React.FC<AccountingPageProps> = ({ accountingEntries, setA
         handleCloseModal();
     };
 
-    const handleDelete = (id: string) => {
-        if (window.confirm('هل أنت متأكد من حذف هذا القيد؟')) {
-            setAccountingEntries(prev => prev.filter(item => item.id !== id));
+    const openDeleteModal = (entry: AccountingEntry) => {
+        setEntryToDelete(entry);
+        setIsDeleteModalOpen(true);
+    };
+    
+    const closeDeleteModal = () => {
+        setEntryToDelete(null);
+        setIsDeleteModalOpen(false);
+    };
+
+    const handleConfirmDelete = () => {
+        if (entryToDelete) {
+            setAccountingEntries(prev => prev.filter(item => item.id !== entryToDelete.id));
+            closeDeleteModal();
         }
     };
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center flex-wrap gap-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <h1 className="text-3xl font-bold text-gray-800">المحاسبة</h1>
-                <div className="flex items-center gap-4">
-                    <div className="relative">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full md:w-auto">
+                    <div className="relative flex-grow">
                         <input 
                             type="search" 
                             placeholder="ابحث في القيود..." 
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full sm:w-64 p-2 ps-10 text-sm border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500" 
+                            className="w-full p-2 ps-10 text-sm border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500" 
                         />
                         <div className="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
                             <SearchIcon className="w-4 h-4 text-gray-500" />
                         </div>
                     </div>
-                    <button onClick={() => handleOpenModal()} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap">
+                    <button onClick={() => handleOpenModal()} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap">
                         <PlusIcon className="w-5 h-5" />
                         <span>إضافة قيد</span>
                     </button>
@@ -139,7 +152,7 @@ const AccountingPage: React.FC<AccountingPageProps> = ({ accountingEntries, setA
                                 </td>
                                 <td className="px-6 py-4 flex items-center gap-2">
                                     <button onClick={() => handleOpenModal(entry)} className="p-2 text-gray-500 hover:text-blue-600"><PencilIcon className="w-4 h-4" /></button>
-                                    <button onClick={() => handleDelete(entry.id)} className="p-2 text-gray-500 hover:text-red-600"><TrashIcon className="w-4 h-4" /></button>
+                                    <button onClick={() => openDeleteModal(entry)} className="p-2 text-gray-500 hover:text-red-600"><TrashIcon className="w-4 h-4" /></button>
                                 </td>
                             </tr>
                         ))}
@@ -185,6 +198,44 @@ const AccountingPage: React.FC<AccountingPageProps> = ({ accountingEntries, setA
                                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">حفظ</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {isDeleteModalOpen && entryToDelete && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={closeDeleteModal}>
+                    <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                        <div className="text-center">
+                            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
+                                <ExclamationTriangleIcon className="h-8 w-8 text-red-600" aria-hidden="true" />
+                            </div>
+                            <h3 className="text-2xl font-bold text-gray-900">
+                                تأكيد حذف القيد
+                            </h3>
+                            <p className="text-gray-600 my-4">
+                                هل أنت متأكد من حذف القيد التالي؟
+                                <br/>
+                                <strong className="font-semibold">{entryToDelete.description}</strong> بمبلغ <strong className="font-semibold">{entryToDelete.amount.toLocaleString()} ل.س</strong>
+                                <br />
+                                هذا الإجراء لا يمكن التراجع عنه.
+                            </p>
+                        </div>
+                        <div className="mt-6 flex justify-center gap-4">
+                            <button
+                                type="button"
+                                className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
+                                onClick={closeDeleteModal}
+                            >
+                                إلغاء
+                            </button>
+                            <button
+                                type="button"
+                                className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors"
+                                onClick={handleConfirmDelete}
+                            >
+                                نعم، قم بالحذف
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

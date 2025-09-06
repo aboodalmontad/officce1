@@ -30,17 +30,20 @@
         body * {
           visibility: hidden;
         }
-        #print-section, #print-section * {
+        #print-section, #print-section *,
+        #report-print-section, #report-print-section *,
+        #printable-agenda, #printable-agenda * {
           visibility: visible;
         }
-        #print-section {
+        #print-section, #report-print-section,
+        #printable-agenda {
           position: absolute;
           left: 0;
           top: 0;
           width: 100%;
         }
         .no-print {
-          display: none;
+          display: none !important;
         }
       }
     </style>
@@ -50,12 +53,14 @@
     "react/": "https://aistudiocdn.com/react@^19.1.1/",
     "react": "https://aistudiocdn.com/react@^19.1.1",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
-    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^6.22.0"
+    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^6.22.0",
+    "recharts": "https://aistudiocdn.com/recharts@^2.12.3"
   }
 }
 </script>
 </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>

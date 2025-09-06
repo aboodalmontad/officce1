@@ -8,6 +8,7 @@ export interface Session {
   nextPostponementReason?: string;
   isPostponed: boolean;
   nextSessionDate?: Date;
+  assignee?: string;
 }
 
 export interface Stage {
@@ -25,6 +26,7 @@ export interface Case {
   opponentName: string;
   stages: Stage[];
   feeAgreement: string;
+  status: 'active' | 'closed' | 'on_hold';
 }
 
 export interface Client {
@@ -43,6 +45,7 @@ export interface AdminTask {
     assignee?: string;
     // FIX: Add optional 'project' property to resolve errors in AdminTasksPage.tsx.
     project?: string;
+    location?: string;
 }
 
 export interface Appointment {
