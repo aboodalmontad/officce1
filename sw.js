@@ -2,10 +2,10 @@ const CACHE_NAME = 'lawyer-app-cache-v3';
 // Only cache essential, local app shell files. Other assets will be cached on demand by the fetch handler.
 // This makes the service worker installation more robust.
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/vite.svg',
+  './',
+  './index.html',
+  './manifest.json',
+  './vite.svg',
 ];
 
 self.addEventListener('install', event => {
@@ -44,7 +44,7 @@ self.addEventListener('fetch', event => {
   // For navigation requests, use a network-first strategy to ensure users get the latest HTML.
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match('/index.html'))
+      fetch(event.request).catch(() => caches.match('./index.html'))
     );
     return;
   }
