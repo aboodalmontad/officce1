@@ -1,10 +1,10 @@
-const CACHE_NAME = 'lawyer-app-cache-v3';
+const CACHE_NAME = 'lawyer-app-cache-v4';
 // Only cache essential, local app shell files. Other assets will be cached on demand by the fetch handler.
 // This makes the service worker installation more robust.
 const urlsToCache = [
   './',
   './index.html',
-  './index.js',
+  './index.tsx',
   './manifest.json',
   './icon.svg',
 ];
