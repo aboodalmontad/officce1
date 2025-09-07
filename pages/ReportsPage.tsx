@@ -2,10 +2,6 @@ import React, { useState, useMemo } from 'react';
 import { Client, AccountingEntry, Case } from '../types';
 import { formatDate } from '../utils/dateUtils';
 import { PrintIcon } from '../components/icons';
-import {
-    ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Bar,
-    PieChart, Pie, Cell,
-} from 'recharts';
 
 interface ReportsPageProps {
     clients: Client[];
@@ -70,21 +66,10 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ clients, accountingEntries })
             return acc;
         }, { income: 0, expense: 0 });
 
-        const monthlyData = filteredEntries.reduce((acc: { [key: string]: { month: string, income: number, expense: number } }, entry) => {
-            const month = new Date(entry.date).toLocaleString('ar-SY', { month: 'long', year: 'numeric' });
-            if (!acc[month]) {
-                acc[month] = { month, income: 0, expense: 0 };
-            }
-            if (entry.type === 'income') acc[month].income += entry.amount;
-            else acc[month].expense += entry.amount;
-            return acc;
-        }, {});
-
         setReportData({
             type: 'financial',
             totals: { ...totals, balance: totals.income - totals.expense },
             entries: filteredEntries.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-            chartData: Object.values(monthlyData),
             title: `ملخص مالي ${filters.clientId !== 'all' ? `للموكل: ${clients.find(c => c.id === filters.clientId)?.name}` : ''} من ${formatDate(startDate)} إلى ${formatDate(endDate)}`
         });
     };
@@ -229,22 +214,6 @@ const FinancialReport: React.FC<{ data: any }> = ({ data }) => (
                 <p className="text-3xl font-bold">{data.totals.balance.toLocaleString()} ل.س</p>
             </div>
         </div>
-        {data.chartData.length > 0 && (
-             <div className="mt-8">
-                <h3 className="text-xl font-semibold mb-4 text-center">الإيرادات مقابل المصروفات الشهرية</h3>
-                 <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={data.chartData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis tickFormatter={(value) => new Intl.NumberFormat('ar-SY').format(value as number)} />
-                        <Tooltip formatter={(value) => `${Number(value).toLocaleString()} ل.س`} />
-                        <Legend />
-                        <Bar dataKey="income" fill="#4ade80" name="الإيرادات" />
-                        <Bar dataKey="expense" fill="#f87171" name="المصروفات" />
-                    </BarChart>
-                </ResponsiveContainer>
-            </div>
-        )}
         <div>
             <h3 className="text-xl font-semibold mb-2">تفاصيل الحركات المالية</h3>
             <div className="overflow-x-auto border rounded-lg">
@@ -280,29 +249,24 @@ const FinancialReport: React.FC<{ data: any }> = ({ data }) => (
 );
 
 const CaseStatusReport: React.FC<{ data: any }> = ({ data }) => {
-    const COLORS = ['#3b82f6', '#6b7280', '#f97316'];
     const statusMap: Record<Case['status'], { text: string; className: string }> = {
         active: { text: 'نشطة', className: 'bg-blue-100 text-blue-800' },
         closed: { text: 'مغلقة', className: 'bg-gray-100 text-gray-800' },
         on_hold: { text: 'معلقة', className: 'bg-yellow-100 text-yellow-800' },
     };
 
-
     return (
         <div className="space-y-6">
-            {data.pieData.length > 0 &&
-                <div className="w-full h-80">
-                    <ResponsiveContainer>
-                        <PieChart>
-                            <Pie data={data.pieData} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} outerRadius={120} fill="#8884d8" dataKey="value">
-                                {data.pieData.map((entry: any, index: number) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                            </Pie>
-                            <Tooltip formatter={(value) => `${value} قضية`} />
-                            <Legend />
-                        </PieChart>
-                    </ResponsiveContainer>
-                </div>
-            }
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                {data.pieData.map((entry: { name: string, value: number }) => (
+                    <div key={entry.name} className="p-4 bg-gray-100 rounded-lg shadow text-center">
+                        <h4 className="text-lg font-semibold text-gray-700">{entry.name}</h4>
+                        <p className="text-3xl font-bold text-blue-600">{entry.value}</p>
+                    </div>
+                ))}
+                {data.pieData.length === 0 && <p className="col-span-3 text-center text-gray-500">لا توجد بيانات لعرضها.</p>}
+            </div>
+            
             <div>
                  <h3 className="text-xl font-semibold mb-2">قائمة القضايا</h3>
                 <div className="overflow-x-auto border rounded-lg">
