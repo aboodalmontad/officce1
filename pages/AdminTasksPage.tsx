@@ -26,7 +26,8 @@ const AdminTasksPage: React.FC<AdminTasksPageProps> = ({ adminTasks, setAdminTas
         task: '',
         dueDate: '',
         importance: 'normal',
-        project: '',
+        // FIX: Replaced non-existent 'project' property with 'location'.
+        location: '',
         assignee: 'بدون تخصيص',
         completed: false
     });
@@ -50,7 +51,8 @@ const AdminTasksPage: React.FC<AdminTasksPageProps> = ({ adminTasks, setAdminTas
                 task: '',
                 dueDate: toInputDateString(new Date()),
                 importance: 'normal',
-                project: '',
+                // FIX: Replaced non-existent 'project' property with 'location'.
+                location: '',
                 assignee: 'بدون تخصيص',
                 completed: false
             });
@@ -138,7 +140,8 @@ const AdminTasksPage: React.FC<AdminTasksPageProps> = ({ adminTasks, setAdminTas
                             <tr>
                                 <th className="px-4 py-3 w-12">إنجاز</th>
                                 <th className="px-6 py-3">المهمة</th>
-                                <th className="px-6 py-3">المشروع</th>
+                                {/* FIX: Replaced 'المشروع' with 'المكان' for consistency. */}
+                                <th className="px-6 py-3">المكان</th>
                                 <th className="px-6 py-3">المسؤول</th>
                                 <th className="px-6 py-3">تاريخ الاستحقاق</th>
                                 <th className="px-6 py-3">الأهمية</th>
@@ -157,7 +160,8 @@ const AdminTasksPage: React.FC<AdminTasksPageProps> = ({ adminTasks, setAdminTas
                                         />
                                     </td>
                                     <td className={`px-6 py-4 font-medium ${task.completed ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.task}</td>
-                                    <td className="px-6 py-4 text-gray-500">{task.project || '-'}</td>
+                                    {/* FIX: Replaced non-existent 'task.project' with 'task.location'. */}
+                                    <td className="px-6 py-4 text-gray-500">{task.location || '-'}</td>
                                     <td className="px-6 py-4 text-gray-500">{task.assignee || '-'}</td>
                                     <td className="px-6 py-4">{formatDate(task.dueDate)}</td>
                                     <td className="px-6 py-4">
@@ -204,8 +208,9 @@ const AdminTasksPage: React.FC<AdminTasksPageProps> = ({ adminTasks, setAdminTas
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">المشروع (اختياري)</label>
-                                    <input type="text" name="project" placeholder="مثال: قضية شركة الأمل" value={formData.project} onChange={handleFormChange} className="w-full p-2 border rounded" />
+                                    {/* FIX: Replaced 'project' with 'location' and updated label/placeholder. */}
+                                    <label className="block text-sm font-medium text-gray-700">المكان (اختياري)</label>
+                                    <input type="text" name="location" placeholder="مثال: القصر العدلي" value={formData.location || ''} onChange={handleFormChange} className="w-full p-2 border rounded" />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700">تخصيص لـ</label>

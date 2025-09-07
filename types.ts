@@ -43,8 +43,6 @@ export interface AdminTask {
     completed: boolean;
     importance: 'normal' | 'important' | 'urgent';
     assignee?: string;
-    // FIX: Add optional 'project' property to resolve errors in AdminTasksPage.tsx.
-    project?: string;
     location?: string;
 }
 
