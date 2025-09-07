@@ -90,7 +90,6 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ clients, accountingEntries })
     };
     
     const generateCaseStatusReport = () => {
-        // FIX: Add clientId to each case object to allow filtering by client.
         const allCases = clients.flatMap(client => client.cases.map(c => ({...c, clientName: client.name, clientId: client.id})));
         const filteredCases = filters.clientId === 'all' 
             ? allCases 
@@ -282,12 +281,11 @@ const FinancialReport: React.FC<{ data: any }> = ({ data }) => (
 
 const CaseStatusReport: React.FC<{ data: any }> = ({ data }) => {
     const COLORS = ['#3b82f6', '#6b7280', '#f97316'];
-    const statusClassMap: Record<Case['status'], string> = {
-        active: 'bg-blue-100 text-blue-800',
-        closed: 'bg-gray-100 text-gray-800',
-        on_hold: 'bg-yellow-100 text-yellow-800'
+    const statusMap: Record<Case['status'], { text: string; className: string }> = {
+        active: { text: 'نشطة', className: 'bg-blue-100 text-blue-800' },
+        closed: { text: 'مغلقة', className: 'bg-gray-100 text-gray-800' },
+        on_hold: { text: 'معلقة', className: 'bg-yellow-100 text-yellow-800' },
     };
-    const statusMap: Record<Case['status'], string> = { active: 'نشطة', closed: 'مغلقة', on_hold: 'معلقة'};
 
 
     return (
@@ -324,8 +322,8 @@ const CaseStatusReport: React.FC<{ data: any }> = ({ data }) => {
                                     <td className="px-6 py-4">{caseItem.subject}</td>
                                     <td className="px-6 py-4">{caseItem.opponentName}</td>
                                     <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${statusClassMap[caseItem.status]}`}>
-                                            {statusMap[caseItem.status]}
+                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${statusMap[caseItem.status].className}`}>
+                                            {statusMap[caseItem.status].text}
                                         </span>
                                     </td>
                                 </tr>
