@@ -4,6 +4,7 @@ const CACHE_NAME = 'lawyer-app-cache-v3';
 const urlsToCache = [
   './',
   './index.html',
+  './index.js',
   './manifest.json',
   './icon.svg',
 ];
