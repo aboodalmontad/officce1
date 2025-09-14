@@ -296,7 +296,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                 id: `session-${Date.now()}`,
                 date: newDate,
                 isPostponed: false,
-                nextPostponementReason: undefined,
+                nextPostponementReason: newReason,
                 nextSessionDate: undefined,
             };
 
@@ -392,12 +392,20 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-1 bg-white p-4 rounded-lg shadow space-y-4 no-print">
                     <Calendar onDateSelect={handleDateSelect} selectedDate={selectedDate} sessions={allSessions} appointments={appointments} />
-                     <button 
-                        onClick={handleShowUnpostponed}
-                        className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
-                    >
-                        الجلسات غير المرحلة
-                    </button>
+                     <div className="relative">
+                        <button 
+                            onClick={handleShowUnpostponed}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 text-sm font-semibold"
+                        >
+                            <ExclamationTriangleIcon className="w-5 h-5" />
+                            <span>الجلسات غير المرحلة</span>
+                        </button>
+                        {unpostponedSessions.length > 0 && (
+                             <span className="absolute -top-2 -start-2 flex h-5 w-5 items-center justify-center rounded-full bg-yellow-400 text-black text-xs font-bold ring-2 ring-white animate-pulse" title={`${unpostponedSessions.length} جلسات غير مرحلة`}>
+                                {unpostponedSessions.length}
+                            </span>
+                        )}
+                    </div>
                 </div>
 
                 <div className="lg:col-span-2 space-y-6">

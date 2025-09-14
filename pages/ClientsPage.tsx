@@ -162,7 +162,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                 id: `session-${Date.now()}`,
                 date: newDate,
                 isPostponed: false,
-                nextPostponementReason: undefined,
+                nextPostponementReason: newReason,
                 nextSessionDate: undefined,
             };
 

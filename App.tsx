@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+// FIX: An error "does not provide an export named 'Redirect'" indicates a version mismatch. The code was using react-router-dom v5 syntax while the project imports v6.
+// This change updates the routing logic to be compatible with react-router-dom v6.
 import { HashRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import ClientsPage from './pages/ClientsPage';
@@ -16,6 +18,18 @@ const App: React.FC = () => {
   const { syncStatus, lastSync, triggerSync } = useSync();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
+  useEffect(() => {
+    const handleResize = () => {
+        if (window.innerWidth >= 768) { // Tailwind's 'md' breakpoint
+            setIsMenuOpen(false);
+        }
+    };
+    window.addEventListener('resize', handleResize);
+    handleResize(); // Also check on initial mount
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+
   const getSyncButtonContent = () => {
     switch (syncStatus) {
       case 'syncing':
@@ -29,8 +43,9 @@ const App: React.FC = () => {
     }
   };
 
-  const mobileNavLinkClass = ({ isActive }: { isActive: boolean }) => `flex items-center px-3 py-2 rounded-lg text-base font-medium transition-colors duration-200 ${isActive ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`;
-  const desktopNavLinkClass = ({ isActive }: { isActive: boolean }) => `flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${isActive ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`;
+  const navLinkClasses = "flex items-center px-3 py-2 rounded-lg transition-colors duration-200 hover:bg-gray-700";
+  const activeNavLinkClasses = "bg-blue-600 text-white";
+  const mobileNavLinkClasses = "flex items-center px-3 py-2 rounded-lg text-base font-medium transition-colors duration-200 text-gray-300 hover:bg-gray-700 hover:text-white";
 
 
   return (
@@ -50,11 +65,11 @@ const App: React.FC = () => {
             <div className="flex items-center gap-x-4">
                {/* Desktop Menu */}
               <nav className="hidden md:flex items-center gap-x-2">
-                <NavLink to="/" className={desktopNavLinkClass}><HomeIcon className="w-5 h-5 me-2" /><span>الرئيسية</span></NavLink>
-                <NavLink to="/clients" className={desktopNavLinkClass}><UsersIcon className="w-5 h-5 me-2" /><span>الموكلين</span></NavLink>
-                <NavLink to="/accounting" className={desktopNavLinkClass}><CurrencyDollarIcon className="w-5 h-5 me-2" /><span>المحاسبة</span></NavLink>
-                <NavLink to="/reports" className={desktopNavLinkClass}><DocumentChartBarIcon className="w-5 h-5 me-2" /><span>التقارير</span></NavLink>
-                <NavLink to="/settings" className={desktopNavLinkClass}><SettingsIcon className="w-5 h-5 me-2" /><span>الإعدادات</span></NavLink>
+                <NavLink to="/" end className={({ isActive }) => `${navLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><HomeIcon className="w-5 h-5 me-2" /><span>الرئيسية</span></NavLink>
+                <NavLink to="/clients" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><UsersIcon className="w-5 h-5 me-2" /><span>الموكلين</span></NavLink>
+                <NavLink to="/accounting" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><CurrencyDollarIcon className="w-5 h-5 me-2" /><span>المحاسبة</span></NavLink>
+                <NavLink to="/reports" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><DocumentChartBarIcon className="w-5 h-5 me-2" /><span>التقارير</span></NavLink>
+                <NavLink to="/settings" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><SettingsIcon className="w-5 h-5 me-2" /><span>الإعدادات</span></NavLink>
               </nav>
 
               <div className="hidden md:block h-8 border-s border-gray-600"></div>
@@ -85,11 +100,11 @@ const App: React.FC = () => {
           {isMenuOpen && (
             <div className="md:hidden" id="mobile-menu">
               <nav className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
-                <NavLink to="/" onClick={() => setIsMenuOpen(false)} className={mobileNavLinkClass}><HomeIcon className="w-5 h-5 me-2" /><span>الرئيسية</span></NavLink>
-                <NavLink to="/clients" onClick={() => setIsMenuOpen(false)} className={mobileNavLinkClass}><UsersIcon className="w-5 h-5 me-2" /><span>الموكلين</span></NavLink>
-                <NavLink to="/accounting" onClick={() => setIsMenuOpen(false)} className={mobileNavLinkClass}><CurrencyDollarIcon className="w-5 h-5 me-2" /><span>المحاسبة</span></NavLink>
-                <NavLink to="/reports" onClick={() => setIsMenuOpen(false)} className={mobileNavLinkClass}><DocumentChartBarIcon className="w-5 h-5 me-2" /><span>التقارير</span></NavLink>
-                <NavLink to="/settings" onClick={() => setIsMenuOpen(false)} className={mobileNavLinkClass}><SettingsIcon className="w-5 h-5 me-2" /><span>الإعدادات</span></NavLink>
+                <NavLink to="/" end onClick={() => setIsMenuOpen(false)} className={({ isActive }) => `${mobileNavLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><HomeIcon className="w-5 h-5 me-2" /><span>الرئيسية</span></NavLink>
+                <NavLink to="/clients" onClick={() => setIsMenuOpen(false)} className={({ isActive }) => `${mobileNavLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><UsersIcon className="w-5 h-5 me-2" /><span>الموكلين</span></NavLink>
+                <NavLink to="/accounting" onClick={() => setIsMenuOpen(false)} className={({ isActive }) => `${mobileNavLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><CurrencyDollarIcon className="w-5 h-5 me-2" /><span>المحاسبة</span></NavLink>
+                <NavLink to="/reports" onClick={() => setIsMenuOpen(false)} className={({ isActive }) => `${mobileNavLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><DocumentChartBarIcon className="w-5 h-5 me-2" /><span>التقارير</span></NavLink>
+                <NavLink to="/settings" onClick={() => setIsMenuOpen(false)} className={({ isActive }) => `${mobileNavLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><SettingsIcon className="w-5 h-5 me-2" /><span>الإعدادات</span></NavLink>
               </nav>
               <div className="border-t border-gray-700 pt-4 pb-3">
                 <div className="flex items-center px-4">
@@ -107,14 +122,14 @@ const App: React.FC = () => {
           )}
         </header>
         
-        <main className="container mx-auto pt-24 p-4 md:p-8">
+        <main className={`container mx-auto p-4 md:p-8 transition-all duration-300 ${isMenuOpen ? 'pt-[385px]' : 'pt-24'}`}>
           <Routes>
             <Route path="/" element={<HomePage appointments={appointments} setClients={setClients} allSessions={allSessions} setAppointments={setAppointments} adminTasks={adminTasks} setAdminTasks={setAdminTasks} assistants={assistants} />} />
             <Route path="/clients" element={<ClientsPage clients={clients} setClients={setClients} accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} assistants={assistants} />} />
             <Route path="/accounting" element={<AccountingPage accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} clients={clients} />} />
             <Route path="/reports" element={<ReportsPage clients={clients} accountingEntries={accountingEntries} />} />
             <Route path="/settings" element={<SettingsPage setFullData={setFullData} syncStatus={syncStatus} lastSync={lastSync} triggerSync={triggerSync} assistants={assistants} setAssistants={setAssistants} />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </main>
       </div>

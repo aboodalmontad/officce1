@@ -12,6 +12,7 @@ interface SessionsTableProps {
 
 const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onEdit, onDelete }) => {
     const [postponeData, setPostponeData] = useState<Record<string, { date: string; reason: string }>>({});
+    const [errors, setErrors] = useState<Record<string, string>>({});
 
     const handleInputChange = (sessionId: string, field: 'date' | 'reason', value: string) => {
         setPostponeData(prev => ({
@@ -21,16 +22,44 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                 [field]: value,
             },
         }));
+        // Clear error when user edits fields
+        if (errors[sessionId]) {
+            setErrors(prev => {
+                const newErrors = { ...prev };
+                delete newErrors[sessionId];
+                return newErrors;
+            });
+        }
     };
     
     const handlePostponeClick = (sessionId: string) => {
         const data = postponeData[sessionId];
+        const session = sessions.find(s => s.id === sessionId);
+
+        if (!session) {
+            console.error("Could not find session to postpone");
+            return;
+        }
+
         if (data && data.date && data.reason) {
             const newDate = new Date(data.date);
-            if (newDate < new Date(new Date().toDateString())) {
-                alert("لا يمكن تحديد تاريخ الجلسة القادمة في الماضي.");
+            
+            // Normalize dates to the beginning of the day for accurate comparison
+            const newDateStart = new Date(newDate.getFullYear(), newDate.getMonth(), newDate.getDate());
+            const sessionDateStart = new Date(session.date.getFullYear(), session.date.getMonth(), session.date.getDate());
+
+            if (newDateStart <= sessionDateStart) {
+                setErrors(prev => ({ ...prev, [sessionId]: "تاريخ الجلسة القادمة يجب أن يكون بعد تاريخ الجلسة الحالية." }));
                 return;
             }
+
+            // If we reach here, data is valid. Clear any existing error for this session.
+            setErrors(prev => {
+                const newErrors = { ...prev };
+                delete newErrors[sessionId];
+                return newErrors;
+            });
+
             onPostpone(sessionId, newDate, data.reason);
             setPostponeData(prev => {
                 const newState = {...prev};
@@ -38,7 +67,7 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                 return newState;
             });
         } else {
-            alert("يرجى إدخال تاريخ وسبب التأجيل.");
+            setErrors(prev => ({ ...prev, [sessionId]: "يرجى إدخال تاريخ وسبب التأجيل." }));
         }
     };
 
@@ -80,7 +109,7 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                                     <td className="px-2 sm:px-6 py-4">
                                         <input 
                                             type="date" 
-                                            className="p-2 border rounded-md w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            className={`p-2 border rounded-md w-full focus:outline-none focus:ring-2 ${errors[s.id] ? 'border-red-500 focus:ring-red-500' : 'focus:ring-blue-500'}`}
                                             value={postponeData[s.id]?.date || ''}
                                             onChange={(e) => handleInputChange(s.id, 'date', e.target.value)}
                                             aria-label="تاريخ الجلسة القادمة"
@@ -90,23 +119,26 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                                         <input 
                                             type="text" 
                                             placeholder="سبب التأجيل..." 
-                                            className="p-2 border rounded-md w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            className={`p-2 border rounded-md w-full focus:outline-none focus:ring-2 ${errors[s.id] ? 'border-red-500 focus:ring-red-500' : 'focus:ring-blue-500'}`}
                                             value={postponeData[s.id]?.reason || ''}
                                             onChange={(e) => handleInputChange(s.id, 'reason', e.target.value)}
                                             aria-label="سبب التأجيل القادم"
                                         />
                                     </td>
                                     <td className="px-2 sm:px-6 py-4">
-                                        <div className="flex items-center gap-1">
-                                            <button 
-                                                onClick={() => handlePostponeClick(s.id)}
-                                                className="px-3 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-300"
-                                                disabled={!postponeData[s.id]?.date || !postponeData[s.id]?.reason}
-                                            >
-                                                ترحيل
-                                            </button>
-                                            {onEdit && <button onClick={() => onEdit(s)} className="p-2 text-gray-500 hover:text-blue-600" aria-label="تعديل"><PencilIcon className="w-4 h-4" /></button>}
-                                            {onDelete && <button onClick={() => onDelete(s.id)} className="p-2 text-gray-500 hover:text-red-600" aria-label="حذف"><TrashIcon className="w-4 h-4" /></button>}
+                                        <div className="flex flex-col items-start gap-1">
+                                            <div className="flex items-center gap-1">
+                                                <button 
+                                                    onClick={() => handlePostponeClick(s.id)}
+                                                    className="px-3 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-300"
+                                                    disabled={!postponeData[s.id]?.date || !postponeData[s.id]?.reason}
+                                                >
+                                                    ترحيل
+                                                </button>
+                                                {onEdit && <button onClick={() => onEdit(s)} className="p-2 text-gray-500 hover:text-blue-600" aria-label="تعديل"><PencilIcon className="w-4 h-4" /></button>}
+                                                {onDelete && <button onClick={() => onDelete(s.id)} className="p-2 text-gray-500 hover:text-red-600" aria-label="حذف"><TrashIcon className="w-4 h-4" /></button>}
+                                            </div>
+                                            {errors[s.id] && <p className="text-red-600 text-xs mt-1">{errors[s.id]}</p>}
                                         </div>
                                     </td>
                                 </>
