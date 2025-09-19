@@ -2,7 +2,7 @@ import * as React from 'react';
 import Calendar from '../components/Calendar';
 import { Session, AdminTask, Appointment, Stage, Client } from '../types';
 import { formatDate, isSameDay, isBeforeToday } from '../utils/dateUtils';
-import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon } from '../components/icons';
+import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, CalendarIcon, ChevronLeftIcon } from '../components/icons';
 import SessionsTable from '../components/SessionsTable';
 import PrintableReport from '../components/PrintableReport';
 
@@ -84,7 +84,8 @@ interface HomePageProps {
 
 const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessions, setAppointments, adminTasks, setAdminTasks, assistants }) => {
     const [selectedDate, setSelectedDate] = React.useState(new Date());
-    const [showUnpostponed, setShowUnpostponed] = React.useState(false);
+    type ViewMode = 'daily' | 'unpostponed' | 'upcoming';
+    const [viewMode, setViewMode] = React.useState<ViewMode>('daily');
     const [isAppointmentModalOpen, setIsAppointmentModalOpen] = React.useState(false);
     const [editingAppointment, setEditingAppointment] = React.useState<Appointment | null>(null);
     const [newAppointment, setNewAppointment] = React.useState<{ title: string; date: string; time: string; importance: 'normal' | 'important' | 'urgent' }>({ title: '', date: '', time: '', importance: 'normal' });
@@ -337,6 +338,16 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
         return allSessions.filter(s => !s.isPostponed && isBeforeToday(s.date));
     }, [allSessions]);
     
+    const upcomingSessions = React.useMemo(() => {
+        const tomorrow = new Date(selectedDate);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(0, 0, 0, 0);
+
+        return allSessions
+            .filter(s => new Date(s.date) >= tomorrow)
+            .sort((a, b) => a.date.getTime() - b.date.getTime());
+    }, [allSessions, selectedDate]);
+
     const allUncompletedAdminTasks = React.useMemo(() => {
         return adminTasks.filter(task => !task.completed).sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
     }, [adminTasks]);
@@ -369,14 +380,24 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
         return grouped;
     }, [adminTasks, activeTaskTab, adminTaskSearch]);
 
-
-    const handleShowUnpostponed = () => {
-        setShowUnpostponed(true);
-    };
-
     const handleDateSelect = (date: Date) => {
         setSelectedDate(date);
-        setShowUnpostponed(false);
+        setViewMode('daily');
+    };
+
+    const handleShowTodaysAgenda = () => {
+        setSelectedDate(new Date());
+        setViewMode('daily');
+    };
+
+    const getTitle = () => {
+        switch(viewMode) {
+            case 'unpostponed': return "الجلسات غير المرحلة";
+            case 'upcoming': return `الجلسات القادمة (بعد ${formatDate(selectedDate)})`;
+            case 'daily':
+            default:
+                return `جدول أعمال يوم: ${formatDate(selectedDate)}`;
+        }
     };
 
     return (
@@ -392,35 +413,45 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-1 bg-white p-4 rounded-lg shadow space-y-4 no-print">
                     <Calendar onDateSelect={handleDateSelect} selectedDate={selectedDate} sessions={allSessions} appointments={appointments} />
-                     <div className="relative">
-                        <button 
-                            onClick={handleShowUnpostponed}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 text-sm font-semibold"
+                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div className="relative">
+                            <button
+                                onClick={() => setViewMode('unpostponed')}
+                                className={`w-full flex items-center justify-center gap-2 px-4 py-2 text-white rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 text-sm font-semibold ${viewMode === 'unpostponed' ? 'bg-red-700' : 'bg-red-600 hover:bg-red-700'}`}
+                            >
+                                <ExclamationTriangleIcon className="w-5 h-5" />
+                                <span>غير المرحلة</span>
+                            </button>
+                            {unpostponedSessions.length > 0 && (
+                                 <span className="absolute -top-2 -start-2 flex h-5 w-5 items-center justify-center rounded-full bg-yellow-400 text-black text-xs font-bold ring-2 ring-white animate-pulse" title={`${unpostponedSessions.length} جلسات غير مرحلة`}>
+                                    {unpostponedSessions.length}
+                                </span>
+                            )}
+                        </div>
+                        <button
+                            onClick={handleShowTodaysAgenda}
+                            className={`w-full flex items-center justify-center gap-2 px-4 py-2 text-white rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 text-sm font-semibold ${viewMode === 'daily' ? 'bg-blue-700' : 'bg-blue-600 hover:bg-blue-700'}`}
                         >
-                            <ExclamationTriangleIcon className="w-5 h-5" />
-                            <span>الجلسات غير المرحلة</span>
+                            <CalendarIcon className="w-5 h-5" />
+                            <span>أجندة اليوم</span>
                         </button>
-                        {unpostponedSessions.length > 0 && (
-                             <span className="absolute -top-2 -start-2 flex h-5 w-5 items-center justify-center rounded-full bg-yellow-400 text-black text-xs font-bold ring-2 ring-white animate-pulse" title={`${unpostponedSessions.length} جلسات غير مرحلة`}>
-                                {unpostponedSessions.length}
-                            </span>
-                        )}
+                        <button
+                            onClick={() => setViewMode('upcoming')}
+                            className={`w-full flex items-center justify-center gap-2 px-4 py-2 text-white rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 text-sm font-semibold ${viewMode === 'upcoming' ? 'bg-green-700' : 'bg-green-600 hover:bg-green-700'}`}
+                        >
+                            <ChevronLeftIcon className="w-5 h-5" />
+                            <span>القادمة</span>
+                        </button>
                     </div>
                 </div>
 
                 <div className="lg:col-span-2 space-y-6">
                      <div id="print-section">
                         <div className="mb-4">
-                            <h2 className="text-2xl font-semibold">
-                                {showUnpostponed ? "الجلسات غير المرحلة" : `جدول أعمال يوم: ${formatDate(selectedDate)}`}
-                            </h2>
+                            <h2 className="text-2xl font-semibold">{getTitle()}</h2>
                         </div>
                         <div className="space-y-6">
-                             {showUnpostponed ? (
-                                <div className="bg-white rounded-lg shadow overflow-hidden">
-                                    <SessionsTable sessions={unpostponedSessions} onPostpone={handlePostponeSession} />
-                                </div>
-                            ) : (
+                            {viewMode === 'daily' && (
                                 <>
                                     <div className="bg-white rounded-lg shadow overflow-hidden">
                                         <h3 className="text-lg font-bold p-4 bg-gray-50 border-b">جدول الجلسات</h3>
@@ -428,6 +459,16 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                                     </div>
                                     <AppointmentsTable appointments={dailyData.dailyAppointments} onAddAppointment={handleOpenAddAppointmentModal} onEdit={handleOpenEditAppointmentModal} onDelete={openDeleteAppointmentModal} />
                                 </>
+                            )}
+                            {viewMode === 'unpostponed' && (
+                                <div className="bg-white rounded-lg shadow overflow-hidden">
+                                    <SessionsTable sessions={unpostponedSessions} onPostpone={handlePostponeSession} />
+                                </div>
+                            )}
+                            {viewMode === 'upcoming' && (
+                                <div className="bg-white rounded-lg shadow overflow-hidden">
+                                    <SessionsTable sessions={upcomingSessions} onPostpone={handlePostponeSession} />
+                                </div>
                             )}
                         </div>
                      </div>

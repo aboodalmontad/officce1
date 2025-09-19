@@ -1,8 +1,5 @@
-
-
-
 import * as React from 'react';
-import { ArrowDownTrayIcon, ArrowUpTrayIcon, TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, PlusIcon } from '../components/icons';
+import { ArrowDownTrayIcon, ArrowUpTrayIcon, TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, PlusIcon, CheckCircleIcon, XCircleIcon } from '../components/icons';
 import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
 import { SyncStatus } from '../hooks/useSync';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
@@ -125,12 +122,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
         setIsConfirmModalOpen(false);
     };
 
-    const getSyncButtonText = () => {
+    const getSyncButtonContent = () => {
         switch (syncStatus) {
-            case 'syncing': return 'جاري المزامنة...';
-            case 'success': return 'تمت المزامنة بنجاح';
-            case 'error': return 'فشلت المزامنة';
-            default: return 'مزامنة الآن';
+            case 'syncing':
+                return <><ArrowPathIcon className="w-5 h-5 animate-spin" /> <span>جاري المزامنة...</span></>;
+            case 'success':
+                return <><CheckCircleIcon className="w-5 h-5 text-green-400" /> <span>تمت المزامنة</span></>;
+            case 'error':
+                return <><XCircleIcon className="w-5 h-5 text-red-400" /> <span>فشل المزامنة</span></>;
+            default:
+                return <><CloudArrowUpIcon className="w-5 h-5" /> <span>مزامنة الآن</span></>;
         }
     };
 
@@ -168,29 +169,30 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
                     <span>{feedback.message}</span>
                 </div>
             )}
-            
+
             <div className="bg-white p-6 rounded-lg shadow space-y-6">
-                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">المزامنة</h2>
+                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">المزامنة مع الخادم</h2>
                 <div className="flex flex-col lg:flex-row items-start justify-between gap-4">
                     <div className="flex-grow">
                         <h3 className="font-semibold text-lg">مزامنة البيانات</h3>
-                        <p className="text-gray-600 text-sm mt-1">قم بمزامنة بياناتك مع الخادم السحابي للوصول إليها من أي جهاز.</p>
-                        <p className="text-gray-500 text-xs mt-2">
+                        <p className="text-gray-600 text-sm mt-1">
+                            قم بمزامنة بياناتك مع الخادم السحابي لحفظها والوصول إليها من أجهزة متعددة.
+                        </p>
+                        <p className="text-xs text-gray-500 mt-2">
                             آخر مزامنة ناجحة: {lastSync ? lastSync.toLocaleString('ar-SY') : 'لم تتم المزامنة بعد'}
                         </p>
                     </div>
                     <button 
                         onClick={triggerSync}
                         disabled={!isOnline || syncStatus === 'syncing'}
-                        className="flex-shrink-0 w-full lg:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-                        title={!isOnline ? 'المزامنة تتطلب اتصالاً بالإنترنت' : ''}
+                        className="flex-shrink-0 w-full lg:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-gray-700 text-white font-semibold rounded-lg hover:bg-gray-600 transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed"
+                        title={!isOnline ? 'المزامنة تتطلب اتصالاً بالإنترنت' : 'مزامنة البيانات مع الخادم'}
                     >
-                        {syncStatus === 'syncing' ? <ArrowPathIcon className="w-5 h-5 animate-spin" /> : <CloudArrowUpIcon className="w-5 h-5" />}
-                        <span>{getSyncButtonText()}</span>
+                        {getSyncButtonContent()}
                     </button>
                 </div>
             </div>
-
+            
             <div className="bg-white p-6 rounded-lg shadow space-y-6">
                 <h2 className="text-xl font-bold text-gray-800 border-b pb-3">إدارة المساعدين</h2>
                 <div className="space-y-4">

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { Client, Session, AdminTask, Appointment, AccountingEntry } from '../types';
+import { useLocalStorage } from './useLocalStorage';
 
 const APP_DATA_KEY = 'lawyerBusinessManagementData';
 
@@ -16,77 +17,64 @@ const dateReviver = (key: string, value: any) => {
 
 const defaultAssistants = ['أحمد', 'فاطمة', 'سارة', 'بدون تخصيص'];
 
+const getInitialData = () => ({
+    clients: [] as Client[],
+    adminTasks: [] as AdminTask[],
+    appointments: [] as Appointment[],
+    accountingEntries: [] as AccountingEntry[],
+    assistants: [...defaultAssistants],
+});
+
+type AppData = ReturnType<typeof getInitialData>;
+
 /**
  * A robust function to validate and clean up the assistants list from storage.
- * Ensures "بدون تخصیص" is always present and handles corrupted/old data.
+ * Ensures "بدون تخصيص" is always present and handles corrupted/old data.
  * @param list The list from the parsed data.
  * @returns A valid, clean array of strings.
  */
 const validateAssistantsList = (list: any): string[] => {
-    // Case 1: List is missing, null, or not an array (handles old data format & corruption)
     if (!Array.isArray(list)) {
         return [...defaultAssistants];
     }
-
-    // Case 2: List is an array, potentially empty or malformed.
-    // Use a Set to handle duplicates and ensure "بدون تخصیص" is present.
     const uniqueAssistants = new Set(list.filter(item => typeof item === 'string' && item.trim() !== ''));
     uniqueAssistants.add('بدون تخصيص');
-
     return Array.from(uniqueAssistants);
 };
 
 
-const loadInitialData = () => {
-    try {
-        const savedData = localStorage.getItem(APP_DATA_KEY);
-        if (savedData) {
-            const parsedData = JSON.parse(savedData, dateReviver);
-            // Basic validation for the main structure
-            if (parsedData && typeof parsedData === 'object') {
-                return {
-                    clients: Array.isArray(parsedData.clients) ? parsedData.clients : [],
-                    adminTasks: Array.isArray(parsedData.adminTasks) ? parsedData.adminTasks : [],
-                    appointments: Array.isArray(parsedData.appointments) ? parsedData.appointments : [],
-                    accountingEntries: Array.isArray(parsedData.accountingEntries) ? parsedData.accountingEntries : [],
-                    assistants: validateAssistantsList(parsedData.assistants),
-                };
-            }
-        }
-    } catch (error) {
-        console.error("Failed to load or parse data from localStorage", error);
+/**
+ * Validates data loaded from localStorage, merging it with defaults
+ * to ensure the state shape is always correct.
+ * @param data The data loaded from storage.
+ * @returns A valid, hydrated AppData object.
+ */
+const validateAndHydrate = (data: any): AppData => {
+    const defaults = getInitialData();
+    if (!data || typeof data !== 'object') {
+        return defaults;
     }
-
-    // Fallback to a completely empty state if anything fails
     return {
-        clients: [],
-        adminTasks: [],
-        appointments: [],
-        accountingEntries: [],
-        assistants: [...defaultAssistants],
+        clients: Array.isArray(data.clients) ? data.clients : defaults.clients,
+        adminTasks: Array.isArray(data.adminTasks) ? data.adminTasks : defaults.adminTasks,
+        appointments: Array.isArray(data.appointments) ? data.appointments : defaults.appointments,
+        accountingEntries: Array.isArray(data.accountingEntries) ? data.accountingEntries : defaults.accountingEntries,
+        assistants: validateAssistantsList(data.assistants),
     };
 };
 
-
-type AppData = {
-    clients: Client[];
-    adminTasks: AdminTask[];
-    appointments: Appointment[];
-    accountingEntries: AccountingEntry[];
-    assistants: string[];
-};
-
 export const useMockData = () => {
-    const [data, setData] = React.useState<AppData>(loadInitialData);
+    const [data, setData] = useLocalStorage<AppData>(APP_DATA_KEY, getInitialData(), dateReviver);
 
+    // This effect runs once on mount to validate the data loaded from localStorage.
+    // This protects against corrupted or old data formats causing issues.
+    const hasHydrated = React.useRef(false);
     React.useEffect(() => {
-        try {
-            const serializedData = JSON.stringify(data);
-            localStorage.setItem(APP_DATA_KEY, serializedData);
-        } catch (error) {
-            console.error("Failed to save data to localStorage", error);
+        if (!hasHydrated.current) {
+            setData(currentData => validateAndHydrate(currentData));
+            hasHydrated.current = true;
         }
-    }, [data]);
+    }, [setData]);
 
     const setClients = (updater: Client[] | ((prevClients: Client[]) => Client[])) => {
         setData(prevData => ({
@@ -123,26 +111,13 @@ export const useMockData = () => {
         }));
     };
 
-
     const setFullData = (newData: any) => {
-        if (!newData || typeof newData !== 'object') {
-            console.error("Attempted to restore with invalid data format.");
-            return;
-        }
-
-        const validatedData: AppData = {
-            clients: Array.isArray(newData.clients) ? newData.clients : [],
-            adminTasks: Array.isArray(newData.adminTasks) ? newData.adminTasks : [],
-            appointments: Array.isArray(newData.appointments) ? newData.appointments : [],
-            accountingEntries: Array.isArray(newData.accountingEntries) ? newData.accountingEntries : [],
-            assistants: validateAssistantsList(newData.assistants),
-        };
-        
+        const validatedData = validateAndHydrate(newData);
         setData(validatedData);
     };
     
     const allSessions = React.useMemo(() => {
-        return data.clients.flatMap(client => 
+        return (data.clients || []).flatMap(client => 
             client.cases.flatMap(c => 
                 c.stages.flatMap(s => s.sessions)
             )

@@ -8,7 +8,7 @@ import ClientsPage from './pages/ClientsPage';
 import AccountingPage from './pages/AccountingPage';
 import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
-import { HomeIcon, UsersIcon, CurrencyDollarIcon, DocumentChartBarIcon, SettingsIcon, CloudArrowUpIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon } from './components/icons';
+import { HomeIcon, UsersIcon, CurrencyDollarIcon, DocumentChartBarIcon, SettingsIcon } from './components/icons';
 import { useMockData } from './hooks/useMockData';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { useSync } from './hooks/useSync';
@@ -30,19 +30,6 @@ const App: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-
-  const getSyncButtonContent = () => {
-    switch (syncStatus) {
-      case 'syncing':
-        return <><ArrowPathIcon className="w-5 h-5 animate-spin" /> <span>جاري المزامنة...</span></>;
-      case 'success':
-        return <><CheckCircleIcon className="w-5 h-5 text-green-400" /> <span>تمت المزامنة</span></>;
-      case 'error':
-        return <><XCircleIcon className="w-5 h-5 text-red-400" /> <span>فشل المزامنة</span></>;
-      default:
-        return <><CloudArrowUpIcon className="w-5 h-5" /> <span>مزامنة</span></>;
-    }
-  };
 
   const navLinkClasses = "flex items-center px-3 py-2 rounded-lg transition-colors duration-200 hover:bg-gray-700";
   const activeNavLinkClasses = "bg-blue-600 text-white";
@@ -73,19 +60,6 @@ const App: React.FC = () => {
                 <ReactRouterDOM.NavLink to="/settings" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><SettingsIcon className="w-5 h-5 me-2" /><span>الإعدادات</span></ReactRouterDOM.NavLink>
               </nav>
 
-              <div className="hidden md:block h-8 border-s border-gray-600"></div>
-              
-              <div className="hidden md:flex">
-                <button
-                  onClick={triggerSync}
-                  disabled={!isOnline || syncStatus === 'syncing'}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors duration-200 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-500 disabled:cursor-not-allowed"
-                  title={!isOnline ? 'المزامنة تتطلب اتصالاً بالإنترنت' : 'مزامنة البيانات مع الخادم'}
-                >
-                  {getSyncButtonContent()}
-                </button>
-              </div>
-
               {/* Mobile menu button */}
               <div className="md:hidden">
                 <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2 rounded-md hover:bg-gray-700 focus:outline-none" aria-label="Open main menu" aria-expanded={isMenuOpen}>
@@ -106,22 +80,10 @@ const App: React.FC = () => {
               <ReactRouterDOM.NavLink to="/reports" onClick={() => setIsMenuOpen(false)} className={({ isActive }) => `${mobileNavLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><DocumentChartBarIcon className="w-5 h-5 me-2" /><span>التقارير</span></ReactRouterDOM.NavLink>
               <ReactRouterDOM.NavLink to="/settings" onClick={() => setIsMenuOpen(false)} className={({ isActive }) => `${mobileNavLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><SettingsIcon className="w-5 h-5 me-2" /><span>الإعدادات</span></ReactRouterDOM.NavLink>
             </nav>
-            <div className="border-t border-gray-700 pt-4 pb-3">
-              <div className="flex items-center px-4">
-                <button
-                  onClick={() => { triggerSync(); setIsMenuOpen(false); }}
-                  disabled={!isOnline || syncStatus === 'syncing'}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-colors duration-200 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-500 disabled:cursor-not-allowed"
-                  title={!isOnline ? 'المزامنة تتطلب اتصالاً بالإنترنت' : 'مزامنة البيانات مع الخادم'}
-                >
-                  {getSyncButtonContent()}
-                </button>
-              </div>
-            </div>
           </div>
         </header>
         
-        <main className={`container mx-auto p-4 md:p-8 transition-all duration-300 ${isMenuOpen ? 'pt-96' : 'pt-24'}`}>
+        <main className={`container mx-auto p-4 md:p-8 transition-all duration-300 ${isMenuOpen ? 'pt-72' : 'pt-24'}`}>
           <ReactRouterDOM.Routes>
             <ReactRouterDOM.Route path="/" element={<HomePage appointments={appointments} setClients={setClients} allSessions={allSessions} setAppointments={setAppointments} adminTasks={adminTasks} setAdminTasks={setAdminTasks} assistants={assistants} />} />
             <ReactRouterDOM.Route path="/clients" element={<ClientsPage clients={clients} setClients={setClients} accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} assistants={assistants} />} />
