@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import * as React from 'react';
 import Calendar from '../components/Calendar';
 import { Session, AdminTask, Appointment, Stage, Client } from '../types';
 import { formatDate, isSameDay, isBeforeToday } from '../utils/dateUtils';
@@ -83,16 +83,16 @@ interface HomePageProps {
 }
 
 const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessions, setAppointments, adminTasks, setAdminTasks, assistants }) => {
-    const [selectedDate, setSelectedDate] = useState(new Date());
-    const [showUnpostponed, setShowUnpostponed] = useState(false);
-    const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
-    const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
-    const [newAppointment, setNewAppointment] = useState<{ title: string; date: string; time: string; importance: 'normal' | 'important' | 'urgent' }>({ title: '', date: '', time: '', importance: 'normal' });
+    const [selectedDate, setSelectedDate] = React.useState(new Date());
+    const [showUnpostponed, setShowUnpostponed] = React.useState(false);
+    const [isAppointmentModalOpen, setIsAppointmentModalOpen] = React.useState(false);
+    const [editingAppointment, setEditingAppointment] = React.useState<Appointment | null>(null);
+    const [newAppointment, setNewAppointment] = React.useState<{ title: string; date: string; time: string; importance: 'normal' | 'important' | 'urgent' }>({ title: '', date: '', time: '', importance: 'normal' });
 
-    const [activeTaskTab, setActiveTaskTab] = useState<'pending' | 'completed'>('pending');
-    const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-    const [editingTask, setEditingTask] = useState<AdminTask | null>(null);
-    const [taskFormData, setTaskFormData] = useState<Omit<AdminTask, 'id' | 'dueDate'> & { dueDate: string }>({
+    const [activeTaskTab, setActiveTaskTab] = React.useState<'pending' | 'completed'>('pending');
+    const [isTaskModalOpen, setIsTaskModalOpen] = React.useState(false);
+    const [editingTask, setEditingTask] = React.useState<AdminTask | null>(null);
+    const [taskFormData, setTaskFormData] = React.useState<Omit<AdminTask, 'id' | 'dueDate'> & { dueDate: string }>({
         task: '',
         dueDate: '',
         importance: 'normal',
@@ -100,12 +100,12 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
         completed: false,
         location: '',
     });
-    const [adminTaskSearch, setAdminTaskSearch] = useState('');
-    const [isDeleteAppointmentModalOpen, setIsDeleteAppointmentModalOpen] = useState(false);
-    const [appointmentToDelete, setAppointmentToDelete] = useState<Appointment | null>(null);
-    const [isDeleteTaskModalOpen, setIsDeleteTaskModalOpen] = useState(false);
-    const [taskToDelete, setTaskToDelete] = useState<AdminTask | null>(null);
-    const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+    const [adminTaskSearch, setAdminTaskSearch] = React.useState('');
+    const [isDeleteAppointmentModalOpen, setIsDeleteAppointmentModalOpen] = React.useState(false);
+    const [appointmentToDelete, setAppointmentToDelete] = React.useState<Appointment | null>(null);
+    const [isDeleteTaskModalOpen, setIsDeleteTaskModalOpen] = React.useState(false);
+    const [taskToDelete, setTaskToDelete] = React.useState<AdminTask | null>(null);
+    const [isPrintModalOpen, setIsPrintModalOpen] = React.useState(false);
 
 
     const toInputDateString = (date: Date) => {
@@ -327,21 +327,21 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     };
 
     // Memos
-    const dailyData = useMemo(() => {
+    const dailyData = React.useMemo(() => {
         const dailySessions = allSessions.filter(s => isSameDay(s.date, selectedDate));
         const dailyAppointments = appointments.filter(a => isSameDay(a.date, selectedDate));
         return { dailySessions, dailyAppointments };
     }, [selectedDate, allSessions, appointments]);
 
-    const unpostponedSessions = useMemo(() => {
+    const unpostponedSessions = React.useMemo(() => {
         return allSessions.filter(s => !s.isPostponed && isBeforeToday(s.date));
     }, [allSessions]);
     
-    const allUncompletedAdminTasks = useMemo(() => {
+    const allUncompletedAdminTasks = React.useMemo(() => {
         return adminTasks.filter(task => !task.completed).sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
     }, [adminTasks]);
 
-    const groupedTasks = useMemo(() => {
+    const groupedTasks = React.useMemo(() => {
         const isCompleted = activeTaskTab === 'completed';
         const filtered = adminTasks
             .filter(task => {

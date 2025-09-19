@@ -1,11 +1,12 @@
 
-import { useState, useCallback } from 'react';
+
+import * as React from 'react';
 
 export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
 
 export const useSync = () => {
-    const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
-    const [lastSync, setLastSync] = useState<Date | null>(() => {
+    const [syncStatus, setSyncStatus] = React.useState<SyncStatus>('idle');
+    const [lastSync, setLastSync] = React.useState<Date | null>(() => {
         try {
             const saved = localStorage.getItem('lastSync');
             return saved ? new Date(saved) : null;
@@ -15,7 +16,7 @@ export const useSync = () => {
         }
     });
 
-    const triggerSync = useCallback(() => {
+    const triggerSync = React.useCallback(() => {
         setSyncStatus('syncing');
         // Simulate API call
         setTimeout(() => {

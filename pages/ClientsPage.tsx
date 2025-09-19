@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import * as React from 'react';
 import ClientsTreeView from '../components/ClientsTreeView';
 import ClientsListView from '../components/ClientsListView';
 import { PlusIcon, SearchIcon, ListBulletIcon, ViewColumnsIcon, ExclamationTriangleIcon } from '../components/icons';
@@ -24,15 +24,15 @@ const toInputDateString = (date?: Date) => {
 
 
 const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accountingEntries, setAccountingEntries, assistants }) => {
-    const [modal, setModal] = useState<{ type: 'client' | 'case' | 'stage' | 'session' | null, context?: any, isEditing: boolean }>({ type: null, isEditing: false });
-    const [formData, setFormData] = useState<any>({});
-    const [searchQuery, setSearchQuery] = useState('');
-    const [viewMode, setViewMode] = useState<'tree' | 'list'>('tree');
-    const [isDeleteSessionModalOpen, setIsDeleteSessionModalOpen] = useState(false);
-    const [sessionToDelete, setSessionToDelete] = useState<{ sessionId: string, stageId: string, caseId: string, clientId: string, message: string } | null>(null);
+    const [modal, setModal] = React.useState<{ type: 'client' | 'case' | 'stage' | 'session' | null, context?: any, isEditing: boolean }>({ type: null, isEditing: false });
+    const [formData, setFormData] = React.useState<any>({});
+    const [searchQuery, setSearchQuery] = React.useState('');
+    const [viewMode, setViewMode] = React.useState<'tree' | 'list'>('tree');
+    const [isDeleteSessionModalOpen, setIsDeleteSessionModalOpen] = React.useState(false);
+    const [sessionToDelete, setSessionToDelete] = React.useState<{ sessionId: string, stageId: string, caseId: string, clientId: string, message: string } | null>(null);
 
 
-    const filteredClients = useMemo(() => {
+    const filteredClients = React.useMemo(() => {
         if (!searchQuery) return clients;
         const lowercasedQuery = searchQuery.toLowerCase();
         return clients.filter(client =>

@@ -1,6 +1,7 @@
 
 
-import React, { useRef, useState } from 'react';
+
+import * as React from 'react';
 import { ArrowDownTrayIcon, ArrowUpTrayIcon, TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, PlusIcon } from '../components/icons';
 import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
 import { SyncStatus } from '../hooks/useSync';
@@ -26,13 +27,13 @@ interface SettingsPageProps {
 }
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, lastSync, triggerSync, assistants, setAssistants }) => {
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
-    const [isDeleteAssistantModalOpen, setIsDeleteAssistantModalOpen] = useState(false);
-    const [assistantToDelete, setAssistantToDelete] = useState<string | null>(null);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+    const [feedback, setFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const [isConfirmModalOpen, setIsConfirmModalOpen] = React.useState(false);
+    const [isDeleteAssistantModalOpen, setIsDeleteAssistantModalOpen] = React.useState(false);
+    const [assistantToDelete, setAssistantToDelete] = React.useState<string | null>(null);
     const isOnline = useOnlineStatus();
-    const [newAssistant, setNewAssistant] = useState('');
+    const [newAssistant, setNewAssistant] = React.useState('');
 
     const showFeedback = (message: string, type: 'success' | 'error') => {
         setFeedback({ message, type });

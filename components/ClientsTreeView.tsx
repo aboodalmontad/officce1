@@ -1,6 +1,7 @@
 
 
-import React, { useState } from 'react';
+
+import * as React from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
 import { formatDate } from '../utils/dateUtils';
 import { ChevronDownIcon, ChevronLeftIcon, PlusIcon, PencilIcon, TrashIcon } from './icons';
@@ -42,7 +43,7 @@ interface CaseDetailsProps {
 }
 
 const CaseDetails: React.FC<CaseDetailsProps> = ({ client, caseData, onAddStage, onEditStage, onDeleteStage, onAddSession, onEditSession, onDeleteSession, onPostponeSession, accountingEntries, setAccountingEntries, setClients }) => {
-    const [activeTab, setActiveTab] = useState('stages');
+    const [activeTab, setActiveTab] = React.useState('stages');
 
     const handleFeeAgreementChange = (newFeeAgreement: string) => {
         setClients(prevClients => prevClients.map(c => c.id === client.id ? {
@@ -105,7 +106,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ client, caseData, onAddStage,
 };
 
 const TreeItem: React.FC<{ title: string, subtitle: string, children?: React.ReactNode, level: number, onAdd?: () => void, onEdit?: () => void, onDelete?: () => void }> = ({ title, subtitle, children, level, onAdd, onEdit, onDelete }) => {
-    const [isOpen, setIsOpen] = useState(false);
+    const [isOpen, setIsOpen] = React.useState(false);
     const hasChildren = React.Children.count(children) > 0;
     const indentClass = `ms-${level * 6}`;
 

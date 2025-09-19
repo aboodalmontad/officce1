@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import * as React from 'react';
 import { Session } from '../types';
 import { formatDate, isBeforeToday } from '../utils/dateUtils';
 import { PencilIcon, TrashIcon } from './icons';
@@ -11,8 +11,8 @@ interface SessionsTableProps {
 }
 
 const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onEdit, onDelete }) => {
-    const [postponeData, setPostponeData] = useState<Record<string, { date: string; reason: string }>>({});
-    const [errors, setErrors] = useState<Record<string, string>>({});
+    const [postponeData, setPostponeData] = React.useState<Record<string, { date: string; reason: string }>>({});
+    const [errors, setErrors] = React.useState<Record<string, string>>({});
 
     const handleInputChange = (sessionId: string, field: 'date' | 'reason', value: string) => {
         setPostponeData(prev => ({

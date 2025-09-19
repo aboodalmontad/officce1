@@ -1,4 +1,4 @@
-import React from 'react';
+import * as React from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
 import { PlusIcon, PencilIcon, TrashIcon } from './icons';
 import SessionsTable from './SessionsTable';

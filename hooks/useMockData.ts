@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import * as React from 'react';
 import { Client, Session, AdminTask, Appointment, AccountingEntry } from '../types';
 
 const APP_DATA_KEY = 'lawyerBusinessManagementData';
@@ -77,9 +77,9 @@ type AppData = {
 };
 
 export const useMockData = () => {
-    const [data, setData] = useState<AppData>(loadInitialData);
+    const [data, setData] = React.useState<AppData>(loadInitialData);
 
-    useEffect(() => {
+    React.useEffect(() => {
         try {
             const serializedData = JSON.stringify(data);
             localStorage.setItem(APP_DATA_KEY, serializedData);
@@ -141,7 +141,7 @@ export const useMockData = () => {
         setData(validatedData);
     };
     
-    const allSessions = useMemo(() => {
+    const allSessions = React.useMemo(() => {
         return data.clients.flatMap(client => 
             client.cases.flatMap(c => 
                 c.stages.flatMap(s => s.sessions)

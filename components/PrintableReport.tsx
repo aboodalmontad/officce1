@@ -1,4 +1,4 @@
-import React from 'react';
+import * as React from 'react';
 import { Session, Appointment, AdminTask } from '../types';
 import { formatDate, isBeforeToday } from '../utils/dateUtils';
 
@@ -118,7 +118,7 @@ const PrintableReport: React.FC<PrintableReportProps> = ({ date, sessions, appoi
                             </tbody>
                         </table>
                     ) : (
-                        <p className="p-4 text-gray-500">لا توجد مهام إدارية غير منجزة.</p>
+                        <p className="p-4 text-gray-500">لا توجد مهام إدارية غير المنجزة.</p>
                     )}
                 </section>
             </main>

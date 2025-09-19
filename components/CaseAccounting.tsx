@@ -1,5 +1,6 @@
 
-import React, { useState, useMemo } from 'react';
+
+import * as React from 'react';
 import { Case, Client, AccountingEntry } from '../types';
 import { formatDate } from '../utils/dateUtils';
 import { PlusIcon, PencilIcon, TrashIcon } from './icons';
@@ -13,17 +14,17 @@ interface CaseAccountingProps {
 }
 
 const CaseAccounting: React.FC<CaseAccountingProps> = ({ caseData, client, caseAccountingEntries, setAccountingEntries, onFeeAgreementChange }) => {
-    const [isEditingFee, setIsEditingFee] = useState(false);
-    const [feeAgreement, setFeeAgreement] = useState(caseData.feeAgreement);
-    const [modal, setModal] = useState<{ isOpen: boolean; data?: AccountingEntry, type: 'income' | 'expense' }>({ isOpen: false, type: 'income' });
-    const [formData, setFormData] = useState<Partial<AccountingEntry>>({});
+    const [isEditingFee, setIsEditingFee] = React.useState(false);
+    const [feeAgreement, setFeeAgreement] = React.useState(caseData.feeAgreement);
+    const [modal, setModal] = React.useState<{ isOpen: boolean; data?: AccountingEntry, type: 'income' | 'expense' }>({ isOpen: false, type: 'income' });
+    const [formData, setFormData] = React.useState<Partial<AccountingEntry>>({});
 
-    const sortedEntries = useMemo(() =>
+    const sortedEntries = React.useMemo(() =>
         [...caseAccountingEntries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
         [caseAccountingEntries]
     );
 
-    const totals = useMemo(() => {
+    const totals = React.useMemo(() => {
         const income = caseAccountingEntries
             .filter(e => e.type === 'income')
             .reduce((sum, e) => sum + e.amount, 0);

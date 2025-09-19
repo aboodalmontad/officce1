@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import * as React from 'react';
 import { Client, AccountingEntry, Case } from '../types';
 import { formatDate } from '../utils/dateUtils';
 import { PrintIcon } from '../components/icons';
@@ -20,13 +20,13 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ clients, accountingEntries })
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(today.getDate() - 30);
 
-    const [reportType, setReportType] = useState<'financial' | 'cases' | 'clients' | ''>('');
-    const [filters, setFilters] = useState({
+    const [reportType, setReportType] = React.useState<'financial' | 'cases' | 'clients' | ''>('');
+    const [filters, setFilters] = React.useState({
         startDate: toInputDateString(thirtyDaysAgo),
         endDate: toInputDateString(today),
         clientId: 'all',
     });
-    const [reportData, setReportData] = useState<any>(null);
+    const [reportData, setReportData] = React.useState<any>(null);
 
     const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         setFilters({ ...filters, [e.target.name]: e.target.value });

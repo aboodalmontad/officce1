@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import * as React from 'react';
 import { AccountingEntry, Client } from '../types';
 import { formatDate } from '../utils/dateUtils';
 import { PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon } from '../components/icons';
@@ -10,19 +10,19 @@ interface AccountingPageProps {
 }
 
 const AccountingPage: React.FC<AccountingPageProps> = ({ accountingEntries, setAccountingEntries, clients }) => {
-    const [modal, setModal] = useState<{ isOpen: boolean; data?: AccountingEntry }>({ isOpen: false });
-    const [formData, setFormData] = useState<Partial<AccountingEntry>>({});
-    const [searchQuery, setSearchQuery] = useState('');
-    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-    const [entryToDelete, setEntryToDelete] = useState<AccountingEntry | null>(null);
+    const [modal, setModal] = React.useState<{ isOpen: boolean; data?: AccountingEntry }>({ isOpen: false });
+    const [formData, setFormData] = React.useState<Partial<AccountingEntry>>({});
+    const [searchQuery, setSearchQuery] = React.useState('');
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = React.useState(false);
+    const [entryToDelete, setEntryToDelete] = React.useState<AccountingEntry | null>(null);
 
-    const financialSummary = useMemo(() => {
+    const financialSummary = React.useMemo(() => {
         const totalIncome = accountingEntries.filter(e => e.type === 'income').reduce((sum, e) => sum + e.amount, 0);
         const totalExpenses = accountingEntries.filter(e => e.type === 'expense').reduce((sum, e) => sum + e.amount, 0);
         return { totalIncome, totalExpenses, balance: totalIncome - totalExpenses };
     }, [accountingEntries]);
     
-    const filteredAndSortedEntries = useMemo(() => {
+    const filteredAndSortedEntries = React.useMemo(() => {
         const filtered = accountingEntries.filter(entry => {
             if (!searchQuery) return true;
             const lowercasedQuery = searchQuery.toLowerCase();

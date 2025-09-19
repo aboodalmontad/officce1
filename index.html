@@ -1,70 +1,46 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>إدارة أعمال المحامي</title>
-    <link rel="manifest" href="./manifest.json" />
-    <meta name="theme-color" content="#1f2937" />
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['Tajawal', 'sans-serif'],
-            },
-          },
-        },
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>إدارة أعمال المحامي</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Add print-specific styles */
+    @media print {
+      .no-print {
+        display: none !important;
       }
-    </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
-    <style>
+      #printable-agenda, #report-print-section {
+        margin: 0;
+        padding: 0;
+        border: none;
+        box-shadow: none;
+      }
       body {
-        font-family: 'Tajawal', sans-serif;
+        background-color: #fff;
       }
-      @media print {
-        body * {
-          visibility: hidden;
-        }
-        #print-section, #print-section *,
-        #report-print-section, #report-print-section *,
-        #printable-agenda, #printable-agenda * {
-          visibility: visible;
-        }
-        #print-section, #report-print-section,
-        #printable-agenda {
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: 100%;
-        }
-        .no-print {
-          display: none !important;
-        }
+      main {
+        padding-top: 0 !important;
       }
-    </style>
-  <script type="importmap">
+    }
+  </style>
+<script type="importmap">
 {
   "imports": {
-    "react/": "https://aistudiocdn.com/react@18.2.0/",
-    "react": "https://aistudiocdn.com/react@18.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@18.2.0/",
-    "react-dom/client": "https://aistudiocdn.com/react-dom@18.2.0/client",
-    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^6.22.0",
-    "recharts": "https://aistudiocdn.com/recharts@^2.12.3"
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.9.1"
   }
 }
 </script>
-<!-- Add Babel Standalone for in-browser transpilation -->
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
-  <body>
-    <div id="root"></div>
-    <!-- Changed script type to "text/babel" to be processed by Babel -->
-    <script type="text/babel" data-type="module" src="./index.tsx"></script>
-  </body>
+<body>
+  <noscript>You need to enable JavaScript to run this app.</noscript>
+  <div id="root"></div>
+  <script type="module" src="./index.tsx"></script>
+</body>
 </html>

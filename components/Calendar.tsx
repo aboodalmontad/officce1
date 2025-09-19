@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import * as React from 'react';
 import { getDaysInMonth, getFirstDayOfMonth, isSameDay, isToday } from '../utils/dateUtils';
 import { Session, Appointment } from '../types';
 import { ChevronLeftIcon } from './icons';
@@ -11,7 +11,7 @@ interface CalendarProps {
 }
 
 const Calendar: React.FC<CalendarProps> = ({ onDateSelect, selectedDate, sessions, appointments }) => {
-    const [currentDate, setCurrentDate] = useState(new Date());
+    const [currentDate, setCurrentDate] = React.useState(new Date());
 
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
