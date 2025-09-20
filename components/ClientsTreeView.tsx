@@ -1,6 +1,3 @@
-
-
-
 import * as React from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
 import { formatDate } from '../utils/dateUtils';
@@ -155,44 +152,63 @@ const ClientsTreeView: React.FC<ClientsTreeViewProps> = (props) => {
         onAddSession, onEditSession, onDeleteSession,
         onPostponeSession, onEditClient, onDeleteClient
     } = props;
+    const [openClientId, setOpenClientId] = React.useState<string | null>(null);
+
     return (
         <div className="w-full">
             {clients.map(client => (
-                <TreeItem 
-                    key={client.id} 
-                    title={client.name} 
-                    subtitle={client.contactInfo} 
-                    level={0} 
-                    onAdd={() => onAddCase(client.id)}
-                    onEdit={() => onEditClient(client)}
-                    onDelete={() => onDeleteClient(client.id)}
-                >
-                    {client.cases.map(c => (
-                        <TreeItem 
-                            key={c.id} 
-                            title={`قضية: ${c.subject}`} 
-                            subtitle={`الخصم: ${c.opponentName}`} 
-                            level={1}
-                            onEdit={() => onEditCase(c, client)}
-                            onDelete={() => onDeleteCase(c.id, client.id)}
-                        >
-                            <CaseDetails
-                                client={client}
-                                caseData={c}
-                                onAddStage={() => onAddStage(client.id, c.id)}
-                                onEditStage={(stage) => onEditStage(stage, c, client)}
-                                onDeleteStage={(stageId) => onDeleteStage(stageId, c.id, client.id)}
-                                onAddSession={(stageId) => onAddSession(client.id, c.id, stageId)}
-                                onEditSession={(session, stage) => onEditSession(session, stage, c, client)}
-                                onDeleteSession={(sessionId, stageId) => onDeleteSession(sessionId, stageId, c.id, client.id)}
-                                onPostponeSession={onPostponeSession}
-                                accountingEntries={accountingEntries}
-                                setAccountingEntries={setAccountingEntries}
-                                setClients={setClients}
-                            />
-                        </TreeItem>
-                    ))}
-                </TreeItem>
+                <div key={client.id} className="border-b border-gray-200 last:border-b-0">
+                    <div
+                        className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
+                        onClick={() => setOpenClientId(prevId => (prevId === client.id ? null : client.id))}
+                    >
+                        <div className="flex items-center min-w-0">
+                            {client.cases.length > 0 && <div className="w-6 text-gray-500 flex-shrink-0">{openClientId === client.id ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronLeftIcon className="w-4 h-4" />}</div>}
+                            <div className="truncate">
+                                <p className="font-semibold text-gray-800 truncate">{client.name}</p>
+                                <p className="text-sm text-gray-500 truncate">{client.contactInfo}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center flex-shrink-0 ms-4">
+                            <button onClick={(e) => { e.stopPropagation(); onAddCase(client.id); }} className="p-1 text-blue-600 rounded-full hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500" aria-label={`إضافة إلى ${client.name}`}>
+                                <PlusIcon className="w-5 h-5" />
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); onEditClient(client); }} className="p-1 text-gray-500 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-400" aria-label={`تعديل ${client.name}`}>
+                                <PencilIcon className="w-4 h-4" />
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); onDeleteClient(client.id); }} className="p-1 text-red-500 rounded-full hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-400" aria-label={`حذف ${client.name}`}>
+                                <TrashIcon className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                    {openClientId === client.id && <div>
+                        {client.cases.map(c => (
+                            <TreeItem 
+                                key={c.id} 
+                                title={`قضية: ${c.subject}`} 
+                                subtitle={`الخصم: ${c.opponentName}`} 
+                                level={1}
+                                onEdit={() => onEditCase(c, client)}
+                                onDelete={() => onDeleteCase(c.id, client.id)}
+                            >
+                                <CaseDetails
+                                    client={client}
+                                    caseData={c}
+                                    onAddStage={() => onAddStage(client.id, c.id)}
+                                    onEditStage={(stage) => onEditStage(stage, c, client)}
+                                    onDeleteStage={(stageId) => onDeleteStage(stageId, c.id, client.id)}
+                                    onAddSession={(stageId) => onAddSession(client.id, c.id, stageId)}
+                                    onEditSession={(session, stage) => onEditSession(session, stage, c, client)}
+                                    onDeleteSession={(sessionId, stageId) => onDeleteSession(sessionId, stageId, c.id, client.id)}
+                                    onPostponeSession={onPostponeSession}
+                                    accountingEntries={accountingEntries}
+                                    setAccountingEntries={setAccountingEntries}
+                                    setClients={setClients}
+                                />
+                            </TreeItem>
+                        ))}
+                    </div>}
+                </div>
             ))}
         </div>
     );

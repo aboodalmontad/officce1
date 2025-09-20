@@ -30,24 +30,43 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
     const [viewMode, setViewMode] = React.useState<'tree' | 'list'>('tree');
     const [isDeleteSessionModalOpen, setIsDeleteSessionModalOpen] = React.useState(false);
     const [sessionToDelete, setSessionToDelete] = React.useState<{ sessionId: string, stageId: string, caseId: string, clientId: string, message: string } | null>(null);
-    const [isStageDateInputActive, setIsStageDateInputActive] = React.useState(false);
-
 
     const filteredClients = React.useMemo(() => {
         if (!searchQuery) return clients;
         const lowercasedQuery = searchQuery.toLowerCase();
-        return clients.filter(client =>
-            client.name.toLowerCase().includes(lowercasedQuery) ||
-            client.contactInfo.toLowerCase().includes(lowercasedQuery)
-        );
+
+        return clients.filter(client => {
+            // Search client info
+            if (client.name.toLowerCase().includes(lowercasedQuery) || client.contactInfo.toLowerCase().includes(lowercasedQuery)) {
+                return true;
+            }
+
+            // Search cases, stages, and sessions
+            return client.cases.some(c => 
+                c.subject.toLowerCase().includes(lowercasedQuery) ||
+                c.opponentName.toLowerCase().includes(lowercasedQuery) ||
+                c.stages.some(s => 
+                    s.court.toLowerCase().includes(lowercasedQuery) ||
+                    s.caseNumber.toLowerCase().includes(lowercasedQuery) ||
+                    s.sessions.some(session => 
+                        (session.nextPostponementReason && session.nextPostponementReason.toLowerCase().includes(lowercasedQuery)) ||
+                        (session.assignee && session.assignee.toLowerCase().includes(lowercasedQuery))
+                    )
+                )
+            );
+        });
     }, [clients, searchQuery]);
+
 
     const handleOpenModal = (type: 'client' | 'case' | 'stage' | 'session', isEditing = false, context: any = {}) => {
         setModal({ type, context, isEditing });
         if (isEditing && context.item) {
             const item = context.item;
-            if (type === 'session' || type === 'stage') {
-                 setFormData({ ...item, date: toInputDateString(item.date), firstSessionDate: toInputDateString(item.firstSessionDate) });
+            if (type === 'session') {
+                 setFormData({ ...item, date: toInputDateString(item.date) });
+            } else if (type === 'stage') {
+                const { firstSessionDate, ...restOfItem } = item;
+                setFormData(restOfItem);
             } else {
                 setFormData(item);
             }
@@ -207,7 +226,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                     ...c, cases: c.cases.map(cs => cs.id === item.id ? { ...cs, ...formData } : cs)
                 } : c));
             } else if (type === 'stage') {
-                const updatedStage = { ...item, ...formData, firstSessionDate: formData.firstSessionDate ? new Date(formData.firstSessionDate) : undefined };
+                const updatedStage = { ...item, ...formData, firstSessionDate: undefined };
                 setClients(prev => prev.map(c => c.id === context.clientId ? {
                     ...c, cases: c.cases.map(cs => cs.id === context.caseId ? {
                         ...cs, stages: cs.stages.map(st => st.id === item.id ? updatedStage : st)
@@ -251,7 +270,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                         if (c.id !== context.caseId) return c;
                         const newStage: Stage = {
                             id: `stage-${Date.now()}`, court: formData.court, caseNumber: formData.caseNumber, sessions: [],
-                            firstSessionDate: formData.firstSessionDate ? new Date(formData.firstSessionDate) : undefined
+                            firstSessionDate: undefined
                         };
                         return { ...c, stages: [...c.stages, newStage] };
                     })
@@ -346,20 +365,6 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                                     <label htmlFor="caseNumber" className="block text-sm font-medium text-gray-700">رقم الأساس</label>
                                     <input type="text" id="caseNumber" name="caseNumber" value={formData.caseNumber || ''} onChange={handleFormChange} className="mt-1 w-full p-2 border rounded" required />
                                 </div>
-                                <div>
-                                    <label htmlFor="firstSessionDate" className="block text-sm font-medium text-gray-700">تاريخ أول جلسة (اختياري)</label>
-                                    <input 
-                                        type={isStageDateInputActive || formData.firstSessionDate ? 'date' : 'text'}
-                                        onFocus={() => setIsStageDateInputActive(true)}
-                                        onBlur={() => setIsStageDateInputActive(false)}
-                                        id="firstSessionDate" 
-                                        name="firstSessionDate" 
-                                        value={formData.firstSessionDate || ''} 
-                                        onChange={handleFormChange} 
-                                        className="mt-1 w-full p-2 border rounded" 
-                                        placeholder="DD/MM/YYYY" 
-                                    />
-                                </div>
                             </>}
                             {modal.type === 'session' && <>
                                 <div>
@@ -392,36 +397,36 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <h1 className="text-3xl font-bold text-gray-800">إدارة الموكلين</h1>
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full md:w-auto">
-                    <div className="relative flex-grow">
-                        <input
-                            type="search"
-                            placeholder="ابحث عن موكل..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full p-2 ps-10 text-sm border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                        <div className="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
-                            <SearchIcon className="w-4 h-4 text-gray-500" />
-                        </div>
-                    </div>
-                    <button onClick={() => handleOpenModal('client')} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap">
-                        <PlusIcon className="w-5 h-5" />
-                        <span>موكل جديد</span>
-                    </button>
-                </div>
+                <button onClick={() => handleOpenModal('client')} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap">
+                    <PlusIcon className="w-5 h-5" />
+                    <span>موكل جديد</span>
+                </button>
             </div>
 
             <div className="bg-white p-4 rounded-lg shadow">
-                 <div className="flex justify-between items-center border-b pb-3 mb-3">
+                 <div className="flex flex-col sm:flex-row justify-between items-center gap-4 border-b pb-3 mb-3">
                     <h2 className="text-xl font-semibold">قائمة الموكلين</h2>
-                     <div className="flex items-center p-1 bg-gray-200 rounded-lg">
-                        <button onClick={() => setViewMode('tree')} className={`p-2 rounded-md ${viewMode === 'tree' ? 'bg-white shadow' : 'text-gray-600'}`}>
-                            <ViewColumnsIcon className="w-5 h-5" />
-                        </button>
-                        <button onClick={() => setViewMode('list')} className={`p-2 rounded-md ${viewMode === 'list' ? 'bg-white shadow' : 'text-gray-600'}`}>
-                            <ListBulletIcon className="w-5 h-5" />
-                        </button>
+                    <div className="flex items-center gap-4">
+                        <div className="relative">
+                            <input
+                                type="search"
+                                placeholder="ابحث عن أي معلومة..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full sm:w-64 p-2 ps-10 text-sm border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                            <div className="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
+                                <SearchIcon className="w-4 h-4 text-gray-500" />
+                            </div>
+                        </div>
+                         <div className="flex items-center p-1 bg-gray-200 rounded-lg">
+                            <button onClick={() => setViewMode('tree')} className={`p-2 rounded-md ${viewMode === 'tree' ? 'bg-white shadow' : 'text-gray-600'}`}>
+                                <ViewColumnsIcon className="w-5 h-5" />
+                            </button>
+                            <button onClick={() => setViewMode('list')} className={`p-2 rounded-md ${viewMode === 'list' ? 'bg-white shadow' : 'text-gray-600'}`}>
+                                <ListBulletIcon className="w-5 h-5" />
+                            </button>
+                        </div>
                     </div>
                 </div>
                 {viewMode === 'tree' ? (
