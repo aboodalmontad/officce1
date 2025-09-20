@@ -30,6 +30,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
     const [viewMode, setViewMode] = React.useState<'tree' | 'list'>('tree');
     const [isDeleteSessionModalOpen, setIsDeleteSessionModalOpen] = React.useState(false);
     const [sessionToDelete, setSessionToDelete] = React.useState<{ sessionId: string, stageId: string, caseId: string, clientId: string, message: string } | null>(null);
+    const [isStageDateInputActive, setIsStageDateInputActive] = React.useState(false);
 
 
     const filteredClients = React.useMemo(() => {
@@ -347,13 +348,23 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                                 </div>
                                 <div>
                                     <label htmlFor="firstSessionDate" className="block text-sm font-medium text-gray-700">تاريخ أول جلسة (اختياري)</label>
-                                    <input type="date" id="firstSessionDate" name="firstSessionDate" value={formData.firstSessionDate || ''} onChange={handleFormChange} className="mt-1 w-full p-2 border rounded" />
+                                    <input 
+                                        type={isStageDateInputActive || formData.firstSessionDate ? 'date' : 'text'}
+                                        onFocus={() => setIsStageDateInputActive(true)}
+                                        onBlur={() => setIsStageDateInputActive(false)}
+                                        id="firstSessionDate" 
+                                        name="firstSessionDate" 
+                                        value={formData.firstSessionDate || ''} 
+                                        onChange={handleFormChange} 
+                                        className="mt-1 w-full p-2 border rounded" 
+                                        placeholder="DD/MM/YYYY" 
+                                    />
                                 </div>
                             </>}
                             {modal.type === 'session' && <>
                                 <div>
                                     <label htmlFor="date" className="block text-sm font-medium text-gray-700">تاريخ الجلسة</label>
-                                    <input type="date" id="date" name="date" value={formData.date || ''} onChange={handleFormChange} className="mt-1 w-full p-2 border rounded" required />
+                                    <input type="date" id="date" name="date" value={formData.date || ''} onChange={handleFormChange} className="mt-1 w-full p-2 border rounded" placeholder="DD/MM/YYYY" required />
                                 </div>
                                 <div>
                                     <label htmlFor="assignee" className="block text-sm font-medium text-gray-700">مكلف بالحضور</label>

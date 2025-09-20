@@ -579,7 +579,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                                 </div>
                                 <div>
                                     <label htmlFor="date" className="block text-sm font-medium text-gray-700">التاريخ</label>
-                                    <input type="date" id="date" name="date" value={newAppointment.date} onChange={handleAppointmentFormChange} className="mt-1 w-full p-2 border rounded" required />
+                                    <input type="date" id="date" name="date" value={newAppointment.date} onChange={handleAppointmentFormChange} className="mt-1 w-full p-2 border rounded" placeholder="DD/MM/YYYY" required />
                                 </div>
                                 <div>
                                     <label htmlFor="time" className="block text-sm font-medium text-gray-700">الوقت</label>
@@ -634,7 +634,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700">تاريخ الاستحقاق</label>
-                                    <input type="date" name="dueDate" value={taskFormData.dueDate} onChange={handleTaskFormChange} className="w-full p-2 border rounded" required />
+                                    <input type="date" name="dueDate" value={taskFormData.dueDate} onChange={handleTaskFormChange} className="w-full p-2 border rounded" placeholder="DD/MM/YYYY" required />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700">الأهمية</label>

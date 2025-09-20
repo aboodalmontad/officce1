@@ -164,11 +164,11 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ clients, accountingEntries })
                     {reportType === 'financial' && <>
                         <div>
                             <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-1">من تاريخ</label>
-                            <input type="date" id="startDate" name="startDate" value={filters.startDate} onChange={handleFilterChange} className="w-full p-2 border border-gray-300 rounded-lg"/>
+                            <input type="date" id="startDate" name="startDate" value={filters.startDate} onChange={handleFilterChange} className="w-full p-2 border border-gray-300 rounded-lg" placeholder="DD/MM/YYYY"/>
                         </div>
                         <div>
                             <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-1">إلى تاريخ</label>
-                            <input type="date" id="endDate" name="endDate" value={filters.endDate} onChange={handleFilterChange} className="w-full p-2 border border-gray-300 rounded-lg"/>
+                            <input type="date" id="endDate" name="endDate" value={filters.endDate} onChange={handleFilterChange} className="w-full p-2 border border-gray-300 rounded-lg" placeholder="DD/MM/YYYY"/>
                         </div>
                     </>}
 

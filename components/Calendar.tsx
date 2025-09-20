@@ -21,6 +21,18 @@ const Calendar: React.FC<CalendarProps> = ({ onDateSelect, selectedDate, session
 
     const weekDays = ['ح', 'ن', 'ث', 'ر', 'خ', 'ج', 'س'];
 
+    // Formatter for Syrian Arabic locale with English (Latin) numerals.
+    const monthYearFormatter = new Intl.DateTimeFormat('ar-SY-u-nu-latn', {
+        year: 'numeric',
+        month: 'long',
+    });
+
+    const dayFormatter = new Intl.DateTimeFormat('ar-SY-u-nu-latn', {
+        day: 'numeric'
+    });
+    
+    const numberFormatter = new Intl.NumberFormat('en-US');
+
     const changeMonth = (offset: number) => {
         setCurrentDate(new Date(year, month + offset, 1));
     };
@@ -38,7 +50,7 @@ const Calendar: React.FC<CalendarProps> = ({ onDateSelect, selectedDate, session
                     <ChevronLeftIcon className="w-6 h-6 transform rotate-180" />
                 </button>
                 <h2 className="text-lg font-bold">
-                    {new Intl.DateTimeFormat('ar-SY', { year: 'numeric', month: 'long' }).format(currentDate)}
+                    {monthYearFormatter.format(currentDate)}
                 </h2>
                 <button onClick={() => changeMonth(1)} className="p-2 rounded-full hover:bg-gray-100">
                     <ChevronLeftIcon className="w-6 h-6" />
@@ -65,16 +77,16 @@ const Calendar: React.FC<CalendarProps> = ({ onDateSelect, selectedDate, session
 
                     return (
                         <div key={day.toString()} onClick={() => onDateSelect(day)} className={dayClasses}>
-                            <span>{day.getDate()}</span>
+                            <span>{dayFormatter.format(day)}</span>
                              <div className="absolute bottom-1.5 flex w-full justify-center items-center gap-1">
                                 {sessionCount > 0 && (
-                                    <span className="flex items-center justify-center w-5 h-5 text-xs font-semibold text-white bg-green-500 rounded-full" title={`${sessionCount} جلسات`}>
-                                        {sessionCount}
+                                    <span className="flex items-center justify-center w-5 h-5 text-xs font-semibold text-white bg-green-500 rounded-full" title={`${numberFormatter.format(sessionCount)} جلسات`}>
+                                        {numberFormatter.format(sessionCount)}
                                     </span>
                                 )}
                                 {appointmentCount > 0 && (
-                                    <span className="flex items-center justify-center w-5 h-5 text-xs font-semibold text-white bg-purple-500 rounded-full" title={`${appointmentCount} مواعيد`}>
-                                        {appointmentCount}
+                                    <span className="flex items-center justify-center w-5 h-5 text-xs font-semibold text-white bg-purple-500 rounded-full" title={`${numberFormatter.format(appointmentCount)} مواعيد`}>
+                                        {numberFormatter.format(appointmentCount)}
                                     </span>
                                 )}
                             </div>

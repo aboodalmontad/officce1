@@ -178,7 +178,7 @@ const AccountingPage: React.FC<AccountingPageProps> = ({ accountingEntries, setA
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">التاريخ</label>
-                                <input type="date" name="date" value={formData.date as any} onChange={handleFormChange} className="w-full p-2 border rounded" required />
+                                <input type="date" name="date" value={formData.date as any} onChange={handleFormChange} className="w-full p-2 border rounded" placeholder="DD/MM/YYYY" required />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">البيان</label>

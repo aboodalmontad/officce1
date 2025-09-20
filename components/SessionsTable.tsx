@@ -113,6 +113,7 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                                             value={postponeData[s.id]?.date || ''}
                                             onChange={(e) => handleInputChange(s.id, 'date', e.target.value)}
                                             aria-label="تاريخ الجلسة القادمة"
+                                            placeholder="DD/MM/YYYY"
                                         />
                                     </td>
                                     <td className="px-2 sm:px-6 py-4">
