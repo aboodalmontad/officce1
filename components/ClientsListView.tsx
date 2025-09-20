@@ -107,6 +107,7 @@ const ClientsListView: React.FC<ClientsListViewProps> = (props) => {
                                                     onPostpone={props.onPostponeSession}
                                                     onEdit={(session) => onEditSession(session, stage, caseItem, client)}
                                                     onDelete={(sessionId) => onDeleteSession(sessionId, stage.id, caseItem.id, client.id)}
+                                                    showSessionDate={true}
                                                 />
                                             </div>
                                         )) : <p className="text-sm text-gray-500 text-center py-4">لا توجد مراحل لهذه القضية. قم بإضافة مرحلة جديدة.</p>}

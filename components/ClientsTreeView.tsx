@@ -83,6 +83,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ client, caseData, onAddStage,
                                     onPostpone={onPostponeSession}
                                     onEdit={(session) => onEditSession(session, stage)}
                                     onDelete={(sessionId) => onDeleteSession(sessionId, stage.id)}
+                                    showSessionDate={true}
                                 />
                             </div>
                         </TreeItem>

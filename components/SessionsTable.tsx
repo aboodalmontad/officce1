@@ -8,9 +8,10 @@ interface SessionsTableProps {
     onPostpone: (sessionId: string, newDate: Date, reason: string) => void;
     onEdit?: (session: Session) => void;
     onDelete?: (sessionId: string) => void;
+    showSessionDate?: boolean;
 }
 
-const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onEdit, onDelete }) => {
+const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onEdit, onDelete, showSessionDate = false }) => {
     const [postponeData, setPostponeData] = React.useState<Record<string, { date: string; reason: string }>>({});
     const [errors, setErrors] = React.useState<Record<string, string>>({});
 
@@ -82,6 +83,7 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                     <tr>
                         <th className="px-2 sm:px-6 py-3">المحكمة</th>
                         <th className="px-2 sm:px-6 py-3">رقم الأساس</th>
+                        {showSessionDate && <th className="px-2 sm:px-6 py-3">تاريخ الجلسة</th>}
                         <th className="px-2 sm:px-6 py-3">الموكل</th>
                         <th className="px-2 sm:px-6 py-3">الخصم</th>
                         <th className="px-2 sm:px-6 py-3">المكلف بالحضور</th>
@@ -99,6 +101,7 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                         <tr key={s.id} className="bg-white border-b hover:bg-gray-50">
                             <td className="px-2 sm:px-6 py-4">{s.court}</td>
                             <td className="px-2 sm:px-6 py-4">{s.caseNumber}</td>
+                            {showSessionDate && <td className="px-2 sm:px-6 py-4">{formatDate(s.date)}</td>}
                             <td className="px-2 sm:px-6 py-4">{s.clientName}</td>
                             <td className="px-2 sm:px-6 py-4">{s.opponentName}</td>
                             <td className="px-2 sm:px-6 py-4">{s.assignee || '-'}</td>
