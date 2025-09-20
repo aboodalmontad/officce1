@@ -297,7 +297,8 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                 id: `session-${Date.now()}`,
                 date: newDate,
                 isPostponed: false,
-                nextPostponementReason: newReason,
+                postponementReason: newReason,
+                nextPostponementReason: undefined,
                 nextSessionDate: undefined,
             };
 

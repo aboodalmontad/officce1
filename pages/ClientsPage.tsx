@@ -49,6 +49,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                     s.court.toLowerCase().includes(lowercasedQuery) ||
                     s.caseNumber.toLowerCase().includes(lowercasedQuery) ||
                     s.sessions.some(session => 
+                        (session.postponementReason && session.postponementReason.toLowerCase().includes(lowercasedQuery)) ||
                         (session.nextPostponementReason && session.nextPostponementReason.toLowerCase().includes(lowercasedQuery)) ||
                         (session.assignee && session.assignee.toLowerCase().includes(lowercasedQuery))
                     )
@@ -182,7 +183,8 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                 id: `session-${Date.now()}`,
                 date: newDate,
                 isPostponed: false,
-                nextPostponementReason: newReason,
+                postponementReason: newReason,
+                nextPostponementReason: undefined,
                 nextSessionDate: undefined,
             };
 
@@ -291,7 +293,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                             opponentName: caseItem.opponentName,
                             isPostponed: false,
                             assignee: formData.assignee || 'بدون تخصيص',
-                            nextPostponementReason: formData.nextPostponementReason || undefined,
+                            postponementReason: formData.postponementReason || undefined,
                         };
                         return prevClients.map(cl => cl.id === context.clientId ? {
                             ...cl,
@@ -378,8 +380,8 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                                     </select>
                                 </div>
                                 <div>
-                                    <label htmlFor="nextPostponementReason" className="block text-sm font-medium text-gray-700">سبب التأجيل (إن وجد)</label>
-                                    <input type="text" id="nextPostponementReason" name="nextPostponementReason" value={formData.nextPostponementReason || ''} onChange={handleFormChange} className="mt-1 w-full p-2 border rounded" />
+                                    <label htmlFor="postponementReason" className="block text-sm font-medium text-gray-700">سبب التأجيل (إن وجد)</label>
+                                    <input type="text" id="postponementReason" name="postponementReason" value={formData.postponementReason || ''} onChange={handleFormChange} className="mt-1 w-full p-2 border rounded" />
                                 </div>
                             </>}
                         </div>
@@ -405,8 +407,8 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
 
             <div className="bg-white p-4 rounded-lg shadow">
                  <div className="flex flex-col sm:flex-row justify-between items-center gap-4 border-b pb-3 mb-3">
-                    <h2 className="text-xl font-semibold">قائمة الموكلين</h2>
                     <div className="flex items-center gap-4">
+                        <h2 className="text-xl font-semibold">قائمة الموكلين</h2>
                         <div className="relative">
                             <input
                                 type="search"
@@ -419,14 +421,14 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                                 <SearchIcon className="w-4 h-4 text-gray-500" />
                             </div>
                         </div>
-                         <div className="flex items-center p-1 bg-gray-200 rounded-lg">
-                            <button onClick={() => setViewMode('tree')} className={`p-2 rounded-md ${viewMode === 'tree' ? 'bg-white shadow' : 'text-gray-600'}`}>
-                                <ViewColumnsIcon className="w-5 h-5" />
-                            </button>
-                            <button onClick={() => setViewMode('list')} className={`p-2 rounded-md ${viewMode === 'list' ? 'bg-white shadow' : 'text-gray-600'}`}>
-                                <ListBulletIcon className="w-5 h-5" />
-                            </button>
-                        </div>
+                    </div>
+                     <div className="flex items-center p-1 bg-gray-200 rounded-lg">
+                        <button onClick={() => setViewMode('tree')} className={`p-2 rounded-md ${viewMode === 'tree' ? 'bg-white shadow' : 'text-gray-600'}`}>
+                            <ViewColumnsIcon className="w-5 h-5" />
+                        </button>
+                        <button onClick={() => setViewMode('list')} className={`p-2 rounded-md ${viewMode === 'list' ? 'bg-white shadow' : 'text-gray-600'}`}>
+                            <ListBulletIcon className="w-5 h-5" />
+                        </button>
                     </div>
                 </div>
                 {viewMode === 'tree' ? (

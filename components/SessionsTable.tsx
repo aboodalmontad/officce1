@@ -105,7 +105,7 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                             <td className="px-2 sm:px-6 py-4">{s.clientName}</td>
                             <td className="px-2 sm:px-6 py-4">{s.opponentName}</td>
                             <td className="px-2 sm:px-6 py-4">{s.assignee || '-'}</td>
-                            <td className="px-2 sm:px-6 py-4">{s.nextPostponementReason || 'لا يوجد'}</td>
+                            <td className="px-2 sm:px-6 py-4">{s.postponementReason || 'لا يوجد'}</td>
                             
                             {showPostponeFields ? (
                                 <>
@@ -149,7 +149,7 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                             ) : (
                                 <>
                                     <td className="px-2 sm:px-6 py-4 text-center">{s.nextSessionDate ? formatDate(s.nextSessionDate) : '-'}</td>
-                                    <td className="px-2 sm:px-6 py-4 text-center">-</td>
+                                    <td className="px-2 sm:px-6 py-4">{s.nextPostponementReason || '-'}</td>
                                     <td className="px-2 sm:px-6 py-4 text-center">
                                        {(onEdit || onDelete) ? (
                                             <div className="flex items-center justify-center gap-2">

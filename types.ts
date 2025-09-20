@@ -5,6 +5,7 @@ export interface Session {
   date: Date;
   clientName: string;
   opponentName: string;
+  postponementReason?: string;
   nextPostponementReason?: string;
   isPostponed: boolean;
   nextSessionDate?: Date;
