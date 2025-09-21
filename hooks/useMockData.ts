@@ -76,11 +76,20 @@ export const useMockData = () => {
         }
     }, [setData]);
 
+    const markForSync = () => {
+        try {
+            localStorage.setItem('lawyerAppNeedsSync', 'true');
+        } catch (e) {
+            console.error("Failed to mark data for sync:", e);
+        }
+    };
+
     const setClients = (updater: Client[] | ((prevClients: Client[]) => Client[])) => {
         setData(prevData => ({
             ...prevData,
             clients: typeof updater === 'function' ? updater(prevData.clients) : updater
         }));
+        markForSync();
     };
 
     const setAdminTasks = (updater: AdminTask[] | ((prevTasks: AdminTask[]) => AdminTask[])) => {
@@ -88,6 +97,7 @@ export const useMockData = () => {
             ...prevData,
             adminTasks: typeof updater === 'function' ? updater(prevData.adminTasks) : updater
         }));
+        markForSync();
     };
     
     const setAppointments = (updater: Appointment[] | ((prevAppointments: Appointment[]) => Appointment[])) => {
@@ -95,6 +105,7 @@ export const useMockData = () => {
             ...prevData,
             appointments: typeof updater === 'function' ? updater(prevData.appointments) : updater
         }));
+        markForSync();
     };
 
     const setAccountingEntries = (updater: AccountingEntry[] | ((prevEntries: AccountingEntry[]) => AccountingEntry[])) => {
@@ -102,6 +113,7 @@ export const useMockData = () => {
             ...prevData,
             accountingEntries: typeof updater === 'function' ? updater(prevData.accountingEntries) : updater
         }));
+        markForSync();
     };
 
     const setAssistants = (updater: string[] | ((prevAssistants: string[]) => string[])) => {
@@ -109,11 +121,13 @@ export const useMockData = () => {
             ...prevData,
             assistants: typeof updater === 'function' ? updater(prevData.assistants) : updater
         }));
+        markForSync();
     };
 
     const setFullData = (newData: any) => {
         const validatedData = validateAndHydrate(newData);
         setData(validatedData);
+        markForSync();
     };
     
     const allSessions = React.useMemo(() => {

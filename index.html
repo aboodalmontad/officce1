@@ -8,19 +8,28 @@
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    /* Add print-specific styles */
     @media print {
-      .no-print {
-        display: none !important;
+      body * {
+        visibility: hidden;
       }
-      #printable-agenda, #report-print-section {
+      .printable-section, .printable-section * {
+        visibility: visible;
+      }
+      .printable-section {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
         margin: 0;
         padding: 0;
         border: none;
         box-shadow: none;
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
       }
-      body {
-        background-color: #fff;
+      .no-print {
+        display: none !important;
       }
       main {
         padding-top: 0 !important;

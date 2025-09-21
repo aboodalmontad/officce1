@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
 import { formatDate } from '../utils/dateUtils';
-import { ChevronDownIcon, ChevronLeftIcon, PlusIcon, PencilIcon, TrashIcon } from './icons';
+import { ChevronDownIcon, ChevronLeftIcon, PlusIcon, PencilIcon, TrashIcon, PrintIcon } from './icons';
 import SessionsTable from './SessionsTable';
 import CaseAccounting from './CaseAccounting';
 
@@ -22,6 +22,7 @@ interface ClientsTreeViewProps {
     onPostponeSession: (sessionId: string, newDate: Date, reason: string) => void;
     onEditClient: (client: Client) => void;
     onDeleteClient: (clientId: string) => void;
+    onPrintClientStatement: (clientId: string) => void;
 }
 
 interface CaseDetailsProps {
@@ -151,7 +152,7 @@ const ClientsTreeView: React.FC<ClientsTreeViewProps> = (props) => {
         onAddCase, onEditCase, onDeleteCase,
         onAddStage, onEditStage, onDeleteStage,
         onAddSession, onEditSession, onDeleteSession,
-        onPostponeSession, onEditClient, onDeleteClient
+        onPostponeSession, onEditClient, onDeleteClient, onPrintClientStatement
     } = props;
     const [openClientId, setOpenClientId] = React.useState<string | null>(null);
 
@@ -170,7 +171,10 @@ const ClientsTreeView: React.FC<ClientsTreeViewProps> = (props) => {
                                 <p className="text-sm text-gray-500 truncate">{client.contactInfo}</p>
                             </div>
                         </div>
-                        <div className="flex items-center flex-shrink-0 ms-4">
+                        <div className="flex items-center flex-shrink-0 ms-4 flex-wrap justify-end gap-x-1">
+                             <button onClick={(e) => { e.stopPropagation(); onPrintClientStatement(client.id); }} className="p-1 text-gray-500 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-400" aria-label={`طباعة كشف حساب ${client.name}`}>
+                                <PrintIcon className="w-4 h-4" />
+                            </button>
                             <button onClick={(e) => { e.stopPropagation(); onAddCase(client.id); }} className="p-1 text-blue-600 rounded-full hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500" aria-label={`إضافة إلى ${client.name}`}>
                                 <PlusIcon className="w-5 h-5" />
                             </button>

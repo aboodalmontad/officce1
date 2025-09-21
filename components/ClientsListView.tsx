@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
-import { PlusIcon, PencilIcon, TrashIcon } from './icons';
+import { PlusIcon, PencilIcon, TrashIcon, PrintIcon } from './icons';
 import SessionsTable from './SessionsTable';
 import CaseAccounting from './CaseAccounting';
 
@@ -21,6 +21,7 @@ interface ClientsListViewProps {
     onPostponeSession: (sessionId: string, newDate: Date, reason: string) => void;
     onEditClient: (client: Client) => void;
     onDeleteClient: (clientId: string) => void;
+    onPrintClientStatement: (clientId: string) => void;
 }
 
 const statusMap: Record<Case['status'], { text: string, className: string }> = {
@@ -34,7 +35,7 @@ const ClientsListView: React.FC<ClientsListViewProps> = (props) => {
         clients, onEditClient, onDeleteClient, onAddCase, 
         onEditCase, onDeleteCase, onAddStage, 
         onEditStage, onDeleteStage, onAddSession, 
-        onEditSession, onDeleteSession, ...rest 
+        onEditSession, onDeleteSession, onPrintClientStatement, ...rest 
     } = props;
     const [openClientId, setOpenClientId] = React.useState<string | null>(null);
     
@@ -54,7 +55,8 @@ const ClientsListView: React.FC<ClientsListViewProps> = (props) => {
                             <h3 className="text-xl font-bold text-gray-800">{client.name}</h3>
                             <p className="text-sm text-gray-500">{client.contactInfo}</p>
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center gap-2 flex-wrap" onClick={e => e.stopPropagation()}>
+                            <button onClick={() => onPrintClientStatement(client.id)} className="p-2 text-gray-500 rounded-full hover:bg-gray-200" aria-label="طباعة كشف حساب"><PrintIcon className="w-4 h-4" /></button>
                             <button onClick={() => onEditClient(client)} className="p-2 text-gray-500 rounded-full hover:bg-gray-200" aria-label="تعديل الموكل"><PencilIcon className="w-4 h-4" /></button>
                             <button onClick={() => onDeleteClient(client.id)} className="p-2 text-red-500 rounded-full hover:bg-red-100" aria-label="حذف الموكل"><TrashIcon className="w-4 h-4" /></button>
                             <button onClick={() => onAddCase(client.id)} className="flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg hover:bg-blue-200 transition-colors">
@@ -78,7 +80,7 @@ const ClientsListView: React.FC<ClientsListViewProps> = (props) => {
                                                 </span>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
                                             <button onClick={() => onEditCase(caseItem, client)} className="p-2 text-gray-500 rounded-full hover:bg-gray-200" aria-label="تعديل القضية"><PencilIcon className="w-4 h-4" /></button>
                                             <button onClick={() => onDeleteCase(caseItem.id, client.id)} className="p-2 text-red-500 rounded-full hover:bg-red-100" aria-label="حذف القضية"><TrashIcon className="w-4 h-4" /></button>
                                             <button onClick={() => onAddStage(client.id, caseItem.id)} className="flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-200 transition-colors">

@@ -1,5 +1,3 @@
-
-
 import * as React from 'react';
 
 export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
@@ -26,8 +24,9 @@ export const useSync = () => {
                 setLastSync(now);
                 try {
                     localStorage.setItem('lastSync', now.toISOString());
+                    localStorage.removeItem('lawyerAppNeedsSync');
                 } catch (error) {
-                    console.error("Failed to save last sync date to localStorage", error);
+                    console.error("Failed to save last sync date or clear sync flag in localStorage", error);
                 }
                 setSyncStatus('success');
             } else {

@@ -30,6 +30,14 @@ const App: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  React.useEffect(() => {
+    const needsSync = localStorage.getItem('lawyerAppNeedsSync') === 'true';
+    if (isOnline && needsSync && syncStatus !== 'syncing') {
+        console.log('Application is online and has pending changes. Triggering automatic sync.');
+        triggerSync();
+    }
+  }, [isOnline, syncStatus, triggerSync]);
+
 
   const navLinkClasses = "flex items-center px-3 py-2 rounded-lg transition-colors duration-200 hover:bg-gray-700";
   const activeNavLinkClasses = "bg-blue-600 text-white";

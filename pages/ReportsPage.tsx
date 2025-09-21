@@ -190,7 +190,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ clients, accountingEntries })
                         </button>
                     </div>
                 )}
-                <div id="report-print-section">
+                <div className="printable-section">
                     {renderReport()}
                 </div>
             </div>

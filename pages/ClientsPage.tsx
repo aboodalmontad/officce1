@@ -1,9 +1,10 @@
 import * as React from 'react';
 import ClientsTreeView from '../components/ClientsTreeView';
 import ClientsListView from '../components/ClientsListView';
-import { PlusIcon, SearchIcon, ListBulletIcon, ViewColumnsIcon, ExclamationTriangleIcon } from '../components/icons';
+import { PlusIcon, SearchIcon, ListBulletIcon, ViewColumnsIcon, ExclamationTriangleIcon, PrintIcon } from '../components/icons';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
 import { formatDate } from '../utils/dateUtils';
+import PrintableClientReport from '../components/PrintableClientReport';
 
 interface ClientsPageProps {
     clients: Client[];
@@ -30,6 +31,8 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
     const [viewMode, setViewMode] = React.useState<'tree' | 'list'>('tree');
     const [isDeleteSessionModalOpen, setIsDeleteSessionModalOpen] = React.useState(false);
     const [sessionToDelete, setSessionToDelete] = React.useState<{ sessionId: string, stageId: string, caseId: string, clientId: string, message: string } | null>(null);
+    const [isPrintModalOpen, setIsPrintModalOpen] = React.useState(false);
+    const [printData, setPrintData] = React.useState<{ client: Client; entries: AccountingEntry[]; totals: any } | null>(null);
 
     const filteredClients = React.useMemo(() => {
         if (!searchQuery) return clients;
@@ -309,6 +312,27 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
         }
         handleCloseModal();
     };
+    
+    const handlePrintClientStatement = (clientId: string) => {
+        const client = clients.find(c => c.id === clientId);
+        if (!client) return;
+
+        const clientEntries = accountingEntries.filter(entry => entry.clientId === clientId);
+        const totals = clientEntries.reduce((acc, entry) => {
+            if (entry.type === 'income') acc.income += entry.amount;
+            else acc.expense += entry.amount;
+            return acc;
+        }, { income: 0, expense: 0 });
+        const balance = totals.income - totals.expense;
+
+        setPrintData({ client, entries: clientEntries.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()), totals: { ...totals, balance } });
+        setIsPrintModalOpen(true);
+    };
+
+    const handleClosePrintModal = () => {
+        setIsPrintModalOpen(false);
+        setPrintData(null);
+    };
 
     const renderModalContent = () => {
         if (!modal.type) return null;
@@ -449,6 +473,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                         onPostponeSession={handlePostponeSession}
                         onEditClient={(client) => handleOpenModal('client', true, { item: client })}
                         onDeleteClient={handleDeleteClient}
+                        onPrintClientStatement={handlePrintClientStatement}
                     />
                 ) : (
                     <ClientsListView
@@ -468,6 +493,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                         onPostponeSession={handlePostponeSession}
                         onEditClient={(client) => handleOpenModal('client', true, { item: client })}
                         onDeleteClient={handleDeleteClient}
+                        onPrintClientStatement={handlePrintClientStatement}
                     />
                 )}
             </div>
@@ -502,6 +528,36 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                                 onClick={handleConfirmDeleteSession}
                             >
                                 نعم، قم بالحذف
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {isPrintModalOpen && printData && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={handleClosePrintModal}>
+                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="overflow-y-auto printable-section">
+                            <PrintableClientReport
+                                client={printData.client}
+                                entries={printData.entries}
+                                totals={printData.totals}
+                            />
+                        </div>
+                        <div className="mt-6 flex justify-end gap-4 border-t pt-4 no-print">
+                            <button
+                                type="button"
+                                className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
+                                onClick={handleClosePrintModal}
+                            >
+                                إغلاق
+                            </button>
+                            <button
+                                type="button"
+                                className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                                onClick={() => window.print()}
+                            >
+                                <PrintIcon className="w-5 h-5" />
+                                <span>طباعة</span>
                             </button>
                         </div>
                     </div>
