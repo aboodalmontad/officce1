@@ -21,9 +21,10 @@ interface SettingsPageProps {
     triggerSync: () => void;
     assistants: string[];
     setAssistants: (updater: (prev: string[]) => string[]) => void;
+    syncReport: string | null;
 }
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, lastSync, triggerSync, assistants, setAssistants }) => {
+const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, lastSync, triggerSync, assistants, setAssistants, syncReport }) => {
     const fileInputRef = React.useRef<HTMLInputElement>(null);
     const [feedback, setFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = React.useState(false);
@@ -159,6 +160,55 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
         setAssistantToDelete(null);
     };
 
+    const SyncReportDisplay: React.FC<{ report: string; status: SyncStatus }> = ({ report, status }) => {
+        const isError = status === 'error';
+
+        // A simple parser for "### Title\nContent" and lists
+        const renderContent = (content: string) => {
+            return content.split('\n').map((line, i) => {
+                line = line.trim();
+                if (line.startsWith('- ')) {
+                    return <li key={i} className="ms-5 list-disc">{line.substring(2)}</li>;
+                }
+                if (line) {
+                    return <p key={i}>{line}</p>;
+                }
+                return null;
+            }).filter(Boolean); // Remove null entries
+        };
+        
+        // Fallback for plain text response or error messages
+        if (!report.includes('### ') || isError) {
+            return (
+                 <div className={`mt-6 p-4 border ${isError ? 'border-red-200 bg-red-50' : 'border-blue-200 bg-blue-50'} rounded-lg animate-fade-in`}>
+                    <h4 className={`text-lg font-bold ${isError ? 'text-red-800' : 'text-blue-800'}`}>{isError ? 'خطأ في المزامنة' : 'تقرير المزامنة'}</h4>
+                    <div className={`mt-2 text-sm ${isError ? 'text-red-700' : 'text-gray-700'} whitespace-pre-wrap font-sans`}>
+                        {report}
+                    </div>
+                </div>
+            )
+        }
+
+        const sections = report.split('### ').slice(1);
+
+        return (
+            <div className="mt-6 p-4 border border-blue-200 bg-blue-50 rounded-lg space-y-4 animate-fade-in">
+                {sections.map((section, index) => {
+                    const [title, ...contentLines] = section.split('\n');
+                    const content = contentLines.join('\n').trim();
+                    return (
+                        <div key={index}>
+                            <h4 className="text-lg font-bold text-blue-800">
+                               {title.trim()}
+                            </h4>
+                            <div className="mt-2 text-sm text-gray-700 space-y-2">{renderContent(content)}</div>
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    };
+
 
     return (
         <div className="space-y-6">
@@ -171,12 +221,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
             )}
 
             <div className="bg-white p-6 rounded-lg shadow space-y-6">
-                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">المزامنة مع الخادم</h2>
+                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">المزامنة الذكية والتحليل</h2>
                 <div className="flex flex-col lg:flex-row items-start justify-between gap-4">
                     <div className="flex-grow">
-                        <h3 className="font-semibold text-lg">مزامنة البيانات</h3>
+                        <h3 className="font-semibold text-lg">تحليل البيانات وإنشاء تقرير</h3>
                         <p className="text-gray-600 text-sm mt-1">
-                            قم بمزامنة بياناتك مع الخادم السحابي لحفظها والوصول إليها من أجهزة متعددة.
+                           استخدم الذكاء الاصطناعي لتحليل بيانات مكتبك والحصول على ملخص أداء وتوصيات ذكية.
                         </p>
                         <p className="text-xs text-gray-500 mt-2">
                             آخر مزامنة ناجحة: {lastSync ? lastSync.toLocaleString('ar-SY') : 'لم تتم المزامنة بعد'}
@@ -191,6 +241,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
                         {getSyncButtonContent()}
                     </button>
                 </div>
+                 {/* Display the sync report */}
+                 {syncReport && <SyncReportDisplay report={syncReport} status={syncStatus} />}
             </div>
             
             <div className="bg-white p-6 rounded-lg shadow space-y-6">

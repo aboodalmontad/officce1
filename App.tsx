@@ -16,7 +16,7 @@ import { useSync } from './hooks/useSync';
 const App: React.FC = () => {
   const { clients, adminTasks, appointments, accountingEntries, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, assistants, setAssistants } = useMockData();
   const isOnline = useOnlineStatus();
-  const { syncStatus, lastSync, triggerSync } = useSync();
+  const { syncStatus, lastSync, triggerSync, syncReport } = useSync();
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
 
   React.useEffect(() => {
@@ -99,7 +99,7 @@ const App: React.FC = () => {
             <Route path="/clients" element={<ClientsPage clients={clients} setClients={setClients} accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} assistants={assistants} />} />
             <Route path="/accounting" element={<AccountingPage accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} clients={clients} />} />
             <Route path="/reports" element={<ReportsPage clients={clients} accountingEntries={accountingEntries} />} />
-            <Route path="/settings" element={<SettingsPage setFullData={setFullData} syncStatus={syncStatus} lastSync={lastSync} triggerSync={triggerSync} assistants={assistants} setAssistants={setAssistants} />} />
+            <Route path="/settings" element={<SettingsPage setFullData={setFullData} syncStatus={syncStatus} lastSync={lastSync} triggerSync={triggerSync} assistants={assistants} setAssistants={setAssistants} syncReport={syncReport} />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </main>
