@@ -1,20 +1,26 @@
 import * as React from 'react';
-import { Client, AccountingEntry } from '../types';
+import { Client, AccountingEntry, Case } from '../types';
 import { formatDate } from '../utils/dateUtils';
 
 interface PrintableClientReportProps {
     client: Client;
+    caseData?: Case;
     entries: AccountingEntry[];
     totals: { income: number; expense: number; balance: number };
 }
 
-const PrintableClientReport: React.FC<PrintableClientReportProps> = ({ client, entries, totals }) => {
+const PrintableClientReport: React.FC<PrintableClientReportProps> = ({ client, caseData, entries, totals }) => {
     return (
         <div className="p-4">
             <header className="text-center border-b pb-4 mb-6">
-                <h1 className="text-3xl font-bold text-gray-800">كشف حساب</h1>
-                <h2 className="text-2xl font-semibold text-gray-700 mt-2">{client.name}</h2>
-                <p className="text-sm text-gray-500">{client.contactInfo}</p>
+                <h1 className="text-3xl font-bold text-gray-800">
+                    {caseData ? 'كشف حساب قضية' : 'كشف حساب'}
+                </h1>
+                <h2 className="text-2xl font-semibold text-gray-700 mt-2">
+                    {caseData ? caseData.subject : client.name}
+                </h2>
+                {caseData && <p className="text-md text-gray-600 mt-1">الموكل: {client.name}</p>}
+                {!caseData && <p className="text-sm text-gray-500">{client.contactInfo}</p>}
             </header>
 
             <main className="space-y-8">

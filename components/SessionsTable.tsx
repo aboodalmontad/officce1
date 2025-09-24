@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Session } from '../types';
-import { formatDate, isBeforeToday } from '../utils/dateUtils';
+import { formatDate, isBeforeToday, isWeekend, getPublicHoliday } from '../utils/dateUtils';
 import { PencilIcon, TrashIcon } from './icons';
 
 interface SessionsTableProps {
@@ -52,6 +52,24 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
             if (newDateStart <= sessionDateStart) {
                 setErrors(prev => ({ ...prev, [sessionId]: "تاريخ الجلسة القادمة يجب أن يكون بعد تاريخ الجلسة الحالية." }));
                 return;
+            }
+
+            const holidayName = getPublicHoliday(newDate);
+            const isWknd = isWeekend(newDate);
+
+            if (holidayName || isWknd) {
+                let warningMessage = `تنبيه: التاريخ الذي اخترته هو يوم عطلة`;
+                if (holidayName) {
+                    warningMessage += ` (${holidayName}).`;
+                } else if (isWknd) {
+                    const dayName = new Intl.DateTimeFormat('ar-SY', { weekday: 'long' }).format(newDate);
+                    warningMessage += ` (${dayName}).`;
+                }
+                warningMessage += `\nهل أنت متأكد من ترحيل الجلسة إلى هذا اليوم؟`;
+    
+                if (!window.confirm(warningMessage)) {
+                    return; // User cancelled
+                }
             }
 
             // If we reach here, data is valid. Clear any existing error for this session.

@@ -1,17 +1,42 @@
 import * as React from 'react';
 import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage } from '../types';
 
-const APP_DATA_KEY = 'lawyerBusinessManagementData';
+export const APP_DATA_KEY = 'lawyerBusinessManagementData';
 
-const dateReviver = (key: string, value: any) => {
-    const dateKeys = ['date', 'dueDate', 'firstSessionDate', 'nextSessionDate'];
-    if (dateKeys.includes(key) && typeof value === 'string') {
-        const date = new Date(value);
-        if (!isNaN(date.getTime())) {
-            return date;
+// --- IndexedDB Helpers for Service Worker Access ---
+const DB_NAME = 'LawyerAppDB';
+const DB_VERSION = 1;
+const SESSIONS_STORE_NAME = 'sessions';
+
+const openDB = (): Promise<IDBDatabase> => {
+    return new Promise((resolve, reject) => {
+        // This check is important because indexedDB is not available in all environments (e.g., SSR)
+        if (typeof indexedDB === 'undefined') {
+            reject('IndexedDB is not supported');
+            return;
         }
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onerror = () => reject("Error opening DB");
+        request.onsuccess = () => resolve(request.result);
+        request.onupgradeneeded = event => {
+            const db = (event.target as IDBOpenDBRequest).result;
+            if (!db.objectStoreNames.contains(SESSIONS_STORE_NAME)) {
+                db.createObjectStore(SESSIONS_STORE_NAME, { keyPath: 'id' });
+            }
+        };
+    });
+};
+
+const updateSessionsInDB = async (sessions: Session[]) => {
+    try {
+        const db = await openDB();
+        const transaction = db.transaction([SESSIONS_STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(SESSIONS_STORE_NAME);
+        await store.clear(); // Clear old sessions
+        sessions.forEach(session => store.put(session));
+    } catch (error) {
+        console.error("Failed to update sessions in IndexedDB:", error);
     }
-    return value;
 };
 
 const defaultAssistants = ['أحمد', 'فاطمة', 'سارة', 'بدون تخصيص'];
@@ -147,6 +172,8 @@ const validateAndHydrate = (data: any): AppData => {
         time: typeof apt.time === 'string' && /^\d{2}:\d{2}$/.test(apt.time) ? apt.time : '00:00',
         date: apt.date && !isNaN(new Date(apt.date).getTime()) ? new Date(apt.date) : new Date(),
         importance: ['normal', 'important', 'urgent'].includes(apt.importance) ? apt.importance : 'normal',
+        notified: typeof apt.notified === 'boolean' ? apt.notified : false,
+        reminderTimeInMinutes: typeof apt.reminderTimeInMinutes === 'number' ? apt.reminderTimeInMinutes : undefined,
     }));
     
     const validatedAccountingEntries: AccountingEntry[] = safeArray(data.accountingEntries, (entry: any): AccountingEntry => ({
@@ -176,7 +203,7 @@ export const useMockData = () => {
         try {
             const rawData = localStorage.getItem(APP_DATA_KEY);
             if (rawData) {
-                const parsedData = JSON.parse(rawData, dateReviver);
+                const parsedData = JSON.parse(rawData);
                 return validateAndHydrate(parsedData);
             }
         } catch (error) {
@@ -242,7 +269,7 @@ export const useMockData = () => {
         }));
         markForSync();
     };
-
+    
     const setFullData = (newData: any) => {
         const validatedData = validateAndHydrate(newData);
         setData(validatedData);
@@ -256,6 +283,13 @@ export const useMockData = () => {
             )
         );
     }, [data.clients]);
+
+    // Sync sessions to IndexedDB for the Service Worker
+    React.useEffect(() => {
+        if (allSessions) {
+            updateSessionsInDB(allSessions);
+        }
+    }, [allSessions]);
 
     return { ...data, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, setAssistants };
 };

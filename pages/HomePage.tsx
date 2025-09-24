@@ -5,6 +5,7 @@ import { formatDate, isSameDay, isBeforeToday } from '../utils/dateUtils';
 import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, CalendarIcon, ChevronLeftIcon } from '../components/icons';
 import SessionsTable from '../components/SessionsTable';
 import PrintableReport from '../components/PrintableReport';
+import { printElement } from '../utils/printUtils';
 
 const importanceMap: { [key: string]: { text: string, className: string } } = {
     normal: { text: 'عادي', className: 'bg-gray-100 text-gray-800' },
@@ -88,7 +89,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     const [viewMode, setViewMode] = React.useState<ViewMode>('daily');
     const [isAppointmentModalOpen, setIsAppointmentModalOpen] = React.useState(false);
     const [editingAppointment, setEditingAppointment] = React.useState<Appointment | null>(null);
-    const [newAppointment, setNewAppointment] = React.useState<{ title: string; date: string; time: string; importance: 'normal' | 'important' | 'urgent' }>({ title: '', date: '', time: '', importance: 'normal' });
+    const [newAppointment, setNewAppointment] = React.useState<{ title: string; date: string; time: string; importance: 'normal' | 'important' | 'urgent'; reminderTimeInMinutes: number; }>({ title: '', date: '', time: '', importance: 'normal', reminderTimeInMinutes: 15 });
 
     const [activeTaskTab, setActiveTaskTab] = React.useState<'pending' | 'completed'>('pending');
     const [isTaskModalOpen, setIsTaskModalOpen] = React.useState(false);
@@ -107,6 +108,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     const [isDeleteTaskModalOpen, setIsDeleteTaskModalOpen] = React.useState(false);
     const [taskToDelete, setTaskToDelete] = React.useState<AdminTask | null>(null);
     const [isPrintModalOpen, setIsPrintModalOpen] = React.useState(false);
+    const printReportRef = React.useRef<HTMLDivElement>(null);
 
 
     const toInputDateString = (date: Date) => {
@@ -119,7 +121,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     // Appointment Handlers
     const handleOpenAddAppointmentModal = () => {
         setEditingAppointment(null);
-        setNewAppointment({ title: '', date: toInputDateString(selectedDate), time: '', importance: 'normal' });
+        setNewAppointment({ title: '', date: toInputDateString(selectedDate), time: '', importance: 'normal', reminderTimeInMinutes: 15 });
         setIsAppointmentModalOpen(true);
     };
 
@@ -130,6 +132,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
             date: toInputDateString(apt.date),
             time: apt.time,
             importance: apt.importance,
+            reminderTimeInMinutes: apt.reminderTimeInMinutes ?? 15,
         });
         setIsAppointmentModalOpen(true);
     }
@@ -140,7 +143,9 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     }
 
     const handleAppointmentFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        setNewAppointment({ ...newAppointment, [e.target.name]: e.target.value as any });
+        const { name, value } = e.target;
+        const processedValue = name === 'reminderTimeInMinutes' ? Number(value) : value;
+        setNewAppointment(prev => ({ ...prev, [name]: processedValue }));
     };
 
     const handleSaveAppointment = (e: React.FormEvent) => {
@@ -157,6 +162,8 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                 date: appointmentDate,
                 time: newAppointment.time,
                 importance: newAppointment.importance,
+                reminderTimeInMinutes: newAppointment.reminderTimeInMinutes,
+                notified: false, // Reset notification status on edit
             } : apt));
         } else {
             const newAppointmentObject: Appointment = {
@@ -165,6 +172,8 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                 time: newAppointment.time,
                 date: appointmentDate,
                 importance: newAppointment.importance,
+                reminderTimeInMinutes: newAppointment.reminderTimeInMinutes,
+                notified: false,
             };
             setAppointments(prevAppointments => [...prevAppointments, newAppointmentObject]);
         }
@@ -353,7 +362,10 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
         return adminTasks.filter(task => !task.completed).sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
     }, [adminTasks]);
 
-    const groupedTasks = React.useMemo(() => {
+    // FIX: Explicitly type `groupedTasks` to resolve downstream type inference issues.
+    // The TypeScript compiler was inferring `groupedTasks` as `unknown`, causing errors
+    // when trying to access properties like `length` or `map` on its keys/values.
+    const groupedTasks: Record<string, AdminTask[]> = React.useMemo(() => {
         const isCompleted = activeTaskTab === 'completed';
         const filtered = adminTasks
             .filter(task => {
@@ -594,6 +606,16 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                                         <option value="urgent">عاجل</option>
                                     </select>
                                 </div>
+                                <div>
+                                    <label htmlFor="reminderTimeInMinutes" className="block text-sm font-medium text-gray-700">تذكير قبل</label>
+                                    <select id="reminderTimeInMinutes" name="reminderTimeInMinutes" value={newAppointment.reminderTimeInMinutes} onChange={handleAppointmentFormChange} className="mt-1 w-full p-2 border rounded" required>
+                                        <option value="5">5 دقائق</option>
+                                        <option value="10">10 دقائق</option>
+                                        <option value="15">15 دقيقة</option>
+                                        <option value="30">30 دقيقة</option>
+                                        <option value="60">ساعة واحدة</option>
+                                    </select>
+                                </div>
                             </div>
                             <div className="mt-6 flex justify-end gap-4">
                                 <button type="button" onClick={handleCloseAppointmentModal} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">إلغاء</button>
@@ -732,9 +754,9 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
             )}
 
             {isPrintModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={() => setIsPrintModalOpen(false)}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setIsPrintModalOpen(false)}>
                     <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="overflow-y-auto">
+                        <div className="overflow-y-auto" ref={printReportRef}>
                             <PrintableReport
                                 date={selectedDate}
                                 sessions={dailyData.dailySessions}
@@ -753,7 +775,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                             <button
                                 type="button"
                                 className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-                                onClick={() => window.print()}
+                                onClick={() => printElement(printReportRef.current)}
                             >
                                 <PrintIcon className="w-5 h-5" />
                                 <span>طباعة</span>

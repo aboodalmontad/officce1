@@ -3,8 +3,7 @@ import { ArrowDownTrayIcon, ArrowUpTrayIcon, TrashIcon, ExclamationTriangleIcon,
 import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
 import { SyncStatus } from '../hooks/useSync';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
-
-const APP_DATA_KEY = 'lawyerBusinessManagementData';
+import { APP_DATA_KEY } from '../hooks/useMockData';
 
 type AppData = {
     clients: Client[];
@@ -244,7 +243,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
                  {/* Display the sync report */}
                  {syncReport && <SyncReportDisplay report={syncReport} status={syncStatus} />}
             </div>
-            
+
             <div className="bg-white p-6 rounded-lg shadow space-y-6">
                 <h2 className="text-xl font-bold text-gray-800 border-b pb-3">إدارة المساعدين</h2>
                 <div className="space-y-4">

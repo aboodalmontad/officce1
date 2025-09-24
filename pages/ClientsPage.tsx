@@ -5,6 +5,7 @@ import { PlusIcon, SearchIcon, ListBulletIcon, ViewColumnsIcon, ExclamationTrian
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
 import { formatDate } from '../utils/dateUtils';
 import PrintableClientReport from '../components/PrintableClientReport';
+import { printElement } from '../utils/printUtils';
 
 interface ClientsPageProps {
     clients: Client[];
@@ -31,8 +32,13 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
     const [viewMode, setViewMode] = React.useState<'tree' | 'list'>('tree');
     const [isDeleteSessionModalOpen, setIsDeleteSessionModalOpen] = React.useState(false);
     const [sessionToDelete, setSessionToDelete] = React.useState<{ sessionId: string, stageId: string, caseId: string, clientId: string, message: string } | null>(null);
+    
+    // State for printing logic
+    const [isPrintChoiceModalOpen, setIsPrintChoiceModalOpen] = React.useState(false);
+    const [clientForPrintChoice, setClientForPrintChoice] = React.useState<Client | null>(null);
     const [isPrintModalOpen, setIsPrintModalOpen] = React.useState(false);
-    const [printData, setPrintData] = React.useState<{ client: Client; entries: AccountingEntry[]; totals: any } | null>(null);
+    const [printData, setPrintData] = React.useState<{ client: Client; caseData?: Case; entries: AccountingEntry[]; totals: any } | null>(null);
+    const printClientReportRef = React.useRef<HTMLDivElement>(null);
 
     const filteredClients = React.useMemo(() => {
         if (!searchQuery) return clients;
@@ -313,7 +319,16 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
         handleCloseModal();
     };
     
-    const handlePrintClientStatement = (clientId: string) => {
+    // --- Printing Logic ---
+    const openPrintChoiceModal = (clientId: string) => {
+        const client = clients.find(c => c.id === clientId);
+        if (client) {
+            setClientForPrintChoice(client);
+            setIsPrintChoiceModalOpen(true);
+        }
+    };
+
+    const handlePrintConsolidatedStatement = (clientId: string) => {
         const client = clients.find(c => c.id === clientId);
         if (!client) return;
 
@@ -326,12 +341,36 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
         const balance = totals.income - totals.expense;
 
         setPrintData({ client, entries: clientEntries.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()), totals: { ...totals, balance } });
+        setIsPrintChoiceModalOpen(false);
+        setIsPrintModalOpen(true);
+    };
+
+    const handlePrintCaseStatement = (clientId: string, caseId: string) => {
+        const client = clients.find(c => c.id === clientId);
+        const caseData = client?.cases.find(cs => cs.id === caseId);
+        if (!client || !caseData) return;
+
+        const caseEntries = accountingEntries.filter(entry => entry.caseId === caseId);
+        const totals = caseEntries.reduce((acc, entry) => {
+            if (entry.type === 'income') acc.income += entry.amount;
+            else acc.expense += entry.amount;
+            return acc;
+        }, { income: 0, expense: 0 });
+        const balance = totals.income - totals.expense;
+
+        setPrintData({ client, caseData, entries: caseEntries.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()), totals: { ...totals, balance } });
+        setIsPrintChoiceModalOpen(false);
         setIsPrintModalOpen(true);
     };
 
     const handleClosePrintModal = () => {
         setIsPrintModalOpen(false);
         setPrintData(null);
+    };
+    
+    const handleClosePrintChoiceModal = () => {
+        setIsPrintChoiceModalOpen(false);
+        setClientForPrintChoice(null);
     };
 
     const renderModalContent = () => {
@@ -473,7 +512,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                         onPostponeSession={handlePostponeSession}
                         onEditClient={(client) => handleOpenModal('client', true, { item: client })}
                         onDeleteClient={handleDeleteClient}
-                        onPrintClientStatement={handlePrintClientStatement}
+                        onPrintClientStatement={openPrintChoiceModal}
                     />
                 ) : (
                     <ClientsListView
@@ -493,7 +532,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                         onPostponeSession={handlePostponeSession}
                         onEditClient={(client) => handleOpenModal('client', true, { item: client })}
                         onDeleteClient={handleDeleteClient}
-                        onPrintClientStatement={handlePrintClientStatement}
+                        onPrintClientStatement={openPrintChoiceModal}
                     />
                 )}
             </div>
@@ -533,12 +572,54 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                     </div>
                 </div>
             )}
+            
+            {isPrintChoiceModalOpen && clientForPrintChoice && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={handleClosePrintChoiceModal}>
+                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+                        <h2 className="text-xl font-bold mb-4 border-b pb-3">اختر تقرير الطباعة</h2>
+                        <p className="mb-4 text-gray-700">للموكل: <span className="font-semibold">{clientForPrintChoice.name}</span></p>
+                        <div className="space-y-3">
+                            <button
+                                onClick={() => handlePrintConsolidatedStatement(clientForPrintChoice.id)}
+                                className="w-full text-right px-4 py-3 bg-blue-50 text-blue-800 font-semibold rounded-lg hover:bg-blue-100 transition-colors"
+                            >
+                                 طباعة كشف حساب إجمالي (لكافة القضايا)
+                            </button>
+                            <div>
+                                <h3 className="text-md font-semibold text-gray-600 mt-4 mb-2">أو طباعة كشف لقضية محددة:</h3>
+                                <div className="max-h-60 overflow-y-auto space-y-2 pr-2">
+                                {clientForPrintChoice.cases.length > 0 ? clientForPrintChoice.cases.map(caseItem => (
+                                    <button 
+                                        key={caseItem.id} 
+                                        onClick={() => handlePrintCaseStatement(clientForPrintChoice.id, caseItem.id)}
+                                        className="w-full text-right block px-4 py-2 bg-gray-50 text-gray-800 rounded-md hover:bg-gray-100 transition-colors"
+                                    >
+                                        {caseItem.subject}
+                                    </button>
+                                )) : <p className="text-gray-500 text-center">لا توجد قضايا لهذا الموكل.</p>}
+                                </div>
+                            </div>
+                        </div>
+                         <div className="mt-6 flex justify-end">
+                            <button
+                                type="button"
+                                className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
+                                onClick={handleClosePrintChoiceModal}
+                            >
+                                إغلاق
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {isPrintModalOpen && printData && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={handleClosePrintModal}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={handleClosePrintModal}>
                     <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="overflow-y-auto printable-section">
+                        <div className="overflow-y-auto" ref={printClientReportRef}>
                             <PrintableClientReport
                                 client={printData.client}
+                                caseData={printData.caseData}
                                 entries={printData.entries}
                                 totals={printData.totals}
                             />
@@ -554,7 +635,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                             <button
                                 type="button"
                                 className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-                                onClick={() => window.print()}
+                                onClick={() => printElement(printClientReportRef.current)}
                             >
                                 <PrintIcon className="w-5 h-5" />
                                 <span>طباعة</span>

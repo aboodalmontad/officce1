@@ -15,34 +15,6 @@
       body {
         font-family: 'Tajawal', sans-serif;
       }
-      .no-print {
-        @media print {
-          display: none !important;
-        }
-      }
-      .printable-section {
-        @media screen {
-          display: block;
-        }
-        @media print {
-          display: block !important;
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: 100%;
-        }
-      }
-      @media print {
-        body * {
-          visibility: hidden;
-        }
-        .printable-section, .printable-section * {
-          visibility: visible;
-        }
-        main {
-            padding-top: 0 !important;
-        }
-      }
        @keyframes fade-in {
             from {
                 opacity: 0;
@@ -56,6 +28,7 @@
         .animate-fade-in {
             animation: fade-in 0.5s ease-out forwards;
         }
+        
     </style>
     <!-- Import Map -->
     <script type="importmap">
@@ -65,7 +38,8 @@
         "react/": "https://aistudiocdn.com/react@^19.1.1/",
         "react": "https://aistudiocdn.com/react@^19.1.1",
         "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
-        "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.9.1"
+        "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.9.1",
+        "recharts": "https://aistudiocdn.com/recharts@^2.12.7"
       }
     }
     </script>

@@ -1,4 +1,5 @@
 
+
 export const getDaysInMonth = (year: number, month: number): Date[] => {
     const date = new Date(year, month, 1);
     const days: Date[] = [];
@@ -35,4 +36,83 @@ export const formatDate = (date: Date): string => {
         month: 'long',
         day: 'numeric'
     }).format(date);
+};
+
+// --- Holiday and Weekend Logic ---
+
+// List of fixed Syrian public holidays (Month is 0-indexed)
+const fixedHolidays: { month: number; day: number; name: string }[] = [
+    { month: 0, day: 1, name: 'رأس السنة الميلادية' },
+    { month: 2, day: 21, name: 'عيد الأم' },
+    { month: 3, day: 17, name: 'عيد الجلاء' },
+    { month: 4, day: 1, name: 'عيد العمال العالمي' },
+    { month: 4, day: 6, name: 'عيد الشهداء' },
+    { month: 9, day: 6, name: 'ذكرى حرب تشرين' },
+    { month: 11, day: 25, name: 'عيد الميلاد المجيد' },
+];
+
+// Approximations for floating holidays for 2024-2025.
+const floatingHolidays: { [year: number]: { month: number; day: number; name: string; length?: number }[] } = {
+    2024: [
+        { month: 3, day: 10, name: 'عيد الفطر', length: 3 },
+        { month: 5, day: 16, name: 'عيد الأضحى', length: 4 },
+        { month: 6, day: 7, name: 'رأس السنة الهجرية' },
+        { month: 8, day: 15, name: 'المولد النبوي الشريف' },
+        { month: 2, day: 31, name: 'عيد الفصح (غربي)'},
+        { month: 4, day: 5, name: 'عيد الفصح (شرقي)'},
+    ],
+    2025: [
+        { month: 2, day: 30, name: 'عيد الفطر', length: 3 },
+        { month: 5, day: 6, name: 'عيد الأضحى', length: 4 },
+        { month: 5, day: 26, name: 'رأس السنة الهجرية' },
+        { month: 8, day: 4, name: 'المولد النبوي الشريف' },
+        { month: 3, day: 20, name: 'عيد الفصح (غربي وشرقي)'},
+    ],
+};
+
+/**
+ * Checks if a given date is a weekend (Friday or Saturday).
+ * @param date The date to check.
+ * @returns True if the date is a Friday or Saturday.
+ */
+export const isWeekend = (date: Date): boolean => {
+    const day = date.getDay();
+    return day === 5 || day === 6; // 5 = Friday, 6 = Saturday
+};
+
+/**
+ * Checks if a given date is a Syrian public holiday.
+ * @param date The date to check.
+ * @returns The name of the holiday if it is one, otherwise null.
+ */
+export const getPublicHoliday = (date: Date): string | null => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const day = date.getDate();
+
+    // Check fixed holidays
+    const fixedHoliday = fixedHolidays.find(h => h.month === month && h.day === day);
+    if (fixedHoliday) {
+        return fixedHoliday.name;
+    }
+
+    // Check floating holidays for the given year
+    const yearFloatingHolidays = floatingHolidays[year] || [];
+    for (const holiday of yearFloatingHolidays) {
+        if (holiday.length) { // For multi-day holidays like Eid
+            const startDate = new Date(year, holiday.month, holiday.day);
+            const endDate = new Date(startDate);
+            endDate.setDate(startDate.getDate() + holiday.length - 1);
+
+            if (date >= startDate && date <= endDate) {
+                return holiday.name;
+            }
+        } else { // For single-day holidays
+             if (holiday.month === month && holiday.day === day) {
+                return holiday.name;
+            }
+        }
+    }
+    
+    return null;
 };

@@ -22,7 +22,7 @@ const formatTime = (time: string) => {
 
 const PrintableReport: React.FC<PrintableReportProps> = ({ date, sessions, appointments, adminTasks }) => {
     return (
-        <div className="p-4 printable-section">
+        <div className="p-4">
             <header className="text-center border-b pb-4 mb-6">
                 <h1 className="text-3xl font-bold text-gray-800">مكتب المحامي</h1>
                 <h2 className="text-2xl font-semibold text-gray-700 mt-2">جدول الأعمال</h2>

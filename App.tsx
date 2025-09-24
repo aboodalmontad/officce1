@@ -12,6 +12,7 @@ import { HomeIcon, UsersIcon, CurrencyDollarIcon, DocumentChartBarIcon, Settings
 import { useMockData } from './hooks/useMockData';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { useSync } from './hooks/useSync';
+import { isBeforeToday } from './utils/dateUtils';
 
 const App: React.FC = () => {
   const { clients, adminTasks, appointments, accountingEntries, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, assistants, setAssistants } = useMockData();
@@ -37,6 +38,121 @@ const App: React.FC = () => {
         triggerSync();
     }
   }, [isOnline, syncStatus, triggerSync]);
+  
+  // Effect for handling appointment notifications
+  React.useEffect(() => {
+    // 1. Request permission on component mount if not already determined
+    if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+      Notification.requestPermission();
+    }
+
+    // 2. Set up an interval to check for appointments
+    const intervalId = setInterval(() => {
+      if (!('Notification' in window) || Notification.permission !== 'granted') {
+        return; // Don't do anything if notifications are not supported or permitted
+      }
+
+      const now = new Date();
+      
+      appointments.forEach(apt => {
+        if (apt.notified || apt.reminderTimeInMinutes === undefined) return; // Skip if already notified or no reminder is set
+
+        const reminderMinutes = apt.reminderTimeInMinutes;
+
+        const [hours, minutes] = apt.time.split(':').map(Number);
+        const appointmentDateTime = new Date(apt.date);
+        appointmentDateTime.setHours(hours, minutes, 0, 0);
+        
+        // Skip past appointments
+        if (now > appointmentDateTime) return;
+
+        const reminderTime = new Date(appointmentDateTime.getTime() - reminderMinutes * 60 * 1000);
+
+        // Check if it's time to notify (within the last minute)
+        if (now >= reminderTime && now < appointmentDateTime) {
+          // Show notification
+          new Notification('تذكير بموعد', {
+            body: `موعدك "${apt.title}" بعد ${reminderMinutes} دقيقة.`,
+            icon: './icon.svg',
+            lang: 'ar',
+            dir: 'rtl'
+          });
+
+          // Mark as notified to prevent re-notifying
+          setAppointments(prev =>
+            prev.map(p => (p.id === apt.id ? { ...p, notified: true } : p))
+          );
+        }
+      });
+    }, 60000); // Check every minute
+
+    // 3. Clean up the interval on component unmount
+    return () => clearInterval(intervalId);
+
+  }, [appointments, setAppointments]);
+
+  // Effect for periodic background sync registration for unpostponed sessions
+  React.useEffect(() => {
+      const registerPeriodicSync = async () => {
+          if ('serviceWorker' in navigator && 'PeriodicSyncManager' in window) {
+              try {
+                  const registration = await navigator.serviceWorker.ready;
+                  // @ts-ignore
+                  await registration.periodicSync.register('check-unpostponed-sessions', {
+                      minInterval: 12 * 60 * 60 * 1000, // Check roughly every 12 hours
+                  });
+                  console.log('Periodic sync for unpostponed sessions registered.');
+              } catch (error) {
+                  console.error('Periodic sync registration failed:', error);
+              }
+          } else {
+              console.log('Periodic Background Sync not supported.');
+          }
+      };
+      
+      registerPeriodicSync();
+  }, []);
+
+  // Effect for daily reminder of unpostponed sessions (fallback for when app is open)
+  React.useEffect(() => {
+      const checkUnpostponedSessions = () => {
+          if (Notification.permission !== 'granted') return;
+
+          const LAST_CHECK_KEY = 'lastUnpostponedNotificationCheck';
+          const lastCheckTimestamp = localStorage.getItem(LAST_CHECK_KEY);
+          const now = new Date();
+          const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+          if (lastCheckTimestamp) {
+              const lastCheckDate = new Date(parseInt(lastCheckTimestamp, 10));
+              const startOfLastCheckDate = new Date(lastCheckDate.getFullYear(), lastCheckDate.getMonth(), lastCheckDate.getDate());
+              if (startOfLastCheckDate.getTime() === startOfToday.getTime()) {
+                  return; // Already notified today
+              }
+          }
+
+          const unpostponed = allSessions.filter(s => !s.isPostponed && isBeforeToday(s.date));
+
+          if (unpostponed.length > 0) {
+              new Notification('تنبيه بالجلسات غير المرحلة', {
+                  body: `لديك ${unpostponed.length} جلسات سابقة لم يتم ترحيلها. الرجاء مراجعتها.`,
+                  icon: './icon.svg',
+                  lang: 'ar',
+                  dir: 'rtl'
+              });
+              localStorage.setItem(LAST_CHECK_KEY, Date.now().toString());
+          }
+      };
+
+      // Check 5 seconds after app load, and then periodically every hour
+      const timer = setTimeout(checkUnpostponedSessions, 5000); 
+      const intervalId = setInterval(checkUnpostponedSessions, 60 * 60 * 1000);
+
+      return () => {
+          clearTimeout(timer);
+          clearInterval(intervalId);
+      };
+  }, [allSessions]);
 
 
   const navLinkClasses = "flex items-center px-3 py-2 rounded-lg transition-colors duration-200 hover:bg-gray-700";
