@@ -47,7 +47,10 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js').then(registration => {
+          // FIX: Explicitly construct the Service Worker URL with the current origin
+          // to prevent cross-origin registration errors in sandboxed environments.
+          const swUrl = `${location.origin}/sw.js`;
+          navigator.serviceWorker.register(swUrl).then(registration => {
             console.log('SW registered: ', registration);
           }).catch(registrationError => {
             console.log('SW registration failed: ', registrationError);

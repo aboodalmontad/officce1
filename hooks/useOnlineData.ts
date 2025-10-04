@@ -4,7 +4,50 @@ import { useOnlineStatus } from './useOnlineStatus';
 
 // --- Real-time Cloud Storage Configuration ---
 // Using a public JSON store for demonstration. This enables real-time sync across devices.
-const CLOUD_STORAGE_URL = 'https://api.npoint.io/e4f553659c04a32b6e1b';
+const CLOUD_STORAGE_URL = 'https://api.npoint.io/9e3152733975a281a8ad';
+
+// --- IndexedDB Helpers for Service Worker Access ---
+const DB_NAME = 'LawyerAppDB';
+const DB_VERSION = 1;
+const SESSIONS_STORE_NAME = 'sessions';
+
+const openDB = (): Promise<IDBDatabase> => {
+    return new Promise((resolve, reject) => {
+        if (typeof indexedDB === 'undefined') {
+            reject('IndexedDB is not supported');
+            return;
+        }
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onerror = () => reject("Error opening DB");
+        request.onsuccess = () => resolve(request.result);
+        request.onupgradeneeded = event => {
+            const db = (event.target as IDBOpenDBRequest).result;
+            if (!db.objectStoreNames.contains(SESSIONS_STORE_NAME)) {
+                db.createObjectStore(SESSIONS_STORE_NAME, { keyPath: 'id' });
+            }
+        };
+    });
+};
+
+const updateSessionsInDB = async (sessions: Session[]) => {
+    try {
+        const db = await openDB();
+        const transaction = db.transaction([SESSIONS_STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(SESSIONS_STORE_NAME);
+        
+        // Wrap operations in a promise to handle transaction completion
+        await new Promise<void>((resolve, reject) => {
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+
+            store.clear(); // Clear old sessions
+            sessions.forEach(session => store.put(session));
+        });
+
+    } catch (error) {
+        console.error("Failed to update sessions in IndexedDB:", error);
+    }
+};
 
 // --- Data Types and Defaults ---
 const defaultAssistants = ['أحمد', 'فاطمة', 'سارة', 'بدون تخصيص'];
@@ -91,7 +134,7 @@ const validateAndHydrate = (data: any): AppData => {
         location: sanitizeString(task.location),
     }));
     const validatedAppointments: Appointment[] = safeArray(data.appointments, (apt: any): Appointment => ({
-        id: apt.id || `apt-${Date.now()}-${Math.random()}`,
+        id: apt.id || `apt-${Date.now()}`,
         title: String(apt.title || 'موعد بدون عنوان'),
         time: typeof apt.time === 'string' && /^\d{2}:\d{2}$/.test(apt.time) ? apt.time : '00:00',
         date: apt.date && !isNaN(new Date(apt.date).getTime()) ? new Date(apt.date) : new Date(),
@@ -101,7 +144,7 @@ const validateAndHydrate = (data: any): AppData => {
         assignee: isValidAssistant(apt.assignee) ? apt.assignee : defaultAssignee,
     }));
     const validatedAccountingEntries: AccountingEntry[] = safeArray(data.accountingEntries, (entry: any): AccountingEntry => ({
-        id: entry.id || `acc-${Date.now()}-${Math.random()}`,
+        id: entry.id || `acc-${Date.now()}`,
         type: ['income', 'expense'].includes(entry.type) ? entry.type : 'income',
         amount: typeof entry.amount === 'number' ? entry.amount : 0,
         date: entry.date && !isNaN(new Date(entry.date).getTime()) ? new Date(entry.date) : new Date(),
@@ -246,6 +289,14 @@ export const useOnlineData = () => {
     const allSessions = React.useMemo(() => {
         return (data.clients || []).flatMap(c => (c.cases || []).flatMap(cs => (cs.stages || []).flatMap(s => s.sessions || [])));
     }, [data.clients]);
+
+    // FIX: Sync sessions to IndexedDB for the Service Worker to use for background tasks.
+    // This was lost during the migration from useMockData.
+    React.useEffect(() => {
+        if (allSessions) {
+            updateSessionsInDB(allSessions);
+        }
+    }, [allSessions]);
 
     return { ...data, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, setAssistants, syncStatus, forceSync };
 };
