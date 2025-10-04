@@ -1,9 +1,9 @@
 import * as React from 'react';
-import { ArrowDownTrayIcon, ArrowUpTrayIcon, TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, PlusIcon, CheckCircleIcon, XCircleIcon } from '../components/icons';
+import { TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, PlusIcon, CheckCircleIcon, XCircleIcon } from '../components/icons';
 import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
-import { SyncStatus } from '../hooks/useSync';
+import { AnalysisStatus } from '../hooks/useSync';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
-import { APP_DATA_KEY } from '../hooks/useMockData';
+import { SyncStatus } from '../hooks/useOnlineData';
 
 type AppData = {
     clients: Client[];
@@ -15,115 +15,26 @@ type AppData = {
 
 interface SettingsPageProps {
     setFullData: (data: any) => void;
-    syncStatus: SyncStatus;
-    lastSync: Date | null;
-    triggerSync: () => void;
+    analysisStatus: AnalysisStatus;
+    lastAnalysis: Date | null;
+    triggerAnalysis: () => void;
     assistants: string[];
     setAssistants: (updater: (prev: string[]) => string[]) => void;
-    syncReport: string | null;
+    analysisReport: string | null;
+    syncStatus: SyncStatus;
 }
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, lastSync, triggerSync, assistants, setAssistants, syncReport }) => {
-    const fileInputRef = React.useRef<HTMLInputElement>(null);
+const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus, lastAnalysis, triggerAnalysis, assistants, setAssistants, analysisReport, syncStatus }) => {
     const [feedback, setFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = React.useState(false);
     const [isDeleteAssistantModalOpen, setIsDeleteAssistantModalOpen] = React.useState(false);
     const [assistantToDelete, setAssistantToDelete] = React.useState<string | null>(null);
     const isOnline = useOnlineStatus();
     const [newAssistant, setNewAssistant] = React.useState('');
-    const [needsSync, setNeedsSync] = React.useState(false);
-
-    // Effect to check sync status from localStorage
-    React.useEffect(() => {
-        const checkSyncFlag = () => {
-            const flag = localStorage.getItem('lawyerAppNeedsSync') === 'true';
-            setNeedsSync(flag);
-        };
-        
-        checkSyncFlag(); // Initial check
-        
-        // Listen for storage changes from other tabs
-        window.addEventListener('storage', checkSyncFlag); 
-        
-        // Also check periodically in case the event listener doesn't fire
-        const interval = setInterval(checkSyncFlag, 2000);
-
-        return () => {
-            window.removeEventListener('storage', checkSyncFlag);
-            clearInterval(interval);
-        };
-    }, []);
 
     const showFeedback = (message: string, type: 'success' | 'error') => {
         setFeedback({ message, type });
         setTimeout(() => setFeedback(null), 4000);
-    };
-
-    const handleBackup = () => {
-        try {
-            const data = localStorage.getItem(APP_DATA_KEY);
-            if (!data) {
-                showFeedback('لا توجد بيانات لحفظها.', 'error');
-                return;
-            }
-            const blob = new Blob([data], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            const date = new Date().toISOString().split('T')[0];
-            a.href = url;
-            a.download = `lawyer-app-backup-${date}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            showFeedback('تم تنزيل نسخة احتياطية بنجاح!', 'success');
-        } catch (error) {
-            console.error('Failed to create backup:', error);
-            showFeedback('حدث خطأ أثناء إنشاء النسخة الاحتياطية.', 'error');
-        }
-    };
-
-    const handleRestoreClick = () => {
-        fileInputRef.current?.click();
-    };
-
-    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        if (file.type !== 'application/json') {
-            showFeedback('يرجى تحديد ملف JSON صالح.', 'error');
-            return;
-        }
-
-        if (!window.confirm('هل أنت متأكد من استرجاع البيانات؟ سيتم استبدال جميع البيانات الحالية.')) {
-            return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const text = e.target?.result;
-                if (typeof text !== 'string') throw new Error("File content is not a string");
-                const parsedData = JSON.parse(text);
-
-                // Basic validation
-                if (parsedData.clients && parsedData.adminTasks && parsedData.appointments && parsedData.accountingEntries) {
-                    setFullData(parsedData);
-                    showFeedback('تم استرجاع البيانات بنجاح.', 'success');
-                } else {
-                    showFeedback('ملف النسخ الاحتياطي غير صالح أو تالف.', 'error');
-                }
-            } catch (error) {
-                console.error('Failed to restore data:', error);
-                showFeedback('حدث خطأ أثناء قراءة ملف النسخة الاحتياطية.', 'error');
-            } finally {
-                if (fileInputRef.current) {
-                    fileInputRef.current.value = '';
-                }
-            }
-        };
-        reader.readAsText(file);
     };
 
     const handleConfirmClearData = () => {
@@ -144,16 +55,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
         setIsConfirmModalOpen(false);
     };
 
-    const getSyncButtonContent = () => {
-        switch (syncStatus) {
-            case 'syncing':
-                return <><ArrowPathIcon className="w-5 h-5 animate-spin" /> <span>جاري المزامنة...</span></>;
+    const getAnalysisButtonContent = () => {
+        switch (analysisStatus) {
+            case 'analyzing':
+                return <><ArrowPathIcon className="w-5 h-5 animate-spin" /> <span>جاري التحليل...</span></>;
             case 'success':
-                return <><CheckCircleIcon className="w-5 h-5 text-green-400" /> <span>تمت المزامنة</span></>;
+                return <><CheckCircleIcon className="w-5 h-5 text-green-400" /> <span>اكتمل التحليل</span></>;
             case 'error':
-                return <><XCircleIcon className="w-5 h-5 text-red-400" /> <span>فشل المزامنة</span></>;
+                return <><XCircleIcon className="w-5 h-5 text-red-400" /> <span>فشل التحليل</span></>;
             default:
-                return <><CloudArrowUpIcon className="w-5 h-5" /> <span>مزامنة الآن</span></>;
+                return <><CloudArrowUpIcon className="w-5 h-5" /> <span>تحليل الأداء الآن</span></>;
         }
     };
 
@@ -181,25 +92,15 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
         setAssistantToDelete(null);
     };
 
-    const SyncReportDisplay: React.FC<{ report: string; status: SyncStatus }> = ({ report, status }) => {
+    const AnalysisReportDisplay: React.FC<{ report: string; status: AnalysisStatus }> = ({ report, status }) => {
         const isError = status === 'error';
-
-        // A simple parser for "### Title\nContent" and lists
-        const renderContent = (content: string) => {
-            return content.split('\n').map((line, i) => {
-                line = line.trim();
-                if (line.startsWith('- ')) {
-                    return <li key={i} className="ms-5 list-disc">{line.substring(2)}</li>;
-                }
-                if (line) {
-                    return <p key={i}>{line}</p>;
-                }
-                return null;
-            }).filter(Boolean); // Remove null entries
-        };
-        
+        const renderContent = (content: string) => content.split('\n').map((line, i) => {
+            line = line.trim();
+            if (line.startsWith('- ')) return <li key={i} className="ms-5 list-disc">{line.substring(2)}</li>;
+            if (line) return <p key={i}>{line}</p>;
+            return null;
+        }).filter(Boolean);
         const sections = report.split('### ').slice(1);
-
         return (
             <div className={`mt-6 p-4 border ${isError ? 'border-red-200 bg-red-50' : 'border-blue-200 bg-blue-50'} rounded-lg space-y-4 animate-fade-in`}>
                 {sections.map((section, index) => {
@@ -207,9 +108,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
                     const content = contentLines.join('\n').trim();
                     return (
                         <div key={index}>
-                            <h4 className={`text-lg font-bold ${isError ? 'text-red-800' : 'text-blue-800'}`}>
-                               {title.trim()}
-                            </h4>
+                            <h4 className={`text-lg font-bold ${isError ? 'text-red-800' : 'text-blue-800'}`}>{title.trim()}</h4>
                             <div className={`mt-2 text-sm ${isError ? 'text-red-700' : 'text-gray-700'} space-y-2`}>{renderContent(content)}</div>
                         </div>
                     );
@@ -218,6 +117,22 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
         );
     };
 
+    const SyncStatusDisplay: React.FC = () => {
+        const statusInfo = {
+            loading: { text: 'جاري تحميل البيانات من السحابة...', icon: <ArrowPathIcon className="w-5 h-5 animate-spin" />, color: 'text-gray-700', bg: 'bg-gray-100' },
+            syncing: { text: 'جاري مزامنة آخر التغييرات...', icon: <ArrowPathIcon className="w-5 h-5 animate-spin" />, color: 'text-yellow-800', bg: 'bg-yellow-50' },
+            synced: { text: 'جميع بياناتك محدّثة ومحفوظة في السحابة.', icon: <CheckCircleIcon className="w-5 h-5 text-green-600" />, color: 'text-green-700', bg: 'bg-green-50' },
+            offline: { text: 'أنت غير متصل بالإنترنت. سيتم حفظ التغييرات عند عودة الاتصال.', icon: <ExclamationTriangleIcon className="w-5 h-5 text-gray-600" />, color: 'text-gray-700', bg: 'bg-gray-100' },
+            error: { text: 'حدث خطأ أثناء المزامنة. الرجاء التحقق من اتصالك بالإنترنت.', icon: <XCircleIcon className="w-5 h-5 text-red-600" />, color: 'text-red-700', bg: 'bg-red-50' },
+        };
+        const current = statusInfo[syncStatus] || statusInfo.loading;
+        return (
+            <div className={`p-4 rounded-lg flex items-center gap-3 ${current.bg}`}>
+                {current.icon}
+                <p className={`font-medium ${current.color}`}>{current.text}</p>
+            </div>
+        );
+    };
 
     return (
         <div className="space-y-6">
@@ -229,41 +144,36 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
                 </div>
             )}
 
-            <div className="bg-white p-6 rounded-lg shadow space-y-6">
-                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">المزامنة السحابية والتحليل الذكي</h2>
-                
-                {needsSync && !isOnline && (
-                    <div className="p-3 bg-yellow-50 text-yellow-800 border-s-4 border-yellow-400 rounded-md animate-fade-in">
-                        <p className="font-semibold">لديك تغييرات غير متزامنة. سيتم مزامنتها تلقائيًا عند عودة الاتصال بالإنترنت.</p>
-                    </div>
-                )}
-                {needsSync && isOnline && syncStatus !== 'syncing' && (
-                     <div className="p-3 bg-blue-50 text-blue-800 border-s-4 border-blue-400 rounded-md animate-fade-in">
-                        <p className="font-semibold">لديك تغييرات غير متزامنة. يمكنك المزامنة الآن لحفظها في السحابة.</p>
-                    </div>
-                )}
+            <div className="bg-white p-6 rounded-lg shadow space-y-4">
+                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">المزامنة السحابية التلقائية</h2>
+                <p className="text-gray-600 text-sm">
+                    بياناتك الآن محفوظة بشكل آمن على الإنترنت ويتم مزامنتها تلقائياً بين جميع أجهزتك. أي تغيير تقوم به هنا سيظهر على جوالك والعكس صحيح.
+                </p>
+                <SyncStatusDisplay />
+            </div>
 
+            <div className="bg-white p-6 rounded-lg shadow space-y-6">
+                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">تحليل الأداء بالذكاء الاصطناعي</h2>
                 <div className="flex flex-col lg:flex-row items-start justify-between gap-4">
                     <div className="flex-grow">
-                        <h3 className="font-semibold text-lg">مزامنة وتحليل البيانات</h3>
+                        <h3 className="font-semibold text-lg">تحليل بيانات المكتب</h3>
                         <p className="text-gray-600 text-sm mt-1">
-                           قم برفع بياناتك بأمان إلى السحابة لحفظها، ثم استخدم الذكاء الاصطناعي لتحليلها والحصول على ملخص أداء وتوصيات ذكية.
+                           استخدم الذكاء الاصطناعي لتحليل بياناتك الحالية والحصول على ملخص أداء وتوصيات ذكية لتحسين إدارة مكتبك.
                         </p>
                         <p className="text-xs text-gray-500 mt-2">
-                            آخر مزامنة ناجحة: {lastSync ? lastSync.toLocaleString('ar-SY') : 'لم تتم المزامنة بعد'}
+                            آخر تحليل ناجح: {lastAnalysis ? lastAnalysis.toLocaleString('ar-SY') : 'لم يتم التحليل بعد'}
                         </p>
                     </div>
                     <button 
-                        onClick={triggerSync}
-                        disabled={!isOnline || syncStatus === 'syncing'}
+                        onClick={triggerAnalysis}
+                        disabled={!isOnline || analysisStatus === 'analyzing'}
                         className="flex-shrink-0 w-full lg:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-gray-700 text-white font-semibold rounded-lg hover:bg-gray-600 transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed"
-                        title={!isOnline ? 'المزامنة تتطلب اتصالاً بالإنترنت' : 'مزامنة البيانات مع الخادم'}
+                        title={!isOnline ? 'التحليل يتطلب اتصالاً بالإنترنت' : 'تحليل بيانات المكتب'}
                     >
-                        {getSyncButtonContent()}
+                        {getAnalysisButtonContent()}
                     </button>
                 </div>
-                 {/* Display the sync report */}
-                 {syncReport && <SyncReportDisplay report={syncReport} status={syncStatus} />}
+                 {analysisReport && <AnalysisReportDisplay report={analysisReport} status={analysisStatus} />}
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow space-y-6">
@@ -303,37 +213,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
                     </div>
                 </div>
             </div>
-
+            
             <div className="bg-white p-6 rounded-lg shadow space-y-6">
-                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">إدارة البيانات</h2>
-
-                <div className="flex flex-col lg:flex-row items-start justify-between gap-4">
-                    <div className="flex-grow">
-                        <h3 className="font-semibold text-lg">حفظ نسخة احتياطية</h3>
-                        <p className="text-gray-600 text-sm mt-1">قم بتنزيل جميع بياناتك (الموكلين، القضايا، الحسابات، إلخ) في ملف واحد. احتفظ بهذا الملف في مكان آمن.</p>
-                    </div>
-                    <button onClick={handleBackup} className="flex-shrink-0 w-full lg:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">
-                        <ArrowDownTrayIcon className="w-5 h-5" />
-                        <span>تنزيل نسخة احتياطية</span>
-                    </button>
-                </div>
-                
-                <hr />
-
-                <div className="flex flex-col lg:flex-row items-start justify-between gap-4">
-                    <div className="flex-grow">
-                        <h3 className="font-semibold text-lg">استرجاع نسخة احتياطية</h3>
-                        <p className="text-gray-600 text-sm mt-1">قم باستعادة بيانات التطبيق من ملف نسخة احتياطية. <span className="font-bold">تحذير: سيتم استبدال جميع البيانات الحالية.</span></p>
-                    </div>
-                    <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".json" className="hidden" />
-                    <button onClick={handleRestoreClick} className="flex-shrink-0 w-full lg:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors">
-                        <ArrowUpTrayIcon className="w-5 h-5" />
-                        <span>استرجاع من ملف</span>
-                    </button>
-                </div>
-
-                <hr />
-
+                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">إدارة البيانات الخطرة</h2>
                 <div className="p-4 bg-red-50 border-s-4 border-red-500 rounded-md">
                     <div className="flex">
                         <div className="flex-shrink-0">
@@ -342,7 +224,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
                         <div className="ms-3">
                             <h3 className="text-lg font-semibold text-red-800">مسح جميع البيانات</h3>
                             <div className="mt-2 text-sm text-red-700">
-                                <p>هذا الإجراء سيقوم بحذف جميع البيانات المخزنة في التطبيق بشكل نهائي، بما في ذلك الموكلين، القضايا، الجلسات، والقيود المحاسبية. لا يمكن التراجع عن هذا الإجراء.</p>
+                                <p>هذا الإجراء سيقوم بحذف جميع البيانات المخزنة في التطبيق بشكل نهائي من السحابة. لا يمكن التراجع عن هذا الإجراء.</p>
                             </div>
                              <div className="mt-4">
                                  <button onClick={() => setIsConfirmModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors">

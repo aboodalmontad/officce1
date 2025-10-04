@@ -182,8 +182,9 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ clients, accountingEntries })
                 const dates = sessions.map((session: Session): number => new Date(session.date).getTime());
                 const minDate = Math.min(...dates);
                 const maxDate = Math.max(...dates);
-                // Fix: Explicitly cast `maxDate` and `minDate` to Number. This resolves a TypeScript error where the types were not being inferred correctly as numbers, causing issues with the subtraction operation.
-                const duration = Math.round((Number(maxDate) - Number(minDate)) / (1000 * 60 * 60 * 24)) + 1; // Add 1 to count first day
+                // FIX: Removed the redundant Number() casting which was causing a TypeScript error.
+                // The values from Math.max and Math.min are already numbers.
+                const duration = Math.round((maxDate - minDate) / (1000 * 60 * 60 * 24)) + 1; // Add 1 to count first day
                 return { name: c.subject, value: duration };
             })
             .filter((item): item is { name: string; value: number } => Boolean(item));

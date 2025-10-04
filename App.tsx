@@ -8,17 +8,37 @@ import ClientsPage from './pages/ClientsPage';
 import AccountingPage from './pages/AccountingPage';
 import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
-import { HomeIcon, UsersIcon, CurrencyDollarIcon, DocumentChartBarIcon, SettingsIcon } from './components/icons';
-import { useMockData } from './hooks/useMockData';
-import { useOnlineStatus } from './hooks/useOnlineStatus';
-import { useSync } from './hooks/useSync';
+import { HomeIcon, UsersIcon, CurrencyDollarIcon, DocumentChartBarIcon, SettingsIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, ExclamationTriangleIcon } from './components/icons';
+import { useOnlineData, SyncStatus } from './hooks/useOnlineData';
+import { useAnalysis } from './hooks/useSync';
 import { isBeforeToday } from './utils/dateUtils';
 
+const SyncIndicator: React.FC<{ status: SyncStatus }> = ({ status }) => {
+    const messages = {
+        loading: { text: 'جاري التحميل...', icon: <ArrowPathIcon className="w-4 h-4 animate-spin" />, color: 'text-gray-300' },
+        syncing: { text: 'جاري المزامنة...', icon: <ArrowPathIcon className="w-4 h-4 animate-spin" />, color: 'text-yellow-300' },
+        synced: { text: 'البيانات محفوظة', icon: <CheckCircleIcon className="w-4 h-4" />, color: 'text-green-400' },
+        offline: { text: 'أنت غير متصل', icon: <XCircleIcon className="w-4 h-4" />, color: 'text-gray-400' },
+        error: { text: 'فشل المزامنة', icon: <ExclamationTriangleIcon className="w-4 h-4" />, color: 'text-red-400' },
+    };
+
+    const current = messages[status] || messages.loading;
+
+    return (
+        <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs ${current.color}`} title={current.text}>
+            {current.icon}
+            <span>{current.text}</span>
+        </div>
+    );
+};
+
+
 const App: React.FC = () => {
-  const { clients, adminTasks, appointments, accountingEntries, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, assistants, setAssistants } = useMockData();
-  const isOnline = useOnlineStatus();
-  const { syncStatus, lastSync, triggerSync, syncReport } = useSync();
+  const { clients, adminTasks, appointments, accountingEntries, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, assistants, setAssistants, syncStatus } = useOnlineData();
+  const { analysisStatus, lastAnalysis, triggerAnalysis, analysisReport } = useAnalysis();
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
+  const isLoading = syncStatus === 'loading';
+
 
   React.useEffect(() => {
     const handleResize = () => {
@@ -30,14 +50,6 @@ const App: React.FC = () => {
     handleResize(); // Also check on initial mount
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-
-  React.useEffect(() => {
-    const needsSync = localStorage.getItem('lawyerAppNeedsSync') === 'true';
-    if (isOnline && needsSync && syncStatus !== 'syncing') {
-        console.log('Application is online and has pending changes. Triggering automatic sync.');
-        triggerSync();
-    }
-  }, [isOnline, syncStatus, triggerSync]);
   
   // Effect for handling appointment notifications
   React.useEffect(() => {
@@ -159,6 +171,16 @@ const App: React.FC = () => {
   const activeNavLinkClasses = "bg-blue-600 text-white";
   const mobileNavLinkClasses = "flex items-center px-3 py-2 rounded-lg text-base font-medium transition-colors duration-200 text-gray-300 hover:bg-gray-700 hover:text-white";
 
+  if (isLoading) {
+    return (
+        <div className="flex items-center justify-center min-h-screen bg-gray-100">
+            <div className="text-center">
+                <ArrowPathIcon className="w-12 h-12 text-blue-600 animate-spin mx-auto" />
+                <p className="mt-4 text-lg font-semibold text-gray-700">جاري تحميل بيانات المكتب من السحابة...</p>
+            </div>
+        </div>
+    );
+  }
 
   return (
     // FIX: Replaced all `ReactRouterDOM.*` component usages with direct component names
@@ -167,14 +189,11 @@ const App: React.FC = () => {
       <div className="relative min-h-screen bg-gray-100 text-gray-800">
         <header className="no-print fixed top-0 left-0 right-0 w-full bg-gray-800 text-white shadow-lg z-50">
           <div className="container mx-auto flex items-center justify-between h-16 px-4 sm:px-6">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-4">
               <div className="text-xl font-bold">
                 <span>مكتب المحامي</span>
               </div>
-              <div className="flex items-center gap-2" title={isOnline ? 'أنت متصل بالإنترنت' : 'أنت غير متصل بالإنترنت'}>
-                <span className={`w-3 h-3 rounded-full transition-colors ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                <span className="text-sm text-gray-300">{isOnline ? 'متصل' : 'غير متصل'}</span>
-              </div>
+              <SyncIndicator status={syncStatus} />
             </div>
             <div className="flex items-center gap-x-4">
                {/* Desktop Menu */}
@@ -215,7 +234,7 @@ const App: React.FC = () => {
             <Route path="/clients" element={<ClientsPage clients={clients} setClients={setClients} accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} assistants={assistants} />} />
             <Route path="/accounting" element={<AccountingPage accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} clients={clients} />} />
             <Route path="/reports" element={<ReportsPage clients={clients} accountingEntries={accountingEntries} />} />
-            <Route path="/settings" element={<SettingsPage setFullData={setFullData} syncStatus={syncStatus} lastSync={lastSync} triggerSync={triggerSync} assistants={assistants} setAssistants={setAssistants} syncReport={syncReport} />} />
+            <Route path="/settings" element={<SettingsPage setFullData={setFullData} analysisStatus={analysisStatus} lastAnalysis={lastAnalysis} triggerAnalysis={triggerAnalysis} assistants={assistants} setAssistants={setAssistants} analysisReport={analysisReport} syncStatus={syncStatus} />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </main>

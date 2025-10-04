@@ -51,8 +51,8 @@ const PrintableReport: React.FC<PrintableReportProps> = ({ reportData }) => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {/* FIX: Cast `items` to `AgendaItem[]` to resolve the TypeScript error where `map` was called on type `unknown`. */}
-                                        {(items as AgendaItem[]).map((item, index) => (
+                                        {/* FIX: Explicitly type `item` to ensure type safety within the map callback. */}
+                                        {(items as AgendaItem[]).map((item: AgendaItem, index) => (
                                             <tr key={index} className="bg-white border-b">
                                                 <td className="px-4 py-3 font-medium">{item.time}</td>
                                                 <td className="px-4 py-3">{item.type}</td>

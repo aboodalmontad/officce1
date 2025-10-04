@@ -2,7 +2,7 @@ import * as React from 'react';
 import { GoogleGenAI } from '@google/genai';
 import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
 
-export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
+export type AnalysisStatus = 'idle' | 'analyzing' | 'success' | 'error';
 
 type AppData = {
     clients: Client[];
@@ -24,67 +24,41 @@ const dateReviver = (key: string, value: any) => {
     return value;
 };
 
-/**
- * A fake API function to simulate uploading data to a cloud server.
- * @param data The application data to be "uploaded".
- * @returns A promise that resolves to a success status.
- */
-const fakeUploadApi = (data: AppData): Promise<{ success: boolean }> => {
-    console.log("Simulating data upload to the cloud...", data);
-    return new Promise(resolve => {
-        // Simulate a 1.5 second network delay for the upload
-        setTimeout(() => {
-            console.log("Data upload successful.");
-            resolve({ success: true });
-        }, 1500);
-    });
-};
-
-
-export const useSync = () => {
-    const [syncStatus, setSyncStatus] = React.useState<SyncStatus>('idle');
-    const [syncReport, setSyncReport] = React.useState<string | null>(null);
-    const [lastSync, setLastSync] = React.useState<Date | null>(() => {
+export const useAnalysis = () => {
+    const [analysisStatus, setAnalysisStatus] = React.useState<AnalysisStatus>('idle');
+    const [analysisReport, setAnalysisReport] = React.useState<string | null>(null);
+    const [lastAnalysis, setLastAnalysis] = React.useState<Date | null>(() => {
         try {
-            const saved = localStorage.getItem('lastSync');
+            const saved = localStorage.getItem('lastAnalysis');
             return saved ? new Date(saved) : null;
         } catch (error) {
-            console.error("Failed to load last sync date from localStorage", error);
+            console.error("Failed to load last analysis date from localStorage", error);
             return null;
         }
     });
 
-    const triggerSync = React.useCallback(async () => {
-        setSyncStatus('syncing');
-        setSyncReport("### ⏳ جاري المزامنة...\n- الخطوة 1/2: جاري رفع بياناتك إلى الخادم السحابي الآمن.");
+    const triggerAnalysis = React.useCallback(async () => {
+        setAnalysisStatus('analyzing');
+        setAnalysisReport("### ⏳ جاري تحليل بياناتك الحالية...");
         
         let ai: GoogleGenAI;
         try {
             ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         } catch (e) {
             console.error("Failed to initialize GoogleGenAI", e);
-            setSyncStatus('error');
-            setSyncReport("### ❌ فشلت عملية المزامنة\nالسبب: لم يتم تهيئة عميل الذكاء الاصطناعي. يرجى التحقق من إعدادات مفتاح API.");
-            setTimeout(() => setSyncStatus('idle'), 5000);
+            setAnalysisStatus('error');
+            setAnalysisReport("### ❌ فشلت عملية التحليل\nالسبب: لم يتم تهيئة عميل الذكاء الاصطناعي. يرجى التحقق من إعدادات مفتاح API.");
+            setTimeout(() => setAnalysisStatus('idle'), 5000);
             return;
         }
         
         try {
             const rawData = localStorage.getItem(APP_DATA_KEY);
             if (!rawData) {
-                throw new Error("لا توجد بيانات محلية للمزامنة.");
+                throw new Error("لا توجد بيانات محلية للتحليل.");
             }
             const data: AppData = JSON.parse(rawData, dateReviver);
 
-            // Step 1: Simulate data upload
-            const uploadResult = await fakeUploadApi(data);
-            if (!uploadResult.success) {
-                throw new Error("فشل رفع البيانات إلى الخادم.");
-            }
-            
-            setSyncReport(prev => prev + "\n- ✅ اكتمل الرفع.\n- الخطوة 2/2: جاري تحليل البيانات باستخدام الذكاء الاصطناعي...");
-
-            // Step 2: AI Analysis
             const simplifiedData = {
                 clientCount: data.clients?.length || 0,
                 totalCases: (data.clients || []).reduce((acc, c) => acc + (c.cases?.length || 0), 0),
@@ -125,23 +99,22 @@ export const useSync = () => {
             });
             
             const reportText = response.text;
-            setSyncReport(reportText);
+            setAnalysisReport(reportText);
 
             const now = new Date();
-            setLastSync(now);
-            localStorage.setItem('lastSync', now.toISOString());
-            localStorage.setItem('lawyerAppNeedsSync', 'false');
-            setSyncStatus('success');
+            setLastAnalysis(now);
+            localStorage.setItem('lastAnalysis', now.toISOString());
+            setAnalysisStatus('success');
 
         } catch (error) {
-            console.error("Sync process failed:", error);
-            setSyncStatus('error');
+            console.error("Analysis process failed:", error);
+            setAnalysisStatus('error');
             const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
-            setSyncReport(`### ❌ فشلت عملية المزامنة\nالسبب: ${errorMessage}`);
+            setAnalysisReport(`### ❌ فشلت عملية التحليل\nالسبب: ${errorMessage}`);
         } finally {
-            setTimeout(() => setSyncStatus('idle'), 5000);
+            setTimeout(() => setAnalysisStatus('idle'), 5000);
         }
     }, []);
 
-    return { syncStatus, lastSync, triggerSync, syncReport };
+    return { analysisStatus, lastAnalysis, triggerAnalysis, analysisReport };
 };
