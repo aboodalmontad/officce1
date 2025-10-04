@@ -179,11 +179,14 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ clients, accountingEntries })
             .map((c): { name: string; value: number } | null => {
                 const sessions = c.stages.flatMap((stage: Stage): Session[] => stage.sessions);
                 if (sessions.length < 2) return null;
-                const dates = sessions.map((session: Session): number => new Date(session.date).getTime());
-                const minDate = Math.min(...dates);
-                const maxDate = Math.max(...dates);
-                // FIX: Removed the redundant Number() casting which was causing a TypeScript error.
-                // The values from Math.max and Math.min are already numbers.
+                // FIX: Explicitly convert dates to numeric timestamps and filter out invalid values (NaN)
+                // to prevent type errors during arithmetic operations.
+                const timestamps = sessions.map((session: Session) => new Date(session.date).getTime()).filter(t => !isNaN(t));
+                if (timestamps.length < 2) return null;
+
+                const minDate = Math.min(...timestamps);
+                const maxDate = Math.max(...timestamps);
+                
                 const duration = Math.round((maxDate - minDate) / (1000 * 60 * 60 * 24)) + 1; // Add 1 to count first day
                 return { name: c.subject, value: duration };
             })

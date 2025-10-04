@@ -13,7 +13,7 @@ import { useOnlineData, SyncStatus } from './hooks/useOnlineData';
 import { useAnalysis } from './hooks/useSync';
 import { isBeforeToday } from './utils/dateUtils';
 
-const SyncIndicator: React.FC<{ status: SyncStatus }> = ({ status }) => {
+const SyncIndicator: React.FC<{ status: SyncStatus; onRetry: () => void }> = ({ status, onRetry }) => {
     const messages = {
         loading: { text: 'جاري التحميل...', icon: <ArrowPathIcon className="w-4 h-4 animate-spin" />, color: 'text-gray-300' },
         syncing: { text: 'جاري المزامنة...', icon: <ArrowPathIcon className="w-4 h-4 animate-spin" />, color: 'text-yellow-300' },
@@ -23,18 +23,26 @@ const SyncIndicator: React.FC<{ status: SyncStatus }> = ({ status }) => {
     };
 
     const current = messages[status] || messages.loading;
+    const needsRetry = status === 'error' || status === 'offline';
 
     return (
-        <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs ${current.color}`} title={current.text}>
-            {current.icon}
-            <span>{current.text}</span>
+        <div className="flex items-center gap-2">
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs ${current.color}`} title={current.text}>
+                {current.icon}
+                <span>{current.text}</span>
+            </div>
+            {needsRetry && (
+                 <button onClick={onRetry} className="p-1.5 rounded-full bg-gray-600 hover:bg-gray-500 text-white transition-colors" title="إعادة محاولة المزامنة">
+                    <ArrowPathIcon className="w-4 h-4" />
+                </button>
+            )}
         </div>
     );
 };
 
 
 const App: React.FC = () => {
-  const { clients, adminTasks, appointments, accountingEntries, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, assistants, setAssistants, syncStatus } = useOnlineData();
+  const { clients, adminTasks, appointments, accountingEntries, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, assistants, setAssistants, syncStatus, forceSync } = useOnlineData();
   const { analysisStatus, lastAnalysis, triggerAnalysis, analysisReport } = useAnalysis();
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const isLoading = syncStatus === 'loading';
@@ -193,7 +201,7 @@ const App: React.FC = () => {
               <div className="text-xl font-bold">
                 <span>مكتب المحامي</span>
               </div>
-              <SyncIndicator status={syncStatus} />
+              <SyncIndicator status={syncStatus} onRetry={forceSync} />
             </div>
             <div className="flex items-center gap-x-4">
                {/* Desktop Menu */}

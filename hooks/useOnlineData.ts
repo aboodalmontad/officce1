@@ -4,7 +4,7 @@ import { useOnlineStatus } from './useOnlineStatus';
 
 // --- Real-time Cloud Storage Configuration ---
 // Using a public JSON store for demonstration. This enables real-time sync across devices.
-const CLOUD_STORAGE_URL = 'https://api.npoint.io/c0211516e86f8705f458';
+const CLOUD_STORAGE_URL = 'https://api.npoint.io/e4f553659c04a32b6e1b';
 
 // --- Data Types and Defaults ---
 const defaultAssistants = ['أحمد', 'فاطمة', 'سارة', 'بدون تخصيص'];
@@ -195,6 +195,27 @@ export const useOnlineData = () => {
             debouncedSave(dataRef.current);
         }
     }, [isOnline, syncStatus, debouncedSave]);
+    
+    const forceSync = React.useCallback(async () => {
+        if (!isOnline) {
+            setSyncStatus('offline');
+            return;
+        }
+        setSyncStatus('syncing');
+        const dataToSave = dataRef.current;
+        try {
+            const response = await fetch(CLOUD_STORAGE_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dataToSave),
+            });
+            if (!response.ok) throw new Error('Failed to save to cloud.');
+            setSyncStatus('synced');
+        } catch (error) {
+            console.error('Cloud save error (force sync):', error);
+            setSyncStatus('error');
+        }
+    }, [isOnline]);
 
     const updateAndSave = React.useCallback((updater: (prev: AppData) => AppData) => {
         const newData = updater(dataRef.current);
@@ -226,5 +247,5 @@ export const useOnlineData = () => {
         return (data.clients || []).flatMap(c => (c.cases || []).flatMap(cs => (cs.stages || []).flatMap(s => s.sessions || [])));
     }, [data.clients]);
 
-    return { ...data, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, setAssistants, syncStatus };
+    return { ...data, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, setAssistants, syncStatus, forceSync };
 };
