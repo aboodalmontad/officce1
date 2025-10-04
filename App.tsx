@@ -167,11 +167,11 @@ const App: React.FC = () => {
       <div className="relative min-h-screen bg-gray-100 text-gray-800">
         <header className="no-print fixed top-0 left-0 right-0 w-full bg-gray-800 text-white shadow-lg z-50">
           <div className="container mx-auto flex items-center justify-between h-16 px-4 sm:px-6">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
               <div className="text-xl font-bold">
                 <span>مكتب المحامي</span>
               </div>
-              <div className="hidden sm:flex items-center gap-2" title={isOnline ? 'أنت متصل بالإنترنت' : 'أنت غير متصل بالإنترنت'}>
+              <div className="flex items-center gap-2" title={isOnline ? 'أنت متصل بالإنترنت' : 'أنت غير متصل بالإنترنت'}>
                 <span className={`w-3 h-3 rounded-full transition-colors ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></span>
                 <span className="text-sm text-gray-300">{isOnline ? 'متصل' : 'غير متصل'}</span>
               </div>

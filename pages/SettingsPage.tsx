@@ -31,6 +31,28 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
     const [assistantToDelete, setAssistantToDelete] = React.useState<string | null>(null);
     const isOnline = useOnlineStatus();
     const [newAssistant, setNewAssistant] = React.useState('');
+    const [needsSync, setNeedsSync] = React.useState(false);
+
+    // Effect to check sync status from localStorage
+    React.useEffect(() => {
+        const checkSyncFlag = () => {
+            const flag = localStorage.getItem('lawyerAppNeedsSync') === 'true';
+            setNeedsSync(flag);
+        };
+        
+        checkSyncFlag(); // Initial check
+        
+        // Listen for storage changes from other tabs
+        window.addEventListener('storage', checkSyncFlag); 
+        
+        // Also check periodically in case the event listener doesn't fire
+        const interval = setInterval(checkSyncFlag, 2000);
+
+        return () => {
+            window.removeEventListener('storage', checkSyncFlag);
+            clearInterval(interval);
+        };
+    }, []);
 
     const showFeedback = (message: string, type: 'success' | 'error') => {
         setFeedback({ message, type });
@@ -176,31 +198,19 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
             }).filter(Boolean); // Remove null entries
         };
         
-        // Fallback for plain text response or error messages
-        if (!report.includes('### ') || isError) {
-            return (
-                 <div className={`mt-6 p-4 border ${isError ? 'border-red-200 bg-red-50' : 'border-blue-200 bg-blue-50'} rounded-lg animate-fade-in`}>
-                    <h4 className={`text-lg font-bold ${isError ? 'text-red-800' : 'text-blue-800'}`}>{isError ? 'خطأ في المزامنة' : 'تقرير المزامنة'}</h4>
-                    <div className={`mt-2 text-sm ${isError ? 'text-red-700' : 'text-gray-700'} whitespace-pre-wrap font-sans`}>
-                        {report}
-                    </div>
-                </div>
-            )
-        }
-
         const sections = report.split('### ').slice(1);
 
         return (
-            <div className="mt-6 p-4 border border-blue-200 bg-blue-50 rounded-lg space-y-4 animate-fade-in">
+            <div className={`mt-6 p-4 border ${isError ? 'border-red-200 bg-red-50' : 'border-blue-200 bg-blue-50'} rounded-lg space-y-4 animate-fade-in`}>
                 {sections.map((section, index) => {
                     const [title, ...contentLines] = section.split('\n');
                     const content = contentLines.join('\n').trim();
                     return (
                         <div key={index}>
-                            <h4 className="text-lg font-bold text-blue-800">
+                            <h4 className={`text-lg font-bold ${isError ? 'text-red-800' : 'text-blue-800'}`}>
                                {title.trim()}
                             </h4>
-                            <div className="mt-2 text-sm text-gray-700 space-y-2">{renderContent(content)}</div>
+                            <div className={`mt-2 text-sm ${isError ? 'text-red-700' : 'text-gray-700'} space-y-2`}>{renderContent(content)}</div>
                         </div>
                     );
                 })}
@@ -220,12 +230,24 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, syncStatus, la
             )}
 
             <div className="bg-white p-6 rounded-lg shadow space-y-6">
-                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">المزامنة الذكية والتحليل</h2>
+                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">المزامنة السحابية والتحليل الذكي</h2>
+                
+                {needsSync && !isOnline && (
+                    <div className="p-3 bg-yellow-50 text-yellow-800 border-s-4 border-yellow-400 rounded-md animate-fade-in">
+                        <p className="font-semibold">لديك تغييرات غير متزامنة. سيتم مزامنتها تلقائيًا عند عودة الاتصال بالإنترنت.</p>
+                    </div>
+                )}
+                {needsSync && isOnline && syncStatus !== 'syncing' && (
+                     <div className="p-3 bg-blue-50 text-blue-800 border-s-4 border-blue-400 rounded-md animate-fade-in">
+                        <p className="font-semibold">لديك تغييرات غير متزامنة. يمكنك المزامنة الآن لحفظها في السحابة.</p>
+                    </div>
+                )}
+
                 <div className="flex flex-col lg:flex-row items-start justify-between gap-4">
                     <div className="flex-grow">
-                        <h3 className="font-semibold text-lg">تحليل البيانات وإنشاء تقرير</h3>
+                        <h3 className="font-semibold text-lg">مزامنة وتحليل البيانات</h3>
                         <p className="text-gray-600 text-sm mt-1">
-                           استخدم الذكاء الاصطناعي لتحليل بيانات مكتبك والحصول على ملخص أداء وتوصيات ذكية.
+                           قم برفع بياناتك بأمان إلى السحابة لحفظها، ثم استخدم الذكاء الاصطناعي لتحليلها والحصول على ملخص أداء وتوصيات ذكية.
                         </p>
                         <p className="text-xs text-gray-500 mt-2">
                             آخر مزامنة ناجحة: {lastSync ? lastSync.toLocaleString('ar-SY') : 'لم تتم المزامنة بعد'}

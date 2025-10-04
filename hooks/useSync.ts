@@ -24,13 +24,21 @@ const dateReviver = (key: string, value: any) => {
     return value;
 };
 
-
-let ai: GoogleGenAI;
-try {
-    ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-} catch (e) {
-    console.error("Failed to initialize GoogleGenAI", e);
-}
+/**
+ * A fake API function to simulate uploading data to a cloud server.
+ * @param data The application data to be "uploaded".
+ * @returns A promise that resolves to a success status.
+ */
+const fakeUploadApi = (data: AppData): Promise<{ success: boolean }> => {
+    console.log("Simulating data upload to the cloud...", data);
+    return new Promise(resolve => {
+        // Simulate a 1.5 second network delay for the upload
+        setTimeout(() => {
+            console.log("Data upload successful.");
+            resolve({ success: true });
+        }, 1500);
+    });
+};
 
 
 export const useSync = () => {
@@ -47,24 +55,36 @@ export const useSync = () => {
     });
 
     const triggerSync = React.useCallback(async () => {
-        if (!ai) {
+        setSyncStatus('syncing');
+        setSyncReport("### ⏳ جاري المزامنة...\n- الخطوة 1/2: جاري رفع بياناتك إلى الخادم السحابي الآمن.");
+        
+        let ai: GoogleGenAI;
+        try {
+            ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        } catch (e) {
+            console.error("Failed to initialize GoogleGenAI", e);
             setSyncStatus('error');
-            setSyncReport("The AI client failed to initialize. Please check your API key configuration.");
-            setTimeout(() => setSyncStatus('idle'), 3000);
+            setSyncReport("### ❌ فشلت عملية المزامنة\nالسبب: لم يتم تهيئة عميل الذكاء الاصطناعي. يرجى التحقق من إعدادات مفتاح API.");
+            setTimeout(() => setSyncStatus('idle'), 5000);
             return;
         }
         
-        setSyncStatus('syncing');
-        setSyncReport(null);
-
         try {
             const rawData = localStorage.getItem(APP_DATA_KEY);
             if (!rawData) {
-                throw new Error("No data found in localStorage to sync.");
+                throw new Error("لا توجد بيانات محلية للمزامنة.");
             }
             const data: AppData = JSON.parse(rawData, dateReviver);
 
-            // Create a simplified data summary for the prompt
+            // Step 1: Simulate data upload
+            const uploadResult = await fakeUploadApi(data);
+            if (!uploadResult.success) {
+                throw new Error("فشل رفع البيانات إلى الخادم.");
+            }
+            
+            setSyncReport(prev => prev + "\n- ✅ اكتمل الرفع.\n- الخطوة 2/2: جاري تحليل البيانات باستخدام الذكاء الاصطناعي...");
+
+            // Step 2: AI Analysis
             const simplifiedData = {
                 clientCount: data.clients?.length || 0,
                 totalCases: (data.clients || []).reduce((acc, c) => acc + (c.cases?.length || 0), 0),
@@ -110,16 +130,16 @@ export const useSync = () => {
             const now = new Date();
             setLastSync(now);
             localStorage.setItem('lastSync', now.toISOString());
-            localStorage.removeItem('lawyerAppNeedsSync');
+            localStorage.setItem('lawyerAppNeedsSync', 'false');
             setSyncStatus('success');
 
         } catch (error) {
             console.error("Sync process failed:", error);
             setSyncStatus('error');
             const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
-            setSyncReport(`فشلت عملية المزامنة. \nالسبب: ${errorMessage}`);
+            setSyncReport(`### ❌ فشلت عملية المزامنة\nالسبب: ${errorMessage}`);
         } finally {
-            setTimeout(() => setSyncStatus('idle'), 3000);
+            setTimeout(() => setSyncStatus('idle'), 5000);
         }
     }, []);
 
