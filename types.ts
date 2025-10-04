@@ -55,6 +55,7 @@ export interface Appointment {
     importance: 'normal' | 'important' | 'urgent';
     notified?: boolean;
     reminderTimeInMinutes?: number;
+    assignee?: string;
 }
 
 export interface AccountingEntry {

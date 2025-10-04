@@ -174,6 +174,7 @@ const validateAndHydrate = (data: any): AppData => {
         importance: ['normal', 'important', 'urgent'].includes(apt.importance) ? apt.importance : 'normal',
         notified: typeof apt.notified === 'boolean' ? apt.notified : false,
         reminderTimeInMinutes: typeof apt.reminderTimeInMinutes === 'number' ? apt.reminderTimeInMinutes : undefined,
+        assignee: isValidAssistant(apt.assignee) ? apt.assignee : defaultAssignee,
     }));
     
     const validatedAccountingEntries: AccountingEntry[] = safeArray(data.accountingEntries, (entry: any): AccountingEntry => ({

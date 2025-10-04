@@ -147,7 +147,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ clients, accountingEntries })
         const topClientsByIncomeData = Object.entries(incomeByClient)
             .map(([clientId, income]): { name: string; value: number } => ({
                 name: clients.find(c => c.id === clientId)?.name || 'غير معروف',
-                value: income,
+                value: income as number,
             }))
             .sort((a, b) => b.value - a.value);
 
@@ -289,9 +289,9 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ clients, accountingEntries })
 
 const FinancialReport: React.FC<{ data: any }> = ({ data }) => {
     const monthlyData = React.useMemo(() => {
-        // FIX: Explicitly typed the accumulator `acc` in the reduce function. This ensures that `grouped` has the correct type,
-        // which in turn allows the subsequent `.sort()` method to correctly infer the types of `a` and `b` and access `a.month`.
-        const grouped = data.entries.reduce((acc: { [key: string]: { month: string, income: number, expense: number } }, entry: AccountingEntry) => {
+        // FIX: Cast `data.entries` to a typed array to ensure TypeScript can correctly infer types
+        // in the subsequent `reduce` and `sort` calls, resolving the error.
+        const grouped = (data.entries as AccountingEntry[]).reduce((acc, entry) => {
             const month = new Date(entry.date).toISOString().slice(0, 7); // YYYY-MM
             if (!acc[month]) {
                 acc[month] = { month, income: 0, expense: 0 };
@@ -302,7 +302,7 @@ const FinancialReport: React.FC<{ data: any }> = ({ data }) => {
                 acc[month].expense += entry.amount;
             }
             return acc;
-        }, {} as { [key: string]: { month: string, income: number, expense: number } });
+        }, {} as Record<string, { month: string, income: number, expense: number }>);
         return Object.values(grouped).sort((a, b) => a.month.localeCompare(b.month));
     }, [data.entries]);
     

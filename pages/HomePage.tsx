@@ -46,6 +46,7 @@ const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointmen
                         <tr>
                             <th className="px-6 py-3">الموعد</th>
                             <th className="px-6 py-3">الوقت</th>
+                            <th className="px-6 py-3">الشخص المسؤول</th>
                             <th className="px-6 py-3">الأهمية</th>
                             <th className="px-6 py-3">إجراءات</th>
                         </tr>
@@ -55,6 +56,7 @@ const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointmen
                             <tr key={a.id} className="bg-white border-b hover:bg-gray-50">
                                 <td className="px-6 py-4">{a.title}</td>
                                 <td className="px-6 py-4">{formatTime(a.time)}</td>
+                                <td className="px-6 py-4">{a.assignee}</td>
                                 <td className="px-6 py-4">
                                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${importanceMap[a.importance]?.className}`}>
                                         {importanceMap[a.importance]?.text}
@@ -89,7 +91,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     const [viewMode, setViewMode] = React.useState<ViewMode>('daily');
     const [isAppointmentModalOpen, setIsAppointmentModalOpen] = React.useState(false);
     const [editingAppointment, setEditingAppointment] = React.useState<Appointment | null>(null);
-    const [newAppointment, setNewAppointment] = React.useState<{ title: string; date: string; time: string; importance: 'normal' | 'important' | 'urgent'; reminderTimeInMinutes: number; }>({ title: '', date: '', time: '', importance: 'normal', reminderTimeInMinutes: 15 });
+    const [newAppointment, setNewAppointment] = React.useState<{ title: string; date: string; time: string; importance: 'normal' | 'important' | 'urgent'; reminderTimeInMinutes: number; assignee: string; }>({ title: '', date: '', time: '', importance: 'normal', reminderTimeInMinutes: 15, assignee: 'بدون تخصيص' });
 
     const [activeTaskTab, setActiveTaskTab] = React.useState<'pending' | 'completed'>('pending');
     const [isTaskModalOpen, setIsTaskModalOpen] = React.useState(false);
@@ -108,6 +110,8 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     const [isDeleteTaskModalOpen, setIsDeleteTaskModalOpen] = React.useState(false);
     const [taskToDelete, setTaskToDelete] = React.useState<AdminTask | null>(null);
     const [isPrintModalOpen, setIsPrintModalOpen] = React.useState(false);
+    const [isPrintAssigneeModalOpen, setIsPrintAssigneeModalOpen] = React.useState(false);
+    const [printableReportData, setPrintableReportData] = React.useState<any | null>(null);
     const printReportRef = React.useRef<HTMLDivElement>(null);
 
 
@@ -121,7 +125,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     // Appointment Handlers
     const handleOpenAddAppointmentModal = () => {
         setEditingAppointment(null);
-        setNewAppointment({ title: '', date: toInputDateString(selectedDate), time: '', importance: 'normal', reminderTimeInMinutes: 15 });
+        setNewAppointment({ title: '', date: toInputDateString(selectedDate), time: '', importance: 'normal', reminderTimeInMinutes: 15, assignee: 'بدون تخصيص' });
         setIsAppointmentModalOpen(true);
     };
 
@@ -133,6 +137,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
             time: apt.time,
             importance: apt.importance,
             reminderTimeInMinutes: apt.reminderTimeInMinutes ?? 15,
+            assignee: apt.assignee ?? 'بدون تخصيص',
         });
         setIsAppointmentModalOpen(true);
     }
@@ -163,6 +168,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                 time: newAppointment.time,
                 importance: newAppointment.importance,
                 reminderTimeInMinutes: newAppointment.reminderTimeInMinutes,
+                assignee: newAppointment.assignee,
                 notified: false, // Reset notification status on edit
             } : apt));
         } else {
@@ -173,6 +179,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                 date: appointmentDate,
                 importance: newAppointment.importance,
                 reminderTimeInMinutes: newAppointment.reminderTimeInMinutes,
+                assignee: newAppointment.assignee,
                 notified: false,
             };
             setAppointments(prevAppointments => [...prevAppointments, newAppointmentObject]);
@@ -274,6 +281,76 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
         setAdminTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
     };
 
+    // Printing Logic
+    const handleGenerateAssigneeReport = (assignee: string | null) => { // null for general report
+        const importanceOrder: { [key: string]: number } = { 'urgent': 3, 'important': 2, 'normal': 1 };
+
+        const dailyAppointments = appointments.filter(a => isSameDay(a.date, selectedDate));
+        const dailySessions = allSessions.filter(s => isSameDay(s.date, selectedDate));
+        const dailyAdminTasks = adminTasks.filter(t => !t.completed && isSameDay(t.dueDate, selectedDate));
+        
+        const filteredAppointments = assignee ? dailyAppointments.filter(a => a.assignee === assignee) : dailyAppointments;
+        const filteredSessions = assignee ? dailySessions.filter(s => s.assignee === assignee) : dailySessions;
+        const filteredAdminTasks = assignee ? dailyAdminTasks.filter(t => t.assignee === assignee) : dailyAdminTasks;
+
+        const agendaItems = [
+            ...filteredAppointments.map(item => ({
+                type: 'موعد',
+                location: 'المكتب',
+                sortKey: `0_${item.time}`,
+                time: formatTime(item.time),
+                title: item.title,
+                importance: importanceMap[item.importance].text,
+                original: item,
+            })),
+            ...filteredSessions.map(item => ({
+                type: 'جلسة',
+                location: item.court,
+                sortKey: '1',
+                time: 'طوال اليوم',
+                title: `قضية: ${item.clientName} ضد ${item.opponentName}`,
+                importance: 'عاجل جداً',
+                original: item,
+            })),
+            ...filteredAdminTasks.map(item => ({
+                type: 'مهمة إدارية',
+                location: item.location || 'غير محدد',
+                sortKey: `2_${importanceOrder[item.importance]}`,
+                time: importanceMapAdminTasks[item.importance].text,
+                title: item.task,
+                importance: importanceMapAdminTasks[item.importance].text,
+                original: item,
+            })),
+        ];
+
+        const groupedAgenda = agendaItems.reduce((acc, item) => {
+            const location = item.location;
+            if (!acc[location]) {
+                acc[location] = [];
+            }
+            acc[location].push(item);
+            return acc;
+        }, {} as Record<string, any[]>);
+
+        for (const location in groupedAgenda) {
+            groupedAgenda[location].sort((a, b) => {
+                if (a.sortKey.startsWith('2_') && b.sortKey.startsWith('2_')) {
+                    return b.sortKey.localeCompare(a.sortKey);
+                }
+                return a.sortKey.localeCompare(b.sortKey);
+            });
+        }
+        
+        setPrintableReportData({
+            assignee: assignee || 'جدول الأعمال العام',
+            date: selectedDate,
+            groupedAgenda,
+        });
+
+        setIsPrintAssigneeModalOpen(false);
+        setIsPrintModalOpen(true);
+    };
+
 
     // Session Handlers
     const handlePostponeSession = (sessionId: string, newDate: Date, newReason: string) => {
@@ -358,13 +435,6 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
             .sort((a, b) => a.date.getTime() - b.date.getTime());
     }, [allSessions, selectedDate]);
 
-    const allUncompletedAdminTasks = React.useMemo(() => {
-        return adminTasks.filter(task => !task.completed).sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
-    }, [adminTasks]);
-
-    // FIX: Explicitly type `groupedTasks` to resolve downstream type inference issues.
-    // The TypeScript compiler was inferring `groupedTasks` as `unknown`, causing errors
-    // when trying to access properties like `length` or `map` on its keys/values.
     const groupedTasks: Record<string, AdminTask[]> = React.useMemo(() => {
         const isCompleted = activeTaskTab === 'completed';
         const filtered = adminTasks
@@ -375,7 +445,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                     (task.assignee && task.assignee.toLowerCase().includes(searchLower)) ||
                     (task.location && task.location.toLowerCase().includes(searchLower));
                 return task.completed === isCompleted && matchesSearch;
-            })
+            });
 
         const grouped = filtered.reduce((acc, task) => {
             const location = task.location || 'غير محدد';
@@ -386,8 +456,36 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
             return acc;
         }, {} as Record<string, AdminTask[]>);
 
+        // Define the order of importance for sorting
+        const importanceOrder = { 'urgent': 3, 'important': 2, 'normal': 1 };
+
         for (const location in grouped) {
-            grouped[location].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+            grouped[location].sort((a, b) => {
+                 // 1. Sort by due date (ascending)
+                const dateA = new Date(a.dueDate).getTime();
+                const dateB = new Date(b.dueDate).getTime();
+                if (dateA !== dateB) {
+                    return dateA - dateB;
+                }
+                
+                // 2. Sort by importance (descending: urgent -> important -> normal)
+                const importanceA = importanceOrder[a.importance];
+                const importanceB = importanceOrder[b.importance];
+                if (importanceA !== importanceB) {
+                    return importanceB - importanceA; // Descending
+                }
+                
+                // 3. Sort by assignee (alphabetical)
+                const assigneeA = a.assignee || '';
+                const assigneeB = b.assignee || '';
+                const assigneeComparison = assigneeA.localeCompare(assigneeB, 'ar');
+                if (assigneeComparison !== 0) {
+                    return assigneeComparison;
+                }
+                
+                // 4. Sort by task name as a final tie-breaker
+                return a.task.localeCompare(b.task, 'ar');
+            });
         }
 
         return grouped;
@@ -417,7 +515,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
         <div className="space-y-6">
             <div className="no-print flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <h1 className="text-3xl font-bold text-gray-800">الرئيسية</h1>
-                <button onClick={() => setIsPrintModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                <button onClick={() => setIsPrintAssigneeModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
                     <PrintIcon className="w-5 h-5" />
                     <span>طباعة جدول الأعمال</span>
                 </button>
@@ -599,6 +697,12 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                                     <input type="time" id="time" name="time" value={newAppointment.time} onChange={handleAppointmentFormChange} className="mt-1 w-full p-2 border rounded" required />
                                 </div>
                                 <div>
+                                    <label htmlFor="assignee" className="block text-sm font-medium text-gray-700">الشخص المسؤول</label>
+                                    <select id="assignee" name="assignee" value={newAppointment.assignee} onChange={handleAppointmentFormChange} className="mt-1 w-full p-2 border rounded">
+                                        {assistants.map(name => <option key={name} value={name}>{name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
                                     <label htmlFor="importance" className="block text-sm font-medium text-gray-700">الأهمية</label>
                                     <select id="importance" name="importance" value={newAppointment.importance} onChange={handleAppointmentFormChange} className="mt-1 w-full p-2 border rounded" required>
                                         <option value="normal">عادي</option>
@@ -753,16 +857,40 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                 </div>
             )}
 
+            {isPrintAssigneeModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={() => setIsPrintAssigneeModalOpen(false)}>
+                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+                        <h2 className="text-xl font-bold mb-4 border-b pb-3">اختر الشخص لطباعة جدول أعماله</h2>
+                        <div className="space-y-3 max-h-80 overflow-y-auto">
+                            <button
+                                onClick={() => handleGenerateAssigneeReport(null)}
+                                className="w-full text-right px-4 py-3 bg-blue-50 text-blue-800 font-semibold rounded-lg hover:bg-blue-100 transition-colors"
+                            >
+                                طباعة جدول الأعمال العام (لكل المهام اليومية)
+                            </button>
+                            <h3 className="text-md font-semibold text-gray-600 pt-2">أو طباعة لشخص محدد:</h3>
+                            {assistants.map(name => (
+                                <button
+                                    key={name}
+                                    onClick={() => handleGenerateAssigneeReport(name)}
+                                    className="w-full text-right block px-4 py-2 bg-gray-50 text-gray-800 rounded-md hover:bg-gray-100 transition-colors"
+                                >
+                                    {name}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="mt-6 flex justify-end">
+                            <button type="button" onClick={() => setIsPrintAssigneeModalOpen(false)} className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors">إغلاق</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {isPrintModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setIsPrintModalOpen(false)}>
                     <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                         <div className="overflow-y-auto" ref={printReportRef}>
-                            <PrintableReport
-                                date={selectedDate}
-                                sessions={dailyData.dailySessions}
-                                appointments={dailyData.dailyAppointments}
-                                adminTasks={allUncompletedAdminTasks}
-                            />
+                            <PrintableReport reportData={printableReportData} />
                         </div>
                         <div className="mt-6 flex justify-end gap-4 border-t pt-4 no-print">
                             <button
