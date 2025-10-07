@@ -1,9 +1,10 @@
 import * as React from 'react';
-import { TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, PlusIcon, CheckCircleIcon, XCircleIcon } from '../components/icons';
+import { TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, PlusIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, ArrowUpTrayIcon } from '../components/icons';
 import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
 import { AnalysisStatus } from '../hooks/useSync';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
-import { SyncStatus } from '../hooks/useOnlineData';
+// FIX: The APP_DATA_KEY constant was being imported from an empty file. It is now imported from useSupabaseData.ts where it is correctly defined and exported.
+import { APP_DATA_KEY } from '../hooks/useSupabaseData';
 
 type AppData = {
     clients: Client[];
@@ -21,10 +22,11 @@ interface SettingsPageProps {
     assistants: string[];
     setAssistants: (updater: (prev: string[]) => string[]) => void;
     analysisReport: string | null;
-    syncStatus: SyncStatus;
+    offlineMode: boolean;
+    setOfflineMode: (value: boolean) => void;
 }
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus, lastAnalysis, triggerAnalysis, assistants, setAssistants, analysisReport, syncStatus }) => {
+const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus, lastAnalysis, triggerAnalysis, assistants, setAssistants, analysisReport, offlineMode, setOfflineMode }) => {
     const [feedback, setFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = React.useState(false);
     const [isDeleteAssistantModalOpen, setIsDeleteAssistantModalOpen] = React.useState(false);
@@ -54,6 +56,49 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
         }
         setIsConfirmModalOpen(false);
     };
+
+    const handleExportData = () => {
+        try {
+            const data = localStorage.getItem(APP_DATA_KEY);
+            if (!data) {
+                showFeedback('لا توجد بيانات لتصديرها.', 'error');
+                return;
+            }
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const date = new Date().toISOString().split('T')[0];
+            a.download = `lawyer_app_backup_${date}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showFeedback('تم تصدير البيانات بنجاح.', 'success');
+        } catch (error) {
+            console.error("Failed to export data:", error);
+            showFeedback('فشل تصدير البيانات.', 'error');
+        }
+    };
+
+    const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const text = e.target?.result;
+                if (typeof text !== 'string') throw new Error("File could not be read.");
+                const data = JSON.parse(text);
+                setFullData(data);
+                showFeedback('تم استيراد البيانات بنجاح. سيتم تحديث الصفحة.', 'success');
+            } catch (error) {
+                console.error("Failed to import data:", error);
+                showFeedback('فشل استيراد البيانات. تأكد من أن الملف صحيح.', 'error');
+            }
+        };
+        reader.readAsText(file);
+    };
+
 
     const getAnalysisButtonContent = () => {
         switch (analysisStatus) {
@@ -91,6 +136,21 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
         setIsDeleteAssistantModalOpen(false);
         setAssistantToDelete(null);
     };
+    
+    const handleEnableSync = () => {
+        setOfflineMode(false);
+    };
+
+    const handleDisableSync = () => {
+        if (window.confirm('هل أنت متأكد من تعطيل المزامنة؟ سيعود التطبيق للعمل في الوضع المحلي فقط على هذا الجهاز.')) {
+            localStorage.removeItem('supabaseUrl');
+            localStorage.removeItem('supabaseAnonKey');
+            setOfflineMode(true);
+            // Reload to ensure all hooks and contexts re-evaluate the offline state from scratch
+            window.location.reload();
+        }
+    };
+
 
     const AnalysisReportDisplay: React.FC<{ report: string; status: AnalysisStatus }> = ({ report, status }) => {
         const isError = status === 'error';
@@ -117,23 +177,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
         );
     };
 
-    const SyncStatusDisplay: React.FC = () => {
-        const statusInfo = {
-            loading: { text: 'جاري تحميل البيانات من السحابة...', icon: <ArrowPathIcon className="w-5 h-5 animate-spin" />, color: 'text-gray-700', bg: 'bg-gray-100' },
-            syncing: { text: 'جاري مزامنة آخر التغييرات...', icon: <ArrowPathIcon className="w-5 h-5 animate-spin" />, color: 'text-yellow-800', bg: 'bg-yellow-50' },
-            synced: { text: 'جميع بياناتك محدّثة ومحفوظة في السحابة.', icon: <CheckCircleIcon className="w-5 h-5 text-green-600" />, color: 'text-green-700', bg: 'bg-green-50' },
-            offline: { text: 'أنت غير متصل بالإنترنت. سيتم حفظ التغييرات عند عودة الاتصال.', icon: <ExclamationTriangleIcon className="w-5 h-5 text-gray-600" />, color: 'text-gray-700', bg: 'bg-gray-100' },
-            error: { text: 'حدث خطأ أثناء المزامنة. الرجاء التحقق من اتصالك بالإنترنت.', icon: <XCircleIcon className="w-5 h-5 text-red-600" />, color: 'text-red-700', bg: 'bg-red-50' },
-        };
-        const current = statusInfo[syncStatus] || statusInfo.loading;
-        return (
-            <div className={`p-4 rounded-lg flex items-center gap-3 ${current.bg}`}>
-                {current.icon}
-                <p className={`font-medium ${current.color}`}>{current.text}</p>
-            </div>
-        );
-    };
-
     return (
         <div className="space-y-6">
             <h1 className="text-3xl font-bold text-gray-800">الإعدادات</h1>
@@ -145,12 +188,82 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
             )}
 
             <div className="bg-white p-6 rounded-lg shadow space-y-4">
-                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">المزامنة السحابية التلقائية</h2>
-                <p className="text-gray-600 text-sm">
-                    بياناتك الآن محفوظة بشكل آمن على الإنترنت ويتم مزامنتها تلقائياً بين جميع أجهزتك. أي تغيير تقوم به هنا سيظهر على جوالك والعكس صحيح.
-                </p>
-                <SyncStatusDisplay />
+                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">المزامنة السحابية</h2>
+                {offlineMode ? (
+                    <>
+                        <div className="flex items-center gap-3">
+                            <ExclamationTriangleIcon className="w-5 h-5 text-yellow-500" />
+                            <p className="text-gray-700">
+                                <span className="font-semibold">الحالة:</span> معطلة. يتم حفظ بياناتك على هذا الجهاز فقط.
+                            </p>
+                        </div>
+                        <p className="text-sm text-gray-600">
+                            قم بتفعيل المزامنة السحابية لحفظ نسخة احتياطية من بياناتك والوصول إليها من أي جهاز.
+                        </p>
+                        <div className="pt-2">
+                            <button 
+                                onClick={handleEnableSync} 
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                            >
+                                <CloudArrowUpIcon className="w-5 h-5" />
+                                <span>تفعيل وإعداد المزامنة السحابية</span>
+                            </button>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div className="flex items-center gap-3">
+                            <CheckCircleIcon className="w-5 h-5 text-green-500" />
+                            <p className="text-gray-700">
+                                <span className="font-semibold">الحالة:</span> مفعلة. تتم مزامنة بياناتك مع السحابة.
+                            </p>
+                        </div>
+                        <p className="text-sm text-gray-600">
+                            يمكنك تعطيل المزامنة السحابية والعودة إلى حفظ البيانات على هذا الجهاز فقط. لن يؤثر هذا على بياناتك المحفوظة في السحابة أو على هذا الجهاز.
+                        </p>
+                        <div className="pt-2">
+                            <button 
+                                onClick={handleDisableSync} 
+                                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors"
+                            >
+                                <XCircleIcon className="w-5 h-5" />
+                                <span>تعطيل المزامنة السحابية</span>
+                            </button>
+                        </div>
+                    </>
+                )}
             </div>
+
+            <div className="bg-white p-6 rounded-lg shadow space-y-4">
+                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">حفظ ونقل البيانات</h2>
+                <p className="text-gray-600 text-sm">
+                    يتم حفظ جميع بياناتك بشكل آمن وتلقائي على هذا الجهاز. للعمل على جهاز آخر، يمكنك استخدام أدوات التصدير والاستيراد لنقل نسخة من بياناتك.
+                </p>
+                <div className="flex flex-col md:flex-row gap-6 pt-4 border-t">
+                    <div className="flex-1 space-y-2">
+                        <h3 className="font-semibold text-lg">تصدير البيانات</h3>
+                        <p className="text-gray-600 text-sm">
+                            احفظ نسخة احتياطية من جميع بياناتك في ملف واحد. يمكنك استخدام هذا الملف لاستعادة بياناتك أو نقلها إلى جهاز آخر.
+                        </p>
+                        <button onClick={handleExportData} className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700 transition-colors">
+                           <ArrowDownTrayIcon className="w-5 h-5" />
+                           <span>تصدير البيانات الآن</span>
+                        </button>
+                    </div>
+                    <div className="flex-1 space-y-2">
+                        <h3 className="font-semibold text-lg">استيراد البيانات</h3>
+                        <p className="text-gray-600 text-sm">
+                           استورد بيانات من ملف تصدير. <strong className="text-red-600">تحذير:</strong> سيؤدي هذا إلى استبدال جميع البيانات الحالية.
+                        </p>
+                        <input type="file" id="import-file" className="hidden" onChange={handleImportData} accept=".json"/>
+                        <label htmlFor="import-file" className="inline-flex items-center gap-2 px-4 py-2 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700 transition-colors cursor-pointer">
+                            <ArrowUpTrayIcon className="w-5 h-5" />
+                            <span>اختر ملف للاستيراد</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
 
             <div className="bg-white p-6 rounded-lg shadow space-y-6">
                 <h2 className="text-xl font-bold text-gray-800 border-b pb-3">تحليل الأداء بالذكاء الاصطناعي</h2>
@@ -224,7 +337,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
                         <div className="ms-3">
                             <h3 className="text-lg font-semibold text-red-800">مسح جميع البيانات</h3>
                             <div className="mt-2 text-sm text-red-700">
-                                <p>هذا الإجراء سيقوم بحذف جميع البيانات المخزنة في التطبيق بشكل نهائي من السحابة. لا يمكن التراجع عن هذا الإجراء.</p>
+                                <p>هذا الإجراء سيقوم بحذف جميع البيانات المخزنة في التطبيق بشكل نهائي على هذا الجهاز. لا يمكن التراجع عن هذا الإجراء.</p>
                             </div>
                              <div className="mt-4">
                                  <button onClick={() => setIsConfirmModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors">

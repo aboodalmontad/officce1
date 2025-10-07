@@ -9,30 +9,36 @@ import AccountingPage from './pages/AccountingPage';
 import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
 import { HomeIcon, UsersIcon, CurrencyDollarIcon, DocumentChartBarIcon, SettingsIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, ExclamationTriangleIcon } from './components/icons';
-import { useOnlineData, SyncStatus } from './hooks/useOnlineData';
+import { useSupabaseData, SyncStatus } from './hooks/useSupabaseData';
 import { useAnalysis } from './hooks/useSync';
 import { isBeforeToday } from './utils/dateUtils';
+import SetupWizard from './components/SetupWizard';
+import { useLocalStorage } from './hooks/useLocalStorage';
 
-const SyncIndicator: React.FC<{ status: SyncStatus; onRetry: () => void }> = ({ status, onRetry }) => {
-    const messages = {
-        loading: { text: 'جاري التحميل...', icon: <ArrowPathIcon className="w-4 h-4 animate-spin" />, color: 'text-gray-300' },
+const SyncIndicator: React.FC<{ status: SyncStatus; onSync: () => void; offlineMode: boolean; lastSyncError: string | null; }> = ({ status, onSync, offlineMode, lastSyncError }) => {
+    const messages: Record<SyncStatus, { text: string; icon: React.ReactElement; color: string }> = {
+        loading: { text: 'جاري تحميل البيانات...', icon: <ArrowPathIcon className="w-4 h-4 animate-spin" />, color: 'text-gray-300' },
         syncing: { text: 'جاري المزامنة...', icon: <ArrowPathIcon className="w-4 h-4 animate-spin" />, color: 'text-yellow-300' },
-        synced: { text: 'البيانات محفوظة', icon: <CheckCircleIcon className="w-4 h-4" />, color: 'text-green-400' },
-        offline: { text: 'أنت غير متصل', icon: <XCircleIcon className="w-4 h-4" />, color: 'text-gray-400' },
-        error: { text: 'فشل المزامنة', icon: <ExclamationTriangleIcon className="w-4 h-4" />, color: 'text-red-400' },
+        synced: { text: 'تمت المزامنة', icon: <CheckCircleIcon className="w-4 h-4" />, color: 'text-green-400' },
+        offline: { text: 'التطبيق يعمل دون اتصال', icon: <CheckCircleIcon className="w-4 h-4" />, color: 'text-gray-400' },
+        error: { text: 'فشلت المزامنة', icon: <ExclamationTriangleIcon className="w-4 h-4" />, color: 'text-red-400' },
+        unconfigured: { text: 'Supabase غير مهيأ', icon: <ExclamationTriangleIcon className="w-4 h-4" />, color: 'text-orange-400' },
+        uninitialized: { text: 'قاعدة البيانات غير مهيأة', icon: <ExclamationTriangleIcon className="w-4 h-4" />, color: 'text-orange-400' },
     };
 
     const current = messages[status] || messages.loading;
-    const needsRetry = status === 'error' || status === 'offline';
+    const showSyncButton = !offlineMode && ['synced', 'error', 'offline'].includes(status);
+    const titleText = status === 'error' && lastSyncError ? `فشلت المزامنة: ${lastSyncError}` : current.text;
+
 
     return (
         <div className="flex items-center gap-2">
-            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs ${current.color}`} title={current.text}>
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs ${current.color}`} title={titleText}>
                 {current.icon}
                 <span>{current.text}</span>
             </div>
-            {needsRetry && (
-                 <button onClick={onRetry} className="p-1.5 rounded-full bg-gray-600 hover:bg-gray-500 text-white transition-colors" title="إعادة محاولة المزامنة">
+            {showSyncButton && (
+                 <button onClick={onSync} className="p-1.5 rounded-full bg-gray-600 hover:bg-gray-500 text-white transition-colors" title="مزامنة الآن">
                     <ArrowPathIcon className="w-4 h-4" />
                 </button>
             )}
@@ -42,11 +48,19 @@ const SyncIndicator: React.FC<{ status: SyncStatus; onRetry: () => void }> = ({ 
 
 
 const App: React.FC = () => {
-  const { clients, adminTasks, appointments, accountingEntries, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, assistants, setAssistants, syncStatus, forceSync } = useOnlineData();
+  const [offlineModeSetting, setOfflineModeSetting] = useLocalStorage('lawyerAppOfflineMode', false);
+  
+  // The data hook now directly uses the user's setting.
+  const { clients, adminTasks, appointments, accountingEntries, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, assistants, setAssistants, syncStatus, forceSync, manualSync, lastSyncError } = useSupabaseData(offlineModeSetting);
+  
   const { analysisStatus, lastAnalysis, triggerAnalysis, analysisReport } = useAnalysis();
+  // FIX: Correctly destructure `setIsMenuOpen` from `React.useState` and fix syntax.
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
+  
   const isLoading = syncStatus === 'loading';
-
+  
+  // The wizard is shown if the user wants to be online, but the sync status indicates a setup problem.
+  const needsSetup = !offlineModeSetting && (syncStatus === 'unconfigured' || syncStatus === 'uninitialized');
 
   React.useEffect(() => {
     const handleResize = () => {
@@ -184,11 +198,16 @@ const App: React.FC = () => {
         <div className="flex items-center justify-center min-h-screen bg-gray-100">
             <div className="text-center">
                 <ArrowPathIcon className="w-12 h-12 text-blue-600 animate-spin mx-auto" />
-                <p className="mt-4 text-lg font-semibold text-gray-700">جاري تحميل بيانات المكتب من السحابة...</p>
+                <p className="mt-4 text-lg font-semibold text-gray-700">جاري تحميل البيانات...</p>
             </div>
         </div>
     );
   }
+  
+  if (needsSetup) {
+      return <SetupWizard currentStatus={syncStatus} onRetry={forceSync} onUseOffline={() => setOfflineModeSetting(true)} initialError={lastSyncError} />;
+  }
+
 
   return (
     // FIX: Replaced all `ReactRouterDOM.*` component usages with direct component names
@@ -201,7 +220,7 @@ const App: React.FC = () => {
               <div className="text-xl font-bold">
                 <span>مكتب المحامي</span>
               </div>
-              <SyncIndicator status={syncStatus} onRetry={forceSync} />
+              <SyncIndicator status={syncStatus} onSync={manualSync} offlineMode={offlineModeSetting} lastSyncError={lastSyncError} />
             </div>
             <div className="flex items-center gap-x-4">
                {/* Desktop Menu */}
@@ -242,7 +261,7 @@ const App: React.FC = () => {
             <Route path="/clients" element={<ClientsPage clients={clients} setClients={setClients} accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} assistants={assistants} />} />
             <Route path="/accounting" element={<AccountingPage accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} clients={clients} />} />
             <Route path="/reports" element={<ReportsPage clients={clients} accountingEntries={accountingEntries} />} />
-            <Route path="/settings" element={<SettingsPage setFullData={setFullData} analysisStatus={analysisStatus} lastAnalysis={lastAnalysis} triggerAnalysis={triggerAnalysis} assistants={assistants} setAssistants={setAssistants} analysisReport={analysisReport} syncStatus={syncStatus} />} />
+            <Route path="/settings" element={<SettingsPage setFullData={setFullData} analysisStatus={analysisStatus} lastAnalysis={lastAnalysis} triggerAnalysis={triggerAnalysis} assistants={assistants} setAssistants={setAssistants} analysisReport={analysisReport} offlineMode={offlineModeSetting} setOfflineMode={setOfflineModeSetting} />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </main>

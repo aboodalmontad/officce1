@@ -1,6 +1,8 @@
 import * as React from 'react';
 import { GoogleGenAI } from '@google/genai';
 import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
+// FIX: Imported APP_DATA_KEY from useSupabaseData to ensure a single source of truth for the local storage key.
+import { APP_DATA_KEY } from './useSupabaseData';
 
 export type AnalysisStatus = 'idle' | 'analyzing' | 'success' | 'error';
 
@@ -10,8 +12,6 @@ type AppData = {
     appointments: Appointment[];
     accountingEntries: AccountingEntry[];
 };
-
-const APP_DATA_KEY = 'lawyerBusinessManagementData';
 
 const dateReviver = (key: string, value: any) => {
     const dateKeys = ['date', 'dueDate', 'firstSessionDate', 'nextSessionDate'];

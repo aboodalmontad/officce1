@@ -168,7 +168,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ clients, accountingEntries })
             .map(([caseId, income]) => {
                 const caseInfo = allCases.find(c => c.id === caseId);
                 const name = caseInfo ? `${caseInfo.clientName} - ${caseInfo.subject}` : 'قضية محذوفة';
-                return { name: name.length > 40 ? name.slice(0, 37) + '...' : name, value: income };
+                return { name: name.length > 40 ? name.slice(0, 37) + '...' : name, value: income as number };
             })
             .sort((a, b) => b.value - a.value)
             .slice(0, 10);
@@ -179,11 +179,14 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ clients, accountingEntries })
             .map((c): { name: string; value: number } | null => {
                 const sessions = c.stages.flatMap((stage: Stage): Session[] => stage.sessions);
                 if (sessions.length < 2) return null;
+                
                 // FIX: To prevent arithmetic errors with invalid dates, explicitly convert all session dates
-                // to numeric timestamps and filter out any resulting NaN values before calculation.
+                // to numeric timestamps and use a type guard to filter out any resulting NaN values before calculation.
+                // This provides a stronger hint to TypeScript and resolves the type error.
                 const timestamps = sessions
                     .map((session: Session) => new Date(session.date).getTime())
-                    .filter(t => !isNaN(t));
+                    .filter((t): t is number => !isNaN(t));
+
                 if (timestamps.length < 2) return null;
 
                 const minDate = Math.min(...timestamps);
@@ -193,7 +196,6 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ clients, accountingEntries })
                 return { name: c.subject, value: duration };
             })
             .filter((item): item is { name: string; value: number } => Boolean(item));
-        // FIX: The sort function was incomplete, causing a syntax error.
         const longestCases = [...closedCasesWithDurations].sort((a, b) => b.value - a.value).slice(0, 10);
 
         setReportData({
@@ -244,7 +246,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ clients, accountingEntries })
                     {(reportType === 'financial' || reportType === 'cases' || reportType === 'clients') &&
                         <div>
                             <label className="block text-sm font-medium text-gray-700">الموكل</label>
-                            <select name="clientId" value={filters.clientId} onChange={handleFilterChange} className="w-full p-2 border rounded-md" disabled={reportType === 'analytics'}>
+                            {/* FIX: Removed redundant `disabled` prop that causes a TypeScript error. The surrounding conditional already prevents this component from rendering when `reportType` is 'analytics'. */}
+                            <select name="clientId" value={filters.clientId} onChange={handleFilterChange} className="w-full p-2 border rounded-md">
                                 <option value="all">جميع الموكلين</option>
                                 {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
