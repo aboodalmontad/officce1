@@ -11,6 +11,19 @@ const DB_NAME = 'LawyerAppDB';
 const DB_VERSION = 1;
 const SESSIONS_STORE_NAME = 'sessions';
 
+/**
+ * Custom hook to get the previous value of a prop or state.
+ * @param value The value to track.
+ * @returns The value from the previous render.
+ */
+const usePrevious = <T,>(value: T): T | undefined => {
+  const ref = React.useRef<T>();
+  React.useEffect(() => {
+    ref.current = value;
+  }, [value]);
+  return ref.current;
+};
+
 const openDB = (): Promise<IDBDatabase> => {
     return new Promise((resolve, reject) => {
         if (typeof indexedDB === 'undefined') {
@@ -165,6 +178,10 @@ export const useSupabaseData = (offlineMode: boolean) => {
     const isOnline = useOnlineStatus();
     const isSavingRef = React.useRef(false);
     const saveTimeoutRef = React.useRef<number | null>(null);
+
+    const initialLoadRef = React.useRef(true);
+    const prevIsOnline = usePrevious(isOnline);
+    const prevOfflineMode = usePrevious(offlineMode);
 
     const fetchFromSupabase = React.useCallback(async () => {
         if (offlineMode) {
@@ -351,8 +368,15 @@ export const useSupabaseData = (offlineMode: boolean) => {
             return true;
         } catch (error: any) {
             console.error("Error saving to Supabase:", error.message);
-            setSyncStatus('error');
-            setLastSyncError(`فشل رفع البيانات: ${error.message}`);
+            // FIX: Add specific handling for "Failed to fetch" errors during upload,
+            // which are often CORS related. This provides a better user experience.
+            if (error instanceof TypeError && error.message.includes('Failed to fetch') || (error.message && error.message.toLowerCase().includes('failed to fetch'))) {
+                 setSyncStatus('unconfigured');
+                 setLastSyncError('فشل الاتصال بالخادم عند الحفظ. هذه المشكلة غالباً ما تكون بسبب إعدادات CORS. يرجى التأكد من إضافة نطاق هذا التطبيق إلى قائمة النطاقات المسموح بها.');
+            } else {
+                setSyncStatus('error');
+                setLastSyncError(`فشل رفع البيانات: ${error.message}`);
+            }
             isSavingRef.current = false;
             return false;
         }
@@ -370,10 +394,44 @@ export const useSupabaseData = (offlineMode: boolean) => {
             await fetchFromSupabase();
         }
     }, [data, uploadData, fetchFromSupabase, offlineMode, isOnline, syncStatus]);
-
+    
+    // Master effect for loading data and handling online/offline transitions
     React.useEffect(() => {
-        fetchFromSupabase();
-    }, [fetchFromSupabase]);
+        const isInitialLoad = initialLoadRef.current;
+        if (isInitialLoad) {
+            initialLoadRef.current = false;
+        }
+
+        const wasOfflineAccordingToBrowser = prevIsOnline === false;
+        const isReconnecting = wasOfflineAccordingToBrowser && isOnline;
+
+        const wasInUserOfflineMode = prevOfflineMode === true;
+        const switchedToOnlineMode = wasInUserOfflineMode && !offlineMode;
+
+        // If user has set offline mode, respect it above all.
+        if (offlineMode) {
+            if (syncStatus !== 'offline') setSyncStatus('offline');
+            return;
+        }
+
+        // If we have no internet, we are offline.
+        if (!isOnline) {
+            if (syncStatus !== 'offline') setSyncStatus('offline');
+            return;
+        }
+
+        // At this point, we are online and not in user-defined offline mode.
+        if (isReconnecting) {
+            // Highest priority: if we just got internet back, sync everything (push then pull).
+            console.log('Network reconnected. Triggering full sync.');
+            manualSync();
+        } else if (isInitialLoad || switchedToOnlineMode) {
+            // On first page load or when user toggles the setting to online, just fetch (pull).
+            console.log(`Triggering data fetch. Reason: ${isInitialLoad ? 'Initial Load' : 'Switched to Online Mode'}`);
+            fetchFromSupabase();
+        }
+    }, [isOnline, prevIsOnline, offlineMode, prevOfflineMode, fetchFromSupabase, manualSync, syncStatus]);
+
 
     React.useEffect(() => {
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);

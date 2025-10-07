@@ -137,17 +137,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
         setAssistantToDelete(null);
     };
     
-    const handleEnableSync = () => {
-        setOfflineMode(false);
-    };
+    const handleOfflineModeToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const isOffline = e.target.checked;
+        const message = isOffline
+            ? 'سيؤدي تفعيل وضع عدم الاتصال إلى إيقاف المزامنة التلقائية. هل أنت متأكد؟'
+            : 'سيؤدي تعطيل وضع عدم الاتصال إلى محاولة مزامنة بياناتك مع السحابة. هل تريد المتابعة؟';
 
-    const handleDisableSync = () => {
-        if (window.confirm('هل أنت متأكد من تعطيل المزامنة؟ سيعود التطبيق للعمل في الوضع المحلي فقط على هذا الجهاز.')) {
-            localStorage.removeItem('supabaseUrl');
-            localStorage.removeItem('supabaseAnonKey');
-            setOfflineMode(true);
-            // Reload to ensure all hooks and contexts re-evaluate the offline state from scratch
-            window.location.reload();
+        if (window.confirm(message)) {
+            setOfflineMode(isOffline);
         }
     };
 
@@ -188,50 +185,32 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
             )}
 
             <div className="bg-white p-6 rounded-lg shadow space-y-4">
-                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">المزامنة السحابية</h2>
-                {offlineMode ? (
-                    <>
-                        <div className="flex items-center gap-3">
-                            <ExclamationTriangleIcon className="w-5 h-5 text-yellow-500" />
-                            <p className="text-gray-700">
-                                <span className="font-semibold">الحالة:</span> معطلة. يتم حفظ بياناتك على هذا الجهاز فقط.
-                            </p>
-                        </div>
-                        <p className="text-sm text-gray-600">
-                            قم بتفعيل المزامنة السحابية لحفظ نسخة احتياطية من بياناتك والوصول إليها من أي جهاز.
+                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">وضع عدم الاتصال</h2>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <p className="text-gray-700 font-medium">
+                            العمل دون اتصال بالإنترنت
                         </p>
-                        <div className="pt-2">
-                            <button 
-                                onClick={handleEnableSync} 
-                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-                            >
-                                <CloudArrowUpIcon className="w-5 h-5" />
-                                <span>تفعيل وإعداد المزامنة السحابية</span>
-                            </button>
-                        </div>
-                    </>
-                ) : (
-                    <>
-                        <div className="flex items-center gap-3">
-                            <CheckCircleIcon className="w-5 h-5 text-green-500" />
-                            <p className="text-gray-700">
-                                <span className="font-semibold">الحالة:</span> مفعلة. تتم مزامنة بياناتك مع السحابة.
-                            </p>
-                        </div>
-                        <p className="text-sm text-gray-600">
-                            يمكنك تعطيل المزامنة السحابية والعودة إلى حفظ البيانات على هذا الجهاز فقط. لن يؤثر هذا على بياناتك المحفوظة في السحابة أو على هذا الجهاز.
+                        <p className="text-sm text-gray-600 mt-1">
+                            {offlineMode 
+                                ? 'أنت تعمل حاليًا في وضع عدم الاتصال. لن تتم مزامنة التغييرات.' 
+                                : 'أنت متصل حاليًا. تتم مزامنة التغييرات تلقائيًا.'}
                         </p>
-                        <div className="pt-2">
-                            <button 
-                                onClick={handleDisableSync} 
-                                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors"
-                            >
-                                <XCircleIcon className="w-5 h-5" />
-                                <span>تعطيل المزامنة السحابية</span>
-                            </button>
-                        </div>
-                    </>
-                )}
+                    </div>
+                    <label htmlFor="offline-toggle" className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                            type="checkbox" 
+                            id="offline-toggle" 
+                            className="sr-only peer" 
+                            checked={offlineMode} 
+                            onChange={handleOfflineModeToggle}
+                        />
+                        <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+                <p className="text-xs text-gray-500 pt-2 border-t">
+                    استخدم هذا الوضع إذا كنت تريد إجراء تغييرات محلية فقط دون التأثير على بياناتك السحابية، أو إذا كنت تعمل في منطقة ذات اتصال ضعيف بالإنترنت.
+                </p>
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow space-y-4">

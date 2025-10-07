@@ -205,7 +205,7 @@ const App: React.FC = () => {
   }
   
   if (needsSetup) {
-      return <SetupWizard currentStatus={syncStatus} onRetry={forceSync} onUseOffline={() => setOfflineModeSetting(true)} initialError={lastSyncError} />;
+      return <SetupWizard onRetry={forceSync} />;
   }
 
 
