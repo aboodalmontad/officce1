@@ -8,7 +8,7 @@ import ClientsPage from './pages/ClientsPage';
 import AccountingPage from './pages/AccountingPage';
 import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
-import { HomeIcon, UsersIcon, CurrencyDollarIcon, DocumentChartBarIcon, SettingsIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, ExclamationTriangleIcon } from './components/icons';
+import { HomeIcon, UsersIcon, CurrencyDollarIcon, DocumentChartBarIcon, SettingsIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, ExclamationTriangleIcon, CloudArrowUpIcon } from './components/icons';
 import { useSupabaseData, SyncStatus } from './hooks/useSupabaseData';
 import { useAnalysis } from './hooks/useSync';
 import { isBeforeToday } from './utils/dateUtils';
@@ -38,8 +38,9 @@ const SyncIndicator: React.FC<{ status: SyncStatus; onSync: () => void; offlineM
                 <span>{current.text}</span>
             </div>
             {showSyncButton && (
-                 <button onClick={onSync} className="p-1.5 rounded-full bg-gray-600 hover:bg-gray-500 text-white transition-colors" title="مزامنة الآن">
-                    <ArrowPathIcon className="w-4 h-4" />
+                 <button onClick={onSync} className="flex items-center gap-2 px-3 py-1.5 bg-gray-600 text-white text-xs font-semibold rounded-lg hover:bg-gray-500 transition-colors" title="حفظ إلى قاعدة البيانات">
+                    <CloudArrowUpIcon className="w-4 h-4" />
+                    <span className="hidden sm:inline">حفظ إلى قاعدة البيانات</span>
                 </button>
             )}
         </div>
@@ -47,7 +48,7 @@ const SyncIndicator: React.FC<{ status: SyncStatus; onSync: () => void; offlineM
 };
 
 
-const App: React.FC = () => {
+const App: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
   const [offlineModeSetting, setOfflineModeSetting] = useLocalStorage('lawyerAppOfflineMode', false);
   
   // The data hook now directly uses the user's setting.
@@ -221,6 +222,14 @@ const App: React.FC = () => {
                 <span>مكتب المحامي</span>
               </div>
               <SyncIndicator status={syncStatus} onSync={manualSync} offlineMode={offlineModeSetting} lastSyncError={lastSyncError} />
+              <button 
+                onClick={onRefresh}
+                className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                title="تحديث الصفحة"
+              >
+                <ArrowPathIcon className="w-4 h-4" />
+                <span>تحديث الصفحة</span>
+              </button>
             </div>
             <div className="flex items-center gap-x-4">
                {/* Desktop Menu */}
@@ -251,6 +260,14 @@ const App: React.FC = () => {
               <NavLink to="/accounting" onClick={() => setIsMenuOpen(false)} className={({ isActive }) => `${mobileNavLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><CurrencyDollarIcon className="w-5 h-5 me-2" /><span>المحاسبة</span></NavLink>
               <NavLink to="/reports" onClick={() => setIsMenuOpen(false)} className={({ isActive }) => `${mobileNavLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><DocumentChartBarIcon className="w-5 h-5 me-2" /><span>التقارير</span></NavLink>
               <NavLink to="/settings" onClick={() => setIsMenuOpen(false)} className={({ isActive }) => `${mobileNavLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><SettingsIcon className="w-5 h-5 me-2" /><span>الإعدادات</span></NavLink>
+              <div className="border-t border-gray-700 my-2"></div>
+               <button 
+                    onClick={() => { onRefresh(); setIsMenuOpen(false); }}
+                    className="w-full flex items-center px-3 py-2 rounded-lg text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white"
+               >
+                    <ArrowPathIcon className="w-5 h-5 me-2" />
+                    <span>تحديث الصفحة</span>
+               </button>
             </nav>
           </div>
         </header>

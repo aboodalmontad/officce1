@@ -271,6 +271,12 @@ export const useSupabaseData = (offlineMode: boolean) => {
              if(syncStatus === 'uninitialized') setLastSyncError('لا يمكن الحفظ، قاعدة البيانات غير مهيأة.');
             return false;
         }
+
+        if (isSavingRef.current) {
+            console.log("Upload already in progress. Skipping.");
+            return false;
+        }
+
         isSavingRef.current = true;
         setSyncStatus('syncing');
         setLastSyncError(null);
@@ -364,7 +370,6 @@ export const useSupabaseData = (offlineMode: boolean) => {
                  throw new Error(errors.map(e => e!.message).join(', '));
             }
             
-            isSavingRef.current = false;
             return true;
         } catch (error: any) {
             console.error("Error saving to Supabase:", error.message);
@@ -377,8 +382,9 @@ export const useSupabaseData = (offlineMode: boolean) => {
                 setSyncStatus('error');
                 setLastSyncError(`فشل رفع البيانات: ${error.message}`);
             }
-            isSavingRef.current = false;
             return false;
+        } finally {
+            isSavingRef.current = false;
         }
     }, [isOnline, syncStatus, offlineMode]);
     
@@ -443,7 +449,7 @@ export const useSupabaseData = (offlineMode: boolean) => {
             if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         };
     }, [data]);
-    
+
     const forceSync = React.useCallback(fetchFromSupabase, [fetchFromSupabase]);
     const setClients = (updater: React.SetStateAction<Client[]>) => setData(prev => ({ ...prev, clients: updater instanceof Function ? updater(prev.clients) : updater }));
     const setAdminTasks = (updater: React.SetStateAction<AdminTask[]>) => setData(prev => ({ ...prev, adminTasks: updater instanceof Function ? updater(prev.adminTasks) : updater }));
