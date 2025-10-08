@@ -80,20 +80,24 @@ const PrintableReport: React.FC<PrintableReportProps> = ({ reportData }) => {
                             <section>
                                 <h3 className="text-xl font-bold text-gray-800 bg-gray-100 p-2 rounded-t-lg">الجلسات</h3>
                                 <div className="overflow-x-auto border border-t-0 rounded-b-lg">
-                                    <table className="w-full text-sm text-right text-gray-600">
+                                    <table className="w-full text-sm text-right text-gray-600 table-fixed">
                                         <thead className="text-xs text-gray-700 uppercase bg-gray-50">
                                             <tr>
-                                                <th className="px-4 py-3">المحكمة</th>
-                                                <th className="px-4 py-3">القضية</th>
-                                                <th className="px-4 py-3">المكلف بالحضور</th>
+                                                <th className="px-2 py-3 w-[15%]">المحكمة / الأساس</th>
+                                                <th className="px-2 py-3 w-[25%]">القضية</th>
+                                                <th className="px-2 py-3 w-[15%]">المكلف بالحضور</th>
+                                                <th className="px-2 py-3 w-[15%]">سبب التأجيل السابق</th>
+                                                <th className="px-2 py-3 w-[30%]">الجلسة القادمة والسبب</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {sessions.map((item) => (
                                                 <tr key={item.id} className="bg-white border-b">
-                                                    <td className="px-4 py-3">{item.court} ({item.caseNumber})</td>
-                                                    <td className="px-4 py-3">{item.clientName} ضد {item.opponentName}</td>
-                                                    <td className="px-4 py-3">{item.assignee}</td>
+                                                    <td className="px-2 py-3 align-top">{item.court} / {item.caseNumber}</td>
+                                                    <td className="px-2 py-3 align-top">{item.clientName} ضد {item.opponentName}</td>
+                                                    <td className="px-2 py-3 align-top">{item.assignee}</td>
+                                                    <td className="px-2 py-3 align-top">{item.postponementReason || '-'}</td>
+                                                    <td className="px-2 py-3 h-16 align-top"></td>
                                                 </tr>
                                             ))}
                                         </tbody>
