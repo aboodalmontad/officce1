@@ -283,68 +283,33 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
 
     // Printing Logic
     const handleGenerateAssigneeReport = (assignee: string | null) => { // null for general report
-        const importanceOrder: { [key: string]: number } = { 'urgent': 3, 'important': 2, 'normal': 1 };
-
-        const dailyAppointments = appointments.filter(a => isSameDay(a.date, selectedDate));
+        const dailyAppointments = appointments
+            .filter(a => isSameDay(a.date, selectedDate))
+            .sort((a, b) => a.time.localeCompare(b.time));
+            
         const dailySessions = allSessions.filter(s => isSameDay(s.date, selectedDate));
-        const dailyAdminTasks = adminTasks.filter(t => !t.completed && isSameDay(t.dueDate, selectedDate));
+        
+        const uncompletedAdminTasks = adminTasks
+            .filter(t => !t.completed) // Get all uncompleted tasks, not just for today.
+            .sort((a, b) => {
+                const importanceOrder = { 'urgent': 3, 'important': 2, 'normal': 1 };
+                // First sort by due date (ascending), then by importance (descending).
+                const dateA = new Date(a.dueDate).getTime();
+                const dateB = new Date(b.dueDate).getTime();
+                if (dateA !== dateB) return dateA - dateB;
+                return importanceOrder[b.importance] - importanceOrder[a.importance];
+            });
         
         const filteredAppointments = assignee ? dailyAppointments.filter(a => a.assignee === assignee) : dailyAppointments;
         const filteredSessions = assignee ? dailySessions.filter(s => s.assignee === assignee) : dailySessions;
-        const filteredAdminTasks = assignee ? dailyAdminTasks.filter(t => t.assignee === assignee) : dailyAdminTasks;
-
-        const agendaItems = [
-            ...filteredAppointments.map(item => ({
-                type: 'موعد',
-                location: 'المكتب',
-                sortKey: `0_${item.time}`,
-                time: formatTime(item.time),
-                title: item.title,
-                importance: importanceMap[item.importance].text,
-                original: item,
-            })),
-            ...filteredSessions.map(item => ({
-                type: 'جلسة',
-                location: item.court,
-                sortKey: '1',
-                time: 'طوال اليوم',
-                title: `قضية: ${item.clientName} ضد ${item.opponentName}`,
-                importance: 'عاجل جداً',
-                original: item,
-            })),
-            ...filteredAdminTasks.map(item => ({
-                type: 'مهمة إدارية',
-                location: item.location || 'غير محدد',
-                sortKey: `2_${importanceOrder[item.importance]}`,
-                time: importanceMapAdminTasks[item.importance].text,
-                title: item.task,
-                importance: importanceMapAdminTasks[item.importance].text,
-                original: item,
-            })),
-        ];
-
-        const groupedAgenda = agendaItems.reduce((acc, item) => {
-            const location = item.location;
-            if (!acc[location]) {
-                acc[location] = [];
-            }
-            acc[location].push(item);
-            return acc;
-        }, {} as Record<string, any[]>);
-
-        for (const location in groupedAgenda) {
-            groupedAgenda[location].sort((a, b) => {
-                if (a.sortKey.startsWith('2_') && b.sortKey.startsWith('2_')) {
-                    return b.sortKey.localeCompare(a.sortKey);
-                }
-                return a.sortKey.localeCompare(b.sortKey);
-            });
-        }
+        const filteredAdminTasks = assignee ? uncompletedAdminTasks.filter(t => t.assignee === assignee) : uncompletedAdminTasks;
         
         setPrintableReportData({
             assignee: assignee || 'جدول الأعمال العام',
             date: selectedDate,
-            groupedAgenda,
+            appointments: filteredAppointments,
+            sessions: filteredSessions,
+            adminTasks: filteredAdminTasks,
         });
 
         setIsPrintAssigneeModalOpen(false);

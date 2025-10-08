@@ -2,23 +2,32 @@ import * as React from 'react';
 import { Session, Appointment, AdminTask } from '../types';
 import { formatDate } from '../utils/dateUtils';
 
-interface AgendaItem {
-    type: string;
-    location: string;
-    sortKey: string;
-    time: string;
-    title: string;
-    importance: string;
-    original: Session | Appointment | AdminTask;
-}
-
 interface PrintableReportProps {
     reportData: {
         assignee: string;
         date: Date;
-        groupedAgenda: Record<string, AgendaItem[]>;
+        appointments: Appointment[];
+        sessions: Session[];
+        adminTasks: AdminTask[];
     } | null;
 }
+
+const importanceMap: { [key: string]: { text: string, className: string } } = {
+    normal: { text: 'عادي', className: 'bg-gray-100 text-gray-800' },
+    important: { text: 'مهم', className: 'bg-yellow-100 text-yellow-800' },
+    urgent: { text: 'عاجل', className: 'bg-red-100 text-red-800' },
+};
+
+const formatTime = (time: string) => {
+    if (!time) return '';
+    let [hours, minutes] = time.split(':');
+    let hh = parseInt(hours, 10);
+    const ampm = hh >= 12 ? 'مساءً' : 'صباحًا';
+    hh = hh % 12;
+    hh = hh ? hh : 12;
+    const finalHours = hh.toString().padStart(2, '0');
+    return `${finalHours}:${minutes} ${ampm}`;
+};
 
 
 const PrintableReport: React.FC<PrintableReportProps> = ({ reportData }) => {
@@ -26,58 +35,7 @@ const PrintableReport: React.FC<PrintableReportProps> = ({ reportData }) => {
         return <div className="p-4 text-center">لا توجد بيانات للطباعة.</div>;
     }
 
-    const { assignee, date, groupedAgenda } = reportData;
-
-    // Helper function to render detailed item content
-    const renderItemDetails = (item: AgendaItem) => {
-        switch (item.type) {
-            case 'جلسة': {
-                const session = item.original as Session;
-                return (
-                    <div>
-                        <p className="font-semibold">{`قضية: ${session.clientName} ضد ${session.opponentName}`}</p>
-                        <p className="text-xs text-gray-500 mt-1">
-                            {`رقم الأساس: ${session.caseNumber}`}
-                            {session.postponementReason && ` | سبب التأجيل السابق: ${session.postponementReason}`}
-                        </p>
-                        {session.assignee && session.assignee !== 'بدون تخصيص' && (
-                            <p className="text-xs text-gray-600 font-medium mt-1">
-                                المكلف بالحضور: {session.assignee}
-                            </p>
-                        )}
-                    </div>
-                );
-            }
-            case 'مهمة إدارية': {
-                const task = item.original as AdminTask;
-                return (
-                    <div>
-                        <p className="font-semibold">{task.task}</p>
-                        {task.assignee && task.assignee !== 'بدون تخصيص' && (
-                            <p className="text-xs text-gray-600 font-medium mt-1">
-                                المسؤول: {task.assignee}
-                            </p>
-                        )}
-                    </div>
-                );
-            }
-            case 'موعد': {
-                const appointment = item.original as Appointment;
-                return (
-                    <div>
-                        <p className="font-semibold">{appointment.title}</p>
-                        {appointment.assignee && appointment.assignee !== 'بدون تخصيص' && (
-                            <p className="text-xs text-gray-600 font-medium mt-1">
-                                مع: {appointment.assignee}
-                            </p>
-                        )}
-                    </div>
-                );
-            }
-            default:
-                return item.title;
-        }
-    };
+    const { assignee, date, appointments, sessions, adminTasks } = reportData;
 
     return (
         <div className="p-4">
@@ -88,35 +46,92 @@ const PrintableReport: React.FC<PrintableReportProps> = ({ reportData }) => {
             </header>
 
             <main className="space-y-8">
-                {Object.keys(groupedAgenda).length > 0 ? (
-                    Object.entries(groupedAgenda).sort(([locA], [locB]) => locA.localeCompare(locB, 'ar')).map(([location, items]) => (
-                        <section key={location}>
-                            <h3 className="text-xl font-bold text-gray-800 bg-gray-100 p-2 rounded-t-lg">{location}</h3>
-                            <div className="overflow-x-auto border border-t-0 rounded-b-lg">
-                                <table className="w-full text-sm text-right text-gray-600">
-                                    <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-                                        <tr>
-                                            <th className="px-4 py-3 w-1/5">الوقت/الأولوية</th>
-                                            <th className="px-4 py-3 w-1/5">النوع</th>
-                                            <th className="px-4 py-3 w-3/5">البيان/التفاصيل</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {/* FIX: Assert the type of `items` to `AgendaItem[]` to resolve TypeScript's inference issue where it was being treated as `unknown`. */}
-                                        {(items as AgendaItem[]).map((item, index) => (
-                                            <tr key={index} className="bg-white border-b">
-                                                <td className="px-4 py-3 font-medium">{item.time}</td>
-                                                <td className="px-4 py-3">{item.type}</td>
-                                                <td className="px-4 py-3">{renderItemDetails(item)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </section>
-                    ))
+                {appointments.length === 0 && sessions.length === 0 && adminTasks.length === 0 ? (
+                     <p className="p-4 text-gray-500 text-center">لا توجد بنود في جدول الأعمال لهذا اليوم.</p>
                 ) : (
-                    <p className="p-4 text-gray-500 text-center">لا توجد مهام مجدولة لهذا اليوم.</p>
+                    <>
+                        {appointments.length > 0 && (
+                            <section>
+                                <h3 className="text-xl font-bold text-gray-800 bg-gray-100 p-2 rounded-t-lg">المواعيد</h3>
+                                <div className="overflow-x-auto border border-t-0 rounded-b-lg">
+                                    <table className="w-full text-sm text-right text-gray-600">
+                                        <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                                            <tr>
+                                                <th className="px-4 py-3 w-1/5">الوقت</th>
+                                                <th className="px-4 py-3 w-3/5">الموضوع</th>
+                                                <th className="px-4 py-3 w-1/5">الأهمية</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {appointments.map((item) => (
+                                                <tr key={item.id} className="bg-white border-b">
+                                                    <td className="px-4 py-3 font-medium">{formatTime(item.time)}</td>
+                                                    <td className="px-4 py-3">{item.title}</td>
+                                                    <td className="px-4 py-3">{importanceMap[item.importance]?.text}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </section>
+                        )}
+
+                        {sessions.length > 0 && (
+                            <section>
+                                <h3 className="text-xl font-bold text-gray-800 bg-gray-100 p-2 rounded-t-lg">الجلسات</h3>
+                                <div className="overflow-x-auto border border-t-0 rounded-b-lg">
+                                    <table className="w-full text-sm text-right text-gray-600">
+                                        <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                                            <tr>
+                                                <th className="px-4 py-3">المحكمة</th>
+                                                <th className="px-4 py-3">القضية</th>
+                                                <th className="px-4 py-3">المكلف بالحضور</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {sessions.map((item) => (
+                                                <tr key={item.id} className="bg-white border-b">
+                                                    <td className="px-4 py-3">{item.court} ({item.caseNumber})</td>
+                                                    <td className="px-4 py-3">{item.clientName} ضد {item.opponentName}</td>
+                                                    <td className="px-4 py-3">{item.assignee}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </section>
+                        )}
+
+                        {adminTasks.length > 0 && (
+                             <section>
+                                <h3 className="text-xl font-bold text-gray-800 bg-gray-100 p-2 rounded-t-lg">المهام الإدارية الغير منجزة</h3>
+                                <div className="overflow-x-auto border border-t-0 rounded-b-lg">
+                                    <table className="w-full text-sm text-right text-gray-600">
+                                        <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                                            <tr>
+                                                <th className="px-4 py-3">تاريخ الاستحقاق</th>
+                                                <th className="px-4 py-3">المهمة</th>
+                                                <th className="px-4 py-3">المكان</th>
+                                                <th className="px-4 py-3">المسؤول</th>
+                                                <th className="px-4 py-3">الأهمية</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {adminTasks.map((item) => (
+                                                <tr key={item.id} className="bg-white border-b">
+                                                    <td className="px-4 py-3">{formatDate(item.dueDate)}</td>
+                                                    <td className="px-4 py-3">{item.task}</td>
+                                                    <td className="px-4 py-3">{item.location || '-'}</td>
+                                                    <td className="px-4 py-3">{item.assignee}</td>
+                                                    <td className="px-4 py-3">{importanceMap[item.importance]?.text}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </section>
+                        )}
+                    </>
                 )}
             </main>
         </div>
