@@ -15,19 +15,25 @@ import { isBeforeToday } from './utils/dateUtils';
 import SetupWizard from './components/SetupWizard';
 import { useLocalStorage } from './hooks/useLocalStorage';
 
-const SyncIndicator: React.FC<{ status: SyncStatus; onSync: () => void; offlineMode: boolean; lastSyncError: string | null; }> = ({ status, onSync, offlineMode, lastSyncError }) => {
-    const messages: Record<SyncStatus, { text: string; icon: React.ReactElement; color: string }> = {
+const SyncIndicator: React.FC<{ status: SyncStatus; onSync: () => void; offlineMode: boolean; lastSyncError: string | null; isDirty: boolean; }> = ({ status, onSync, offlineMode, lastSyncError, isDirty }) => {
+    const messages: Record<SyncStatus | 'dirty', { text: string; icon: React.ReactElement; color: string }> = {
         loading: { text: 'جاري تحميل البيانات...', icon: <ArrowPathIcon className="w-4 h-4 animate-spin" />, color: 'text-gray-300' },
         syncing: { text: 'جاري المزامنة...', icon: <ArrowPathIcon className="w-4 h-4 animate-spin" />, color: 'text-yellow-300' },
-        synced: { text: 'تمت المزامنة', icon: <CheckCircleIcon className="w-4 h-4" />, color: 'text-green-400' },
+        synced: { text: 'تم الحفظ', icon: <CheckCircleIcon className="w-4 h-4" />, color: 'text-green-400' },
         offline: { text: 'التطبيق يعمل دون اتصال', icon: <CheckCircleIcon className="w-4 h-4" />, color: 'text-gray-400' },
         error: { text: 'فشلت المزامنة', icon: <ExclamationTriangleIcon className="w-4 h-4" />, color: 'text-red-400' },
         unconfigured: { text: 'Supabase غير مهيأ', icon: <ExclamationTriangleIcon className="w-4 h-4" />, color: 'text-orange-400' },
         uninitialized: { text: 'قاعدة البيانات غير مهيأة', icon: <ExclamationTriangleIcon className="w-4 h-4" />, color: 'text-orange-400' },
+        dirty: { text: 'تغييرات غير محفوظة', icon: <ExclamationTriangleIcon className="w-4 h-4" />, color: 'text-yellow-400' },
     };
+    
+    let displayStatus: SyncStatus | 'dirty' = status;
+    if (isDirty && !['loading', 'syncing', 'error', 'unconfigured', 'uninitialized'].includes(status)) {
+        displayStatus = 'dirty';
+    }
 
-    const current = messages[status] || messages.loading;
-    const showSyncButton = !offlineMode && ['synced', 'error', 'offline'].includes(status);
+    const current = messages[displayStatus] || messages.loading;
+    const showSyncButton = !offlineMode && isDirty && !['syncing', 'loading', 'unconfigured', 'uninitialized'].includes(status);
     const titleText = status === 'error' && lastSyncError ? `فشلت المزامنة: ${lastSyncError}` : current.text;
 
 
@@ -38,9 +44,9 @@ const SyncIndicator: React.FC<{ status: SyncStatus; onSync: () => void; offlineM
                 <span>{current.text}</span>
             </div>
             {showSyncButton && (
-                 <button onClick={onSync} className="flex items-center gap-2 px-3 py-1.5 bg-gray-600 text-white text-xs font-semibold rounded-lg hover:bg-gray-500 transition-colors" title="حفظ إلى قاعدة البيانات">
+                 <button onClick={onSync} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-500 transition-colors animate-pulse" title="حفظ التغييرات إلى قاعدة البيانات">
                     <CloudArrowUpIcon className="w-4 h-4" />
-                    <span className="hidden sm:inline">حفظ إلى قاعدة البيانات</span>
+                    <span className="hidden sm:inline">حفظ التغييرات</span>
                 </button>
             )}
         </div>
@@ -52,7 +58,7 @@ const App: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
   const [offlineModeSetting, setOfflineModeSetting] = useLocalStorage('lawyerAppOfflineMode', false);
   
   // The data hook now directly uses the user's setting.
-  const { clients, adminTasks, appointments, accountingEntries, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, assistants, setAssistants, syncStatus, forceSync, manualSync, lastSyncError } = useSupabaseData(offlineModeSetting);
+  const { clients, adminTasks, appointments, accountingEntries, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, assistants, setAssistants, syncStatus, forceSync, manualSync, lastSyncError, isDirty } = useSupabaseData(offlineModeSetting);
   
   const { analysisStatus, lastAnalysis, triggerAnalysis, analysisReport } = useAnalysis();
   // FIX: Correctly destructure `setIsMenuOpen` from `React.useState` and fix syntax.
@@ -221,15 +227,7 @@ const App: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
               <div className="text-xl font-bold">
                 <span>مكتب المحامي</span>
               </div>
-              <SyncIndicator status={syncStatus} onSync={manualSync} offlineMode={offlineModeSetting} lastSyncError={lastSyncError} />
-              <button 
-                onClick={onRefresh}
-                className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-                title="تحديث الصفحة"
-              >
-                <ArrowPathIcon className="w-4 h-4" />
-                <span>تحديث الصفحة</span>
-              </button>
+              <SyncIndicator status={syncStatus} onSync={manualSync} offlineMode={offlineModeSetting} lastSyncError={lastSyncError} isDirty={isDirty} />
             </div>
             <div className="flex items-center gap-x-4">
                {/* Desktop Menu */}
@@ -260,14 +258,6 @@ const App: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
               <NavLink to="/accounting" onClick={() => setIsMenuOpen(false)} className={({ isActive }) => `${mobileNavLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><CurrencyDollarIcon className="w-5 h-5 me-2" /><span>المحاسبة</span></NavLink>
               <NavLink to="/reports" onClick={() => setIsMenuOpen(false)} className={({ isActive }) => `${mobileNavLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><DocumentChartBarIcon className="w-5 h-5 me-2" /><span>التقارير</span></NavLink>
               <NavLink to="/settings" onClick={() => setIsMenuOpen(false)} className={({ isActive }) => `${mobileNavLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}><SettingsIcon className="w-5 h-5 me-2" /><span>الإعدادات</span></NavLink>
-              <div className="border-t border-gray-700 my-2"></div>
-               <button 
-                    onClick={() => { onRefresh(); setIsMenuOpen(false); }}
-                    className="w-full flex items-center px-3 py-2 rounded-lg text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white"
-               >
-                    <ArrowPathIcon className="w-5 h-5 me-2" />
-                    <span>تحديث الصفحة</span>
-               </button>
             </nav>
           </div>
         </header>

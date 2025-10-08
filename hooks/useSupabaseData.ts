@@ -175,6 +175,13 @@ export const useSupabaseData = (offlineMode: boolean) => {
     });
     const [syncStatus, setSyncStatus] = React.useState<SyncStatus>('loading');
     const [lastSyncError, setLastSyncError] = React.useState<string | null>(null);
+    const [isDirty, setIsDirty] = React.useState(() => {
+        try {
+            return localStorage.getItem('lawyerAppIsDirty') === 'true';
+        } catch {
+            return false;
+        }
+    });
     const isOnline = useOnlineStatus();
     const isSavingRef = React.useRef(false);
     const saveTimeoutRef = React.useRef<number | null>(null);
@@ -182,6 +189,15 @@ export const useSupabaseData = (offlineMode: boolean) => {
     const initialLoadRef = React.useRef(true);
     const prevIsOnline = usePrevious(isOnline);
     const prevOfflineMode = usePrevious(offlineMode);
+    
+    React.useEffect(() => {
+        try {
+            localStorage.setItem('lawyerAppIsDirty', String(isDirty));
+        } catch (error) {
+            console.error('Failed to save dirty state to localStorage', error);
+        }
+    }, [isDirty]);
+
 
     const fetchFromSupabase = React.useCallback(async () => {
         if (offlineMode) {
@@ -246,6 +262,7 @@ export const useSupabaseData = (offlineMode: boolean) => {
             const validatedData = validateAndHydrate(remoteData);
             setData(validatedData);
             localStorage.setItem(APP_DATA_KEY, JSON.stringify(validatedData));
+            setIsDirty(false);
             setSyncStatus('synced');
 
         } catch (error: any) {
@@ -354,22 +371,38 @@ export const useSupabaseData = (offlineMode: boolean) => {
             await supabase.from('accounting_entries').delete().neq('id', 'placeholder-to-delete-all');
             await supabase.from('assistants').delete().neq('name', 'placeholder-to-delete-all');
 
-            const results = await Promise.all([
+            // Upsert data sequentially to respect foreign key constraints.
+            // Independent tables can be grouped with the first dependent one.
+            const [clientsResult, adminTasksResult, appointmentsResult, accountingEntriesResult, assistantsResult] = await Promise.all([
                 supabase.from('clients').upsert(clientsToUpsert),
-                supabase.from('cases').upsert(casesToUpsert),
-                supabase.from('stages').upsert(stagesToUpsert),
-                supabase.from('sessions').upsert(sessionsToUpsert),
                 supabase.from('admin_tasks').upsert(adminTasksToUpsert),
                 supabase.from('appointments').upsert(appointmentsToUpsert),
                 supabase.from('accounting_entries').upsert(accountingEntriesToUpsert),
                 supabase.from('assistants').upsert(assistantsToUpsert),
             ]);
+
+            // Now handle dependent tables sequentially.
+            const casesResult = await supabase.from('cases').upsert(casesToUpsert);
+            const stagesResult = await supabase.from('stages').upsert(stagesToUpsert);
+            const sessionsResult = await supabase.from('sessions').upsert(sessionsToUpsert);
+
+            const results = [
+                clientsResult,
+                casesResult,
+                stagesResult,
+                sessionsResult,
+                adminTasksResult,
+                appointmentsResult,
+                accountingEntriesResult,
+                assistantsResult
+            ];
             
             const errors = results.map(r => r.error).filter(Boolean);
             if(errors.length > 0) {
                  throw new Error(errors.map(e => e!.message).join(', '));
             }
             
+            setIsDirty(false);
             return true;
         } catch (error: any) {
             console.error("Error saving to Supabase:", error.message);
@@ -414,29 +447,27 @@ export const useSupabaseData = (offlineMode: boolean) => {
         const wasInUserOfflineMode = prevOfflineMode === true;
         const switchedToOnlineMode = wasInUserOfflineMode && !offlineMode;
 
-        // If user has set offline mode, respect it above all.
-        if (offlineMode) {
-            if (syncStatus !== 'offline') setSyncStatus('offline');
-            return;
-        }
-
-        // If we have no internet, we are offline.
-        if (!isOnline) {
+        // Highest priority: check for offline status
+        if (offlineMode || !isOnline) {
             if (syncStatus !== 'offline') setSyncStatus('offline');
             return;
         }
 
         // At this point, we are online and not in user-defined offline mode.
-        if (isReconnecting) {
-            // Highest priority: if we just got internet back, sync everything (push then pull).
-            console.log('Network reconnected. Triggering full sync.');
+        
+        // Scenarios that require a full sync (push then pull)
+        if (isReconnecting || (isInitialLoad && isDirty)) {
+            let reason = isReconnecting ? 'Network reconnected' : 'Initial load with unsaved changes';
+            console.log(`${reason}. Triggering full sync.`);
             manualSync();
-        } else if (isInitialLoad || switchedToOnlineMode) {
-            // On first page load or when user toggles the setting to online, just fetch (pull).
-            console.log(`Triggering data fetch. Reason: ${isInitialLoad ? 'Initial Load' : 'Switched to Online Mode'}`);
+        } 
+        // Scenarios that require just a fetch (pull)
+        else if (isInitialLoad || switchedToOnlineMode) {
+            let reason = isInitialLoad ? 'Initial Load' : 'Switched to Online Mode';
+            console.log(`Triggering data fetch. Reason: ${reason}`);
             fetchFromSupabase();
         }
-    }, [isOnline, prevIsOnline, offlineMode, prevOfflineMode, fetchFromSupabase, manualSync, syncStatus]);
+    }, [isOnline, prevIsOnline, offlineMode, prevOfflineMode, fetchFromSupabase, manualSync, isDirty]);
 
 
     React.useEffect(() => {
@@ -451,14 +482,22 @@ export const useSupabaseData = (offlineMode: boolean) => {
     }, [data]);
 
     const forceSync = React.useCallback(fetchFromSupabase, [fetchFromSupabase]);
-    const setClients = (updater: React.SetStateAction<Client[]>) => setData(prev => ({ ...prev, clients: updater instanceof Function ? updater(prev.clients) : updater }));
-    const setAdminTasks = (updater: React.SetStateAction<AdminTask[]>) => setData(prev => ({ ...prev, adminTasks: updater instanceof Function ? updater(prev.adminTasks) : updater }));
-    const setAppointments = (updater: React.SetStateAction<Appointment[]>) => setData(prev => ({ ...prev, appointments: updater instanceof Function ? updater(prev.appointments) : updater }));
-    const setAccountingEntries = (updater: React.SetStateAction<AccountingEntry[]>) => setData(prev => ({ ...prev, accountingEntries: updater instanceof Function ? updater(prev.accountingEntries) : updater }));
-    const setAssistants = (updater: React.SetStateAction<string[]>) => setData(prev => ({ ...prev, assistants: updater instanceof Function ? updater(prev.assistants) : updater }));
+
+    const createSetter = <K extends keyof AppData>(key: K) => (updater: React.SetStateAction<AppData[K]>) => {
+        setData(prev => ({ ...prev, [key]: updater instanceof Function ? updater(prev[key]) : updater }));
+        setIsDirty(true);
+    };
+
+    const setClients = createSetter('clients');
+    const setAdminTasks = createSetter('adminTasks');
+    const setAppointments = createSetter('appointments');
+    const setAccountingEntries = createSetter('accountingEntries');
+    const setAssistants = createSetter('assistants');
+
     const setFullData = (newData: any) => {
         const validatedData = validateAndHydrate(newData);
         setData(validatedData);
+        setIsDirty(true);
     };
 
     const allSessions = React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(s => s.sessions))), [data.clients]);
@@ -467,5 +506,5 @@ export const useSupabaseData = (offlineMode: boolean) => {
         if (allSessions) updateSessionsInDB(allSessions);
     }, [allSessions]);
 
-    return { ...data, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, setAssistants, syncStatus, forceSync, manualSync, lastSyncError };
+    return { ...data, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, setAssistants, syncStatus, forceSync, manualSync, lastSyncError, isDirty };
 };

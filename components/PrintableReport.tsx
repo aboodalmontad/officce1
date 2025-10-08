@@ -28,6 +28,57 @@ const PrintableReport: React.FC<PrintableReportProps> = ({ reportData }) => {
 
     const { assignee, date, groupedAgenda } = reportData;
 
+    // Helper function to render detailed item content
+    const renderItemDetails = (item: AgendaItem) => {
+        switch (item.type) {
+            case 'جلسة': {
+                const session = item.original as Session;
+                return (
+                    <div>
+                        <p className="font-semibold">{`قضية: ${session.clientName} ضد ${session.opponentName}`}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                            {`رقم الأساس: ${session.caseNumber}`}
+                            {session.postponementReason && ` | سبب التأجيل السابق: ${session.postponementReason}`}
+                        </p>
+                        {session.assignee && session.assignee !== 'بدون تخصيص' && (
+                            <p className="text-xs text-gray-600 font-medium mt-1">
+                                المكلف بالحضور: {session.assignee}
+                            </p>
+                        )}
+                    </div>
+                );
+            }
+            case 'مهمة إدارية': {
+                const task = item.original as AdminTask;
+                return (
+                    <div>
+                        <p className="font-semibold">{task.task}</p>
+                        {task.assignee && task.assignee !== 'بدون تخصيص' && (
+                            <p className="text-xs text-gray-600 font-medium mt-1">
+                                المسؤول: {task.assignee}
+                            </p>
+                        )}
+                    </div>
+                );
+            }
+            case 'موعد': {
+                const appointment = item.original as Appointment;
+                return (
+                    <div>
+                        <p className="font-semibold">{appointment.title}</p>
+                        {appointment.assignee && appointment.assignee !== 'بدون تخصيص' && (
+                            <p className="text-xs text-gray-600 font-medium mt-1">
+                                مع: {appointment.assignee}
+                            </p>
+                        )}
+                    </div>
+                );
+            }
+            default:
+                return item.title;
+        }
+    };
+
     return (
         <div className="p-4">
             <header className="text-center border-b pb-4 mb-6">
@@ -56,7 +107,7 @@ const PrintableReport: React.FC<PrintableReportProps> = ({ reportData }) => {
                                             <tr key={index} className="bg-white border-b">
                                                 <td className="px-4 py-3 font-medium">{item.time}</td>
                                                 <td className="px-4 py-3">{item.type}</td>
-                                                <td className="px-4 py-3">{item.title}</td>
+                                                <td className="px-4 py-3">{renderItemDetails(item)}</td>
                                             </tr>
                                         ))}
                                     </tbody>
