@@ -69,6 +69,57 @@ const App: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
   // The wizard is shown if the user wants to be online, but the sync status indicates a setup problem.
   const needsSetup = !offlineModeSetting && (syncStatus === 'unconfigured' || syncStatus === 'uninitialized');
 
+  // --- Pull-to-refresh state and handlers ---
+  const [pullStart, setPullStart] = React.useState<number | null>(null);
+  const [pullDistance, setPullDistance] = React.useState(0);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+
+  const REFRESH_THRESHOLD = 80; // Pixels to pull before refresh triggers
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+      // Only start pull-to-refresh if we are at the top of the page
+      if (window.scrollY === 0) {
+          setPullStart(e.targetTouches[0].clientY);
+      } else {
+          setPullStart(null);
+      }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+      if (pullStart === null || isRefreshing) return;
+
+      const touchY = e.targetTouches[0].clientY;
+      let distance = touchY - pullStart;
+
+      // Don't allow pulling up past the start point
+      if (distance < 0) distance = 0;
+
+      // Apply some resistance to the pull for a more natural feel
+      setPullDistance(distance / 2.5);
+  };
+
+  const handleTouchEnd = () => {
+      if (pullStart === null || isRefreshing) return;
+
+      if (pullDistance > REFRESH_THRESHOLD) {
+          setIsRefreshing(true);
+          // Animate the spinner into view and hold the position
+          setPullDistance(60); 
+
+          // Wait for the animation to show, then trigger the actual refresh
+          setTimeout(() => {
+              onRefresh();
+              // State will be reset automatically on component remount via AppWrapper key change
+          }, 500);
+
+      } else {
+          // Animate back to original position smoothly
+          setPullDistance(0);
+      }
+      setPullStart(null);
+  };
+
+
   React.useEffect(() => {
     const handleResize = () => {
         if (window.innerWidth >= 768) { // Tailwind's 'md' breakpoint
@@ -214,13 +265,34 @@ const App: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
   if (needsSetup) {
       return <SetupWizard onRetry={forceSync} />;
   }
+  
+  const pullToRefreshIndicator = (
+      <div 
+          className="no-print absolute top-20 left-0 right-0 flex justify-center items-center text-gray-500 z-0"
+          style={{ 
+              opacity: isRefreshing ? 1 : Math.min(pullDistance / REFRESH_THRESHOLD, 1),
+          }}
+      >
+          <div className="bg-white rounded-full p-2 shadow-lg">
+              <ArrowPathIcon 
+                  className={`w-6 h-6 transition-transform duration-200 ${isRefreshing ? 'animate-spin' : ''}`}
+                  style={{ transform: `rotate(${isRefreshing ? 0 : pullDistance * 2.5}deg)`}}
+              />
+          </div>
+      </div>
+  );
 
 
   return (
     // FIX: Replaced all `ReactRouterDOM.*` component usages with direct component names
     // (e.g., `HashRouter`, `NavLink`, `Routes`) to align with the updated named imports.
     <HashRouter>
-      <div className="relative min-h-screen bg-gray-100 text-gray-800">
+      <div 
+        className="relative min-h-screen bg-gray-100 text-gray-800"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
         <header className="no-print fixed top-0 left-0 right-0 w-full bg-gray-800 text-white shadow-lg z-50">
           <div className="container mx-auto flex items-center justify-between h-16 px-4 sm:px-6">
             <div className="flex items-center gap-4">
@@ -262,7 +334,15 @@ const App: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
           </div>
         </header>
         
-        <main className={`container mx-auto p-4 md:p-8 transition-all duration-300 ${isMenuOpen ? 'pt-80' : 'pt-28 md:pt-32'}`}>
+        {pullToRefreshIndicator}
+
+        <main 
+          className={`container mx-auto p-4 md:p-8 transition-all duration-300 ${isMenuOpen ? 'pt-80' : 'pt-28 md:pt-32'}`}
+          style={{
+              transform: `translateY(${pullDistance}px)`,
+              transition: pullStart === null ? 'transform 0.3s' : 'none',
+          }}
+        >
           <Routes>
             <Route path="/" element={<HomePage appointments={appointments} setClients={setClients} allSessions={allSessions} setAppointments={setAppointments} adminTasks={adminTasks} setAdminTasks={setAdminTasks} assistants={assistants} />} />
             <Route path="/clients" element={<ClientsPage clients={clients} setClients={setClients} accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} assistants={assistants} />} />
