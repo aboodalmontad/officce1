@@ -8,6 +8,7 @@ import ClientsPage from './pages/ClientsPage';
 import AccountingPage from './pages/AccountingPage';
 import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
+import LoginPage from './pages/LoginPage';
 import { HomeIcon, UsersIcon, CurrencyDollarIcon, DocumentChartBarIcon, SettingsIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, ExclamationTriangleIcon, CloudArrowUpIcon } from './components/icons';
 import { useSupabaseData, SyncStatus } from './hooks/useSupabaseData';
 import { useAnalysis } from './hooks/useSync';
@@ -55,6 +56,14 @@ const SyncIndicator: React.FC<{ status: SyncStatus; onSync: () => void; offlineM
 
 
 const App: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
+  const [isAuthenticated, setIsAuthenticated] = React.useState(() => {
+    try {
+      return sessionStorage.getItem('isAuthenticated') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
   const [offlineModeSetting, setOfflineModeSetting] = useLocalStorage('lawyerAppOfflineMode', false);
   
   // The data hook now directly uses the user's setting.
@@ -117,6 +126,16 @@ const App: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
           setPullDistance(0);
       }
       setPullStart(null);
+  };
+
+  const handleLoginSuccess = () => {
+    sessionStorage.setItem('isAuthenticated', 'true');
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('isAuthenticated');
+    setIsAuthenticated(false);
   };
 
 
@@ -251,6 +270,10 @@ const App: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
   const activeNavLinkClasses = "bg-blue-600 text-white";
   const mobileNavLinkClasses = "flex items-center px-3 py-2 rounded-lg text-base font-medium transition-colors duration-200 text-gray-300 hover:bg-gray-700 hover:text-white";
 
+  if (!isAuthenticated) {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
+
   if (isLoading) {
     return (
         <div className="flex items-center justify-center min-h-screen bg-gray-100">
@@ -348,7 +371,7 @@ const App: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
             <Route path="/clients" element={<ClientsPage clients={clients} setClients={setClients} accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} assistants={assistants} />} />
             <Route path="/accounting" element={<AccountingPage accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} clients={clients} />} />
             <Route path="/reports" element={<ReportsPage clients={clients} accountingEntries={accountingEntries} />} />
-            <Route path="/settings" element={<SettingsPage setFullData={setFullData} analysisStatus={analysisStatus} lastAnalysis={lastAnalysis} triggerAnalysis={triggerAnalysis} assistants={assistants} setAssistants={setAssistants} analysisReport={analysisReport} offlineMode={offlineModeSetting} setOfflineMode={setOfflineModeSetting} />} />
+            <Route path="/settings" element={<SettingsPage setFullData={setFullData} analysisStatus={analysisStatus} lastAnalysis={lastAnalysis} triggerAnalysis={triggerAnalysis} assistants={assistants} setAssistants={setAssistants} analysisReport={analysisReport} offlineMode={offlineModeSetting} setOfflineMode={setOfflineModeSetting} onLogout={handleLogout} />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </main>
