@@ -191,7 +191,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
         try {
             setCredentials({
                 id: 1, // Static ID for the single credentials row
-                username: username,
+                username: username.trim(),
                 password: password,
             });
             setSecurityFeedback({ message: 'تم تحديث بيانات الدخول بنجاح. ستتم مزامنتها مع السحابة قريباً.', type: 'success' });

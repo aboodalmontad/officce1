@@ -16,7 +16,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, credentials }) =>
 
         const authCredentials = credentials || { username: 'admin', password: 'admin' };
 
-        if (username === authCredentials.username && password === authCredentials.password) {
+        if (username.trim() === authCredentials.username && password === authCredentials.password) {
             onLoginSuccess();
         } else {
             setError('اسم المستخدم أو كلمة المرور غير صحيحة.');

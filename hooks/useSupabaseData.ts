@@ -255,12 +255,17 @@ export const useSupabaseData = (offlineMode: boolean) => {
 
             const allResults = [clientsRes, adminTasksRes, appointmentsRes, accountingEntriesRes, assistantsRes, credentialsRes];
             
-            // Check for uninitialized database by looking for the specific error code.
-            const hasUninitializedError = allResults.some(res => res.error && res.error.code === '42P01');
+            // Check for uninitialized database by looking for the specific error code '42P01' (table does not exist)
+            // or for messages indicating a stale schema cache, which can happen shortly after running the setup script.
+            const hasUninitializedError = allResults.some(res => 
+                res.error && 
+                (res.error.code === '42P01' || res.error.message.includes('in the schema cache'))
+            );
+
 
             if (hasUninitializedError) {
                 setSyncStatus('uninitialized');
-                setLastSyncError('قاعدة البيانات غير مهيأة. يرجى تشغيل شيفرة التهيئة لإنشاء الجداول اللازمة.');
+                setLastSyncError('قاعدة البيانات غير مهيأة أو أن التغييرات لم تنعكس بعد. يرجى تشغيل شيفرة التهيئة في Supabase والانتظار لمدة دقيقة، ثم المحاولة مرة أخرى.');
                 return; // Stop execution, guide user to Step 2 of the wizard.
             }
             
