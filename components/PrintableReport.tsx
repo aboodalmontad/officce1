@@ -8,7 +8,7 @@ interface PrintableReportProps {
         date: Date;
         appointments: Appointment[];
         sessions: Session[];
-        adminTasks: AdminTask[];
+        adminTasks: Record<string, AdminTask[]>;
     } | null;
 }
 
@@ -46,7 +46,7 @@ const PrintableReport: React.FC<PrintableReportProps> = ({ reportData }) => {
             </header>
 
             <main className="space-y-8">
-                {appointments.length === 0 && sessions.length === 0 && adminTasks.length === 0 ? (
+                {appointments.length === 0 && sessions.length === 0 && Object.keys(adminTasks).length === 0 ? (
                      <p className="p-4 text-gray-500 text-center">لا توجد بنود في جدول الأعمال لهذا اليوم.</p>
                 ) : (
                     <>
@@ -106,32 +106,40 @@ const PrintableReport: React.FC<PrintableReportProps> = ({ reportData }) => {
                             </section>
                         )}
 
-                        {adminTasks.length > 0 && (
-                             <section>
-                                <h3 className="text-xl font-bold text-gray-800 bg-gray-100 p-2 rounded-t-lg">المهام الإدارية الغير منجزة</h3>
-                                <div className="overflow-x-auto border border-t-0 rounded-b-lg">
-                                    <table className="w-full text-sm text-right text-gray-600">
-                                        <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-                                            <tr>
-                                                <th className="px-4 py-3">تاريخ الاستحقاق</th>
-                                                <th className="px-4 py-3">المهمة</th>
-                                                <th className="px-4 py-3">المكان</th>
-                                                <th className="px-4 py-3">المسؤول</th>
-                                                <th className="px-4 py-3">الأهمية</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {adminTasks.map((item) => (
-                                                <tr key={item.id} className="bg-white border-b">
-                                                    <td className="px-4 py-3">{formatDate(item.dueDate)}</td>
-                                                    <td className="px-4 py-3">{item.task}</td>
-                                                    <td className="px-4 py-3">{item.location || '-'}</td>
-                                                    <td className="px-4 py-3">{item.assignee}</td>
-                                                    <td className="px-4 py-3">{importanceMap[item.importance]?.text}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                        {Object.keys(adminTasks).length > 0 && (
+                            <section>
+                                <h3 className="text-xl font-bold text-gray-800 bg-gray-100 p-2 rounded-lg mb-4">المهام الإدارية الغير منجزة</h3>
+                                <div className="space-y-6">
+                                    {/* FIX: Cast the 'tasks' variable to AdminTask[] to resolve TypeScript errors where its type was inferred as 'unknown'. This happens because Object.entries can have a weak return type in some TypeScript configurations, causing issues with accessing properties like '.length' and methods like '.map'. The cast ensures the correct type is used. */}
+                                    {Object.entries(adminTasks).map(([location, tasks]) => {
+                                        const taskList = tasks as AdminTask[];
+                                        return (
+                                        <div key={location}>
+                                            <h4 className="text-lg font-semibold text-gray-700 bg-gray-50 p-3 rounded-t-lg">{location} <span className="text-sm font-normal text-gray-500">({taskList.length} مهام)</span></h4>
+                                            <div className="overflow-x-auto border border-t-0 rounded-b-lg">
+                                                <table className="w-full text-sm text-right text-gray-600">
+                                                    <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                                                        <tr>
+                                                            <th className="px-4 py-3">تاريخ الاستحقاق</th>
+                                                            <th className="px-4 py-3">المهمة</th>
+                                                            <th className="px-4 py-3">المسؤول</th>
+                                                            <th className="px-4 py-3">الأهمية</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {taskList.map((item) => (
+                                                            <tr key={item.id} className="bg-white border-b">
+                                                                <td className="px-4 py-3">{formatDate(item.dueDate)}</td>
+                                                                <td className="px-4 py-3">{item.task}</td>
+                                                                <td className="px-4 py-3">{item.assignee}</td>
+                                                                <td className="px-4 py-3">{importanceMap[item.importance]?.text}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )})}
                                 </div>
                             </section>
                         )}

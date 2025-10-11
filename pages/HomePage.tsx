@@ -282,36 +282,58 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     };
 
     // Printing Logic
-    const handleGenerateAssigneeReport = (assignee: string | null) => { // null for general report
+    const handleGenerateAssigneeReport = (assignee: string | null) => {
         const dailyAppointments = appointments
             .filter(a => isSameDay(a.date, selectedDate))
             .sort((a, b) => a.time.localeCompare(b.time));
-            
+    
         const dailySessions = allSessions.filter(s => isSameDay(s.date, selectedDate));
-        
-        const uncompletedAdminTasks = adminTasks
-            .filter(t => !t.completed) // Get all uncompleted tasks, not just for today.
-            .sort((a, b) => {
-                const importanceOrder = { 'urgent': 3, 'important': 2, 'normal': 1 };
-                // First sort by due date (ascending), then by importance (descending).
+    
+        // Filter, group, and sort admin tasks to match the main page display
+        const allUncompletedTasks = adminTasks.filter(t => !t.completed);
+        const filteredForAssigneeTasks = assignee ? allUncompletedTasks.filter(t => t.assignee === assignee) : allUncompletedTasks;
+    
+        const groupedAndSortedTasks = filteredForAssigneeTasks.reduce((acc, task) => {
+            const location = task.location || 'غير محدد';
+            if (!acc[location]) {
+                acc[location] = [];
+            }
+            acc[location].push(task);
+            return acc;
+        }, {} as Record<string, AdminTask[]>);
+    
+        const importanceOrder = { 'urgent': 3, 'important': 2, 'normal': 1 };
+    
+        for (const location in groupedAndSortedTasks) {
+            groupedAndSortedTasks[location].sort((a, b) => {
                 const dateA = new Date(a.dueDate).getTime();
                 const dateB = new Date(b.dueDate).getTime();
                 if (dateA !== dateB) return dateA - dateB;
-                return importanceOrder[b.importance] - importanceOrder[a.importance];
+    
+                const importanceA = importanceOrder[a.importance];
+                const importanceB = importanceOrder[b.importance];
+                if (importanceA !== importanceB) return importanceB - importanceA;
+    
+                const assigneeA = a.assignee || '';
+                const assigneeB = b.assignee || '';
+                const assigneeComparison = assigneeA.localeCompare(assigneeB, 'ar');
+                if (assigneeComparison !== 0) return assigneeComparison;
+    
+                return a.task.localeCompare(b.task, 'ar');
             });
-        
+        }
+    
         const filteredAppointments = assignee ? dailyAppointments.filter(a => a.assignee === assignee) : dailyAppointments;
         const filteredSessions = assignee ? dailySessions.filter(s => s.assignee === assignee) : dailySessions;
-        const filteredAdminTasks = assignee ? uncompletedAdminTasks.filter(t => t.assignee === assignee) : uncompletedAdminTasks;
-        
+    
         setPrintableReportData({
             assignee: assignee || 'جدول الأعمال العام',
             date: selectedDate,
             appointments: filteredAppointments,
             sessions: filteredSessions,
-            adminTasks: filteredAdminTasks,
+            adminTasks: groupedAndSortedTasks,
         });
-
+    
         setIsPrintAssigneeModalOpen(false);
         setIsPrintModalOpen(true);
     };
