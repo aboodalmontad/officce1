@@ -113,6 +113,13 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     const [isPrintAssigneeModalOpen, setIsPrintAssigneeModalOpen] = React.useState(false);
     const [printableReportData, setPrintableReportData] = React.useState<any | null>(null);
     const printReportRef = React.useRef<HTMLDivElement>(null);
+    
+    // State for drag-and-drop
+    const [draggedTask, setDraggedTask] = React.useState<string | null>(null);
+    const [dragOverLocation, setDragOverLocation] = React.useState<string | null>(null);
+    
+    // State for inline assignee editing
+    const [editingAssigneeTaskId, setEditingAssigneeTaskId] = React.useState<string | null>(null);
 
 
     const toInputDateString = (date: Date) => {
@@ -279,6 +286,15 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
 
     const handleToggleTaskComplete = (id: string) => {
         setAdminTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+    };
+
+    const handleAssigneeChange = (taskId: string, newAssignee: string) => {
+        setAdminTasks(prevTasks =>
+            prevTasks.map(t =>
+                t.id === taskId ? { ...t, assignee: newAssignee } : t
+            )
+        );
+        setEditingAssigneeTaskId(null); // Exit edit mode
     };
 
     // Printing Logic
@@ -614,7 +630,32 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                 <div className="mt-4 space-y-6">
                     {Object.keys(groupedTasks).length > 0 ? (
                         Object.entries(groupedTasks).map(([location, tasks]) => (
-                            <div key={location}>
+                            <div 
+                                key={location}
+                                onDragOver={(e) => {
+                                    e.preventDefault();
+                                    if (activeTaskTab === 'pending' && location !== dragOverLocation) {
+                                        setDragOverLocation(location);
+                                    }
+                                }}
+                                onDragLeave={() => setDragOverLocation(null)}
+                                onDrop={(e) => {
+                                    if (activeTaskTab !== 'pending') return;
+                                    e.preventDefault();
+                                    const taskId = e.dataTransfer.getData('taskId');
+                                    const task = adminTasks.find(t => t.id === taskId);
+                                    if (task && task.location !== location) {
+                                        setAdminTasks(prevTasks =>
+                                            prevTasks.map(t =>
+                                                t.id === taskId ? { ...t, location: location } : t
+                                            )
+                                        );
+                                    }
+                                    setDragOverLocation(null);
+                                    setDraggedTask(null);
+                                }}
+                                className={`rounded-lg transition-colors duration-200 ${dragOverLocation === location ? 'bg-blue-100 border-2 border-dashed border-blue-500' : ''}`}
+                            >
                                 <h3 className="text-lg font-semibold text-gray-700 bg-gray-100 p-3 rounded-t-lg">{location} <span className="text-sm font-normal text-gray-500">({tasks.length} مهام)</span></h3>
                                 <div className="overflow-x-auto border border-t-0 rounded-b-lg">
                                     <table className="w-full text-sm text-right text-gray-600">
@@ -630,7 +671,20 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                                         </thead>
                                         <tbody>
                                             {tasks.map(task => (
-                                                <tr key={task.id} className={`border-b hover:bg-gray-50 ${task.completed ? 'bg-green-50' : 'bg-white'}`}>
+                                                <tr 
+                                                    key={task.id} 
+                                                    draggable={activeTaskTab === 'pending'}
+                                                    onDragStart={(e) => {
+                                                        if (activeTaskTab !== 'pending') return;
+                                                        e.dataTransfer.setData('taskId', task.id);
+                                                        setDraggedTask(task.id);
+                                                    }}
+                                                    onDragEnd={() => {
+                                                        setDraggedTask(null);
+                                                        setDragOverLocation(null);
+                                                    }}
+                                                    className={`border-b transition-opacity ${task.completed ? 'bg-green-50' : 'bg-white hover:bg-gray-50'} ${draggedTask === task.id ? 'opacity-50' : ''} ${activeTaskTab === 'pending' ? 'cursor-grab' : ''}`}
+                                                >
                                                     <td className="px-4 py-4 text-center">
                                                         <input
                                                             type="checkbox"
@@ -640,7 +694,27 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                                                         />
                                                     </td>
                                                     <td className={`px-6 py-4 font-medium ${task.completed ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.task}</td>
-                                                    <td className="px-6 py-4 text-gray-500">{task.assignee || '-'}</td>
+                                                    <td className="px-6 py-4 text-gray-500" onClick={() => activeTaskTab === 'pending' && setEditingAssigneeTaskId(task.id)}>
+                                                        {editingAssigneeTaskId === task.id ? (
+                                                            <select
+                                                                value={task.assignee}
+                                                                onChange={(e) => handleAssigneeChange(task.id, e.target.value)}
+                                                                onBlur={() => setEditingAssigneeTaskId(null)}
+                                                                className="w-full p-1 border rounded bg-white text-sm focus:ring-blue-500 focus:border-blue-500"
+                                                                autoFocus
+                                                            >
+                                                                {assistants.map(name => (
+                                                                    <option key={name} value={name}>
+                                                                        {name}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        ) : (
+                                                            <span className={activeTaskTab === 'pending' ? 'cursor-pointer hover:text-blue-600' : ''}>
+                                                                {task.assignee || '-'}
+                                                            </span>
+                                                        )}
+                                                    </td>
                                                     <td className="px-6 py-4">{formatDate(task.dueDate)}</td>
                                                     <td className="px-6 py-4">
                                                         <span className={`px-2 py-1 text-xs font-medium rounded-full ${importanceMapAdminTasks[task.importance]?.className}`}>
