@@ -1,3 +1,4 @@
+
 export interface Session {
   id: string;
   court: string;
@@ -67,4 +68,10 @@ export interface AccountingEntry {
     clientId: string;
     caseId: string;
     clientName: string;
+}
+
+export interface Credentials {
+    id: number; // Using a static ID like 1 for the single row
+    username: string;
+    password: string;
 }

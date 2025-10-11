@@ -98,6 +98,18 @@ INSERT INTO public.assistants (name) VALUES
 ('بدون تخصيص')
 ON CONFLICT (name) DO NOTHING;
 
+-- Create Credentials Table
+CREATE TABLE IF NOT EXISTS public.credentials (
+    id INT PRIMARY KEY,
+    username TEXT NOT NULL,
+    password TEXT NOT NULL
+);
+
+-- Seed initial credentials
+INSERT INTO public.credentials (id, username, password) VALUES 
+(1, 'admin', 'admin')
+ON CONFLICT (id) DO NOTHING;
+
 
 -- Enable Row Level Security (RLS) for all tables
 ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
@@ -108,6 +120,7 @@ ALTER TABLE public.admin_tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.appointments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.accounting_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.assistants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.credentials ENABLE ROW LEVEL SECURITY;
 
 -- Create Policies
 -- These policies allow full public access, which is appropriate for an app
@@ -150,6 +163,11 @@ WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Allow full public access" ON public.assistants;
 CREATE POLICY "Allow full public access" ON public.assistants FOR ALL
+USING (true)
+WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow full public access" ON public.credentials;
+CREATE POLICY "Allow full public access" ON public.credentials FOR ALL
 USING (true)
 WITH CHECK (true);`;
 

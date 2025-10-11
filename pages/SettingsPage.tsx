@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, PlusIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ArrowRightOnRectangleIcon, ShieldCheckIcon } from '../components/icons';
-import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
+import { Client, AdminTask, Appointment, AccountingEntry, Credentials } from '../types';
 import { AnalysisStatus } from '../hooks/useSync';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 // FIX: The APP_DATA_KEY constant was being imported from an empty file. It is now imported from useSupabaseData.ts where it is correctly defined and exported.
@@ -12,6 +12,7 @@ type AppData = {
     appointments: Appointment[];
     accountingEntries: AccountingEntry[];
     assistants: string[];
+    credentials: Credentials;
 };
 
 interface SettingsPageProps {
@@ -25,9 +26,11 @@ interface SettingsPageProps {
     offlineMode: boolean;
     setOfflineMode: (value: boolean) => void;
     onLogout: () => void;
+    credentials?: Credentials;
+    setCredentials: (credentials: Credentials) => void;
 }
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus, lastAnalysis, triggerAnalysis, assistants, setAssistants, analysisReport, offlineMode, setOfflineMode, onLogout }) => {
+const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus, lastAnalysis, triggerAnalysis, assistants, setAssistants, analysisReport, offlineMode, setOfflineMode, onLogout, credentials, setCredentials }) => {
     const [feedback, setFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = React.useState(false);
     const [isDeleteAssistantModalOpen, setIsDeleteAssistantModalOpen] = React.useState(false);
@@ -42,6 +45,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
         confirmPassword: ''
     });
     const [securityFeedback, setSecurityFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    
+    React.useEffect(() => {
+        if (credentials) {
+            setSecurityForm(prev => ({ ...prev, username: credentials.username }));
+        }
+    }, [credentials]);
 
 
     const showFeedback = (message: string, type: 'success' | 'error') => {
@@ -56,7 +65,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
                 adminTasks: [],
                 appointments: [],
                 accountingEntries: [],
-                assistants: ['بدون تخصيص']
+                assistants: ['بدون تخصيص'],
+                credentials: { id: 1, username: 'admin', password: 'admin' }
             };
             setFullData(emptyData);
             showFeedback('تم مسح جميع البيانات بنجاح.', 'success');
@@ -165,6 +175,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
 
     const handleSaveSecuritySettings = (e: React.FormEvent) => {
         e.preventDefault();
+        setSecurityFeedback(null);
         const { username, password, confirmPassword } = securityForm;
 
         if (!username || !password || !confirmPassword) {
@@ -178,13 +189,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
         }
 
         try {
-            const credentials = { username, password };
-            localStorage.setItem('lawyerAppCredentials', JSON.stringify(credentials));
-            setSecurityFeedback({ message: 'تم تحديث بيانات الدخول بنجاح.', type: 'success' });
-            setSecurityForm({ username: '', password: '', confirmPassword: '' });
+            setCredentials({
+                id: 1, // Static ID for the single credentials row
+                username: username,
+                password: password,
+            });
+            setSecurityFeedback({ message: 'تم تحديث بيانات الدخول بنجاح. ستتم مزامنتها مع السحابة قريباً.', type: 'success' });
+            setSecurityForm(prev => ({ ...prev, password: '', confirmPassword: '' }));
         } catch (error) {
-            setSecurityFeedback({ message: 'فشل حفظ البيانات. قد تكون مساحة التخزين ممتلئة.', type: 'error' });
-            console.error('Failed to save credentials to localStorage:', error);
+            setSecurityFeedback({ message: 'فشل حفظ البيانات.', type: 'error' });
+            console.error('Failed to save credentials to state:', error);
         }
     };
 
@@ -244,7 +258,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
                 </div>
                 <form onSubmit={handleSaveSecuritySettings} className="space-y-4">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">اسم المستخدم الجديد</label>
+                        <label className="block text-sm font-medium text-gray-700">اسم المستخدم</label>
                         <input 
                             type="text" 
                             name="username"

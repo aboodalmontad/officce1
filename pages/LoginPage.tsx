@@ -1,10 +1,12 @@
 import * as React from 'react';
+import { Credentials } from '../types';
 
 interface LoginPageProps {
     onLoginSuccess: () => void;
+    credentials?: Credentials;
 }
 
-const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
+const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, credentials }) => {
     const [username, setUsername] = React.useState('');
     const [password, setPassword] = React.useState('');
     const [error, setError] = React.useState('');
@@ -12,17 +14,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     const handleLogin = (e: React.FormEvent) => {
         e.preventDefault();
 
-        let credentials = { username: 'admin', password: 'admin' };
-        try {
-            const storedCredentials = localStorage.getItem('lawyerAppCredentials');
-            if (storedCredentials) {
-                credentials = JSON.parse(storedCredentials);
-            }
-        } catch (error) {
-            console.error('Could not parse credentials from localStorage', error);
-        }
+        const authCredentials = credentials || { username: 'admin', password: 'admin' };
 
-        if (username === credentials.username && password === credentials.password) {
+        if (username === authCredentials.username && password === authCredentials.password) {
             onLoginSuccess();
         } else {
             setError('اسم المستخدم أو كلمة المرور غير صحيحة.');

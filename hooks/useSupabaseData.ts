@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage } from '../types';
+import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Credentials } from '../types';
 import { getSupabaseClient } from '../supabaseClient';
 import { useOnlineStatus } from './useOnlineStatus';
 
@@ -55,6 +55,7 @@ const updateSessionsInDB = async (sessions: Session[]) => {
 };
 
 const defaultAssistants = ['أحمد', 'فاطمة', 'سارة', 'بدون تخصيص'];
+const defaultCredentials = { id: 1, username: 'admin', password: 'admin' };
 
 const getInitialData = () => ({
     clients: [] as Client[],
@@ -62,6 +63,7 @@ const getInitialData = () => ({
     appointments: [] as Appointment[],
     accountingEntries: [] as AccountingEntry[],
     assistants: [...defaultAssistants],
+    credentials: { ...defaultCredentials },
 });
 
 type AppData = ReturnType<typeof getInitialData>;
@@ -160,7 +162,22 @@ const validateAndHydrate = (data: any): AppData => {
         clientName: String(entry.client_name || ''),
     }));
 
-    return { clients: validatedClients, adminTasks: validatedAdminTasks, appointments: validatedAppointments, accountingEntries: validatedAccountingEntries, assistants: validatedAssistants };
+    const validatedCredentials = (creds: any): Credentials => {
+        if (creds && typeof creds.username === 'string' && typeof creds.password === 'string') {
+            return { id: 1, username: creds.username, password: creds.password };
+        }
+        return { ...defaultCredentials };
+    };
+
+    return { 
+        clients: validatedClients, 
+        adminTasks: validatedAdminTasks, 
+        appointments: validatedAppointments, 
+        accountingEntries: validatedAccountingEntries, 
+        assistants: validatedAssistants,
+        // FIX: Corrected typo from `validateCredentials` to `validatedCredentials`.
+        credentials: validatedCredentials(data.credentials),
+    };
 };
 
 export const useSupabaseData = (offlineMode: boolean) => {
@@ -225,16 +242,18 @@ export const useSupabaseData = (offlineMode: boolean) => {
                 adminTasksRes, 
                 appointmentsRes, 
                 accountingEntriesRes, 
-                assistantsRes
+                assistantsRes,
+                credentialsRes,
             ] = await Promise.all([
                 supabase.from('clients').select('*, cases(*, stages(*, sessions(*)))').order('name'),
                 supabase.from('admin_tasks').select('*'),
                 supabase.from('appointments').select('*'),
                 supabase.from('accounting_entries').select('*'),
                 supabase.from('assistants').select('name'),
+                supabase.from('credentials').select('*').limit(1),
             ]);
 
-            const allResults = [clientsRes, adminTasksRes, appointmentsRes, accountingEntriesRes, assistantsRes];
+            const allResults = [clientsRes, adminTasksRes, appointmentsRes, accountingEntriesRes, assistantsRes, credentialsRes];
             
             // Check for uninitialized database by looking for the specific error code.
             const hasUninitializedError = allResults.some(res => res.error && res.error.code === '42P01');
@@ -258,6 +277,7 @@ export const useSupabaseData = (offlineMode: boolean) => {
                 appointments: appointmentsRes.data || [],
                 accountingEntries: accountingEntriesRes.data || [],
                 assistants: (assistantsRes.data || []).map((a: any) => a.name),
+                credentials: (credentialsRes.data && credentialsRes.data[0]) ? credentialsRes.data[0] : null,
             };
             const validatedData = validateAndHydrate(remoteData);
             setData(validatedData);
@@ -358,6 +378,8 @@ export const useSupabaseData = (offlineMode: boolean) => {
             }));
 
             const assistantsToUpsert = currentData.assistants.map(name => ({ name }));
+            const credentialsToUpsert = currentData.credentials;
+
 
             // Delete all related data first to handle cascades properly in JS, then re-insert.
             // This is safer than relying on complex upsert logic across multiple tables.
@@ -370,15 +392,17 @@ export const useSupabaseData = (offlineMode: boolean) => {
             await supabase.from('appointments').delete().neq('id', 'placeholder-to-delete-all');
             await supabase.from('accounting_entries').delete().neq('id', 'placeholder-to-delete-all');
             await supabase.from('assistants').delete().neq('name', 'placeholder-to-delete-all');
+            await supabase.from('credentials').delete().neq('id', 'placeholder-to-delete-all');
 
             // Upsert data sequentially to respect foreign key constraints.
             // Independent tables can be grouped with the first dependent one.
-            const [clientsResult, adminTasksResult, appointmentsResult, accountingEntriesResult, assistantsResult] = await Promise.all([
+            const [clientsResult, adminTasksResult, appointmentsResult, accountingEntriesResult, assistantsResult, credentialsResult] = await Promise.all([
                 supabase.from('clients').upsert(clientsToUpsert),
                 supabase.from('admin_tasks').upsert(adminTasksToUpsert),
                 supabase.from('appointments').upsert(appointmentsToUpsert),
                 supabase.from('accounting_entries').upsert(accountingEntriesToUpsert),
                 supabase.from('assistants').upsert(assistantsToUpsert),
+                supabase.from('credentials').upsert(credentialsToUpsert),
             ]);
 
             // Now handle dependent tables sequentially.
@@ -394,7 +418,8 @@ export const useSupabaseData = (offlineMode: boolean) => {
                 adminTasksResult,
                 appointmentsResult,
                 accountingEntriesResult,
-                assistantsResult
+                assistantsResult,
+                credentialsResult,
             ];
             
             const errors = results.map(r => r.error).filter(Boolean);
@@ -493,6 +518,7 @@ export const useSupabaseData = (offlineMode: boolean) => {
     const setAppointments = createSetter('appointments');
     const setAccountingEntries = createSetter('accountingEntries');
     const setAssistants = createSetter('assistants');
+    const setCredentials = createSetter('credentials');
 
     const setFullData = (newData: any) => {
         const validatedData = validateAndHydrate(newData);
@@ -506,5 +532,5 @@ export const useSupabaseData = (offlineMode: boolean) => {
         if (allSessions) updateSessionsInDB(allSessions);
     }, [allSessions]);
 
-    return { ...data, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, setAssistants, syncStatus, forceSync, manualSync, lastSyncError, isDirty };
+    return { ...data, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, setAssistants, setCredentials, syncStatus, forceSync, manualSync, lastSyncError, isDirty };
 };

@@ -67,7 +67,7 @@ const App: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
   const [offlineModeSetting, setOfflineModeSetting] = useLocalStorage('lawyerAppOfflineMode', false);
   
   // The data hook now directly uses the user's setting.
-  const { clients, adminTasks, appointments, accountingEntries, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, assistants, setAssistants, syncStatus, forceSync, manualSync, lastSyncError, isDirty } = useSupabaseData(offlineModeSetting);
+  const { clients, adminTasks, appointments, accountingEntries, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, assistants, setAssistants, credentials, setCredentials, syncStatus, forceSync, manualSync, lastSyncError, isDirty } = useSupabaseData(offlineModeSetting);
   
   const { analysisStatus, lastAnalysis, triggerAnalysis, analysisReport } = useAnalysis();
   // FIX: Correctly destructure `setIsMenuOpen` from `React.useState` and fix syntax.
@@ -271,7 +271,7 @@ const App: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
   const mobileNavLinkClasses = "flex items-center px-3 py-2 rounded-lg text-base font-medium transition-colors duration-200 text-gray-300 hover:bg-gray-700 hover:text-white";
 
   if (!isAuthenticated) {
-    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+    return <LoginPage onLoginSuccess={handleLoginSuccess} credentials={credentials} />;
   }
 
   if (isLoading) {
@@ -371,7 +371,7 @@ const App: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
             <Route path="/clients" element={<ClientsPage clients={clients} setClients={setClients} accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} assistants={assistants} />} />
             <Route path="/accounting" element={<AccountingPage accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} clients={clients} />} />
             <Route path="/reports" element={<ReportsPage clients={clients} accountingEntries={accountingEntries} />} />
-            <Route path="/settings" element={<SettingsPage setFullData={setFullData} analysisStatus={analysisStatus} lastAnalysis={lastAnalysis} triggerAnalysis={triggerAnalysis} assistants={assistants} setAssistants={setAssistants} analysisReport={analysisReport} offlineMode={offlineModeSetting} setOfflineMode={setOfflineModeSetting} onLogout={handleLogout} />} />
+            <Route path="/settings" element={<SettingsPage setFullData={setFullData} analysisStatus={analysisStatus} lastAnalysis={lastAnalysis} triggerAnalysis={triggerAnalysis} assistants={assistants} setAssistants={setAssistants} analysisReport={analysisReport} offlineMode={offlineModeSetting} setOfflineMode={setOfflineModeSetting} onLogout={handleLogout} credentials={credentials} setCredentials={setCredentials} />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </main>
