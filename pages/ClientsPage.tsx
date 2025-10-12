@@ -175,8 +175,16 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                     cases: c.cases.map(cs => cs.id === context.item.id ? { ...cs, ...formData } : cs)
                 } : c));
             } else {
-                const newCase: Case = { id: `case-${Date.now()}`, ...formData, stages: [] };
-                setClients(prev => prev.map(c => c.id === context.clientId ? { ...c, cases: [...c.cases, newCase] } : c));
+                const clientForCase = clients.find(c => c.id === context.clientId);
+                if (clientForCase) {
+                    const newCase: Case = { 
+                        id: `case-${Date.now()}`, 
+                        ...formData, 
+                        clientName: clientForCase.name,
+                        stages: [] 
+                    };
+                    setClients(prev => prev.map(c => c.id === context.clientId ? { ...c, cases: [...c.cases, newCase] } : c));
+                }
             }
         } else if (type === 'stage') {
             const stageData = { ...formData };
@@ -238,7 +246,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                                         isPostponed: false,
                                         court: stage.court,
                                         caseNumber: stage.caseNumber,
-                                        clientName: caseItem.clientName,
+                                        clientName: client.name,
                                         opponentName: caseItem.opponentName,
                                         date: sessionData.date,
                                         assignee: sessionData.assignee || 'بدون تخصيص',
