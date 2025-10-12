@@ -265,6 +265,30 @@ export const useSupabaseData = (offlineMode: boolean) => {
             if (otherErrors.length > 0) {
                  throw new Error(otherErrors.map(e => e!.message).join(', '));
             }
+            
+            // --- SAFETY CHECK TO PREVENT DATA LOSS ---
+            // If we have sessions locally but the remote fetch returns none, it's a suspicious situation.
+            // This prevents an incomplete fetch from wiping out good local data.
+            try {
+                const localRawData = localStorage.getItem(APP_DATA_KEY);
+                const localData = localRawData ? JSON.parse(localRawData) : { clients: [] };
+                const getSessionCount = (d: any) => (d?.clients || []).flatMap((c: any) => c.cases?.flatMap((cs: any) => cs.stages?.flatMap((st: any) => st.sessions || []) || []) || []).length;
+
+                const localSessionsCount = getSessionCount(localData);
+                const remoteSessionsCount = getSessionCount({ clients: clientsRes.data });
+
+                if (localSessionsCount > 0 && remoteSessionsCount === 0) {
+                    console.warn("Safety check failed: Local data has sessions, but remote fetch returned none. Aborting data overwrite to prevent data loss.");
+                    setSyncStatus('error');
+                    setLastSyncError("فشلت المزامنة: تم استلام بيانات غير مكتملة من الخادم. تم الاحتفاظ بالبيانات المحلية لمنع فقدانها.");
+                    return;
+                }
+            } catch (e) {
+                console.error("Error during safety check:", e);
+                // Don't block the sync for a meta-error, but log it.
+            }
+            // --- END SAFETY CHECK ---
+
 
             // If no errors, proceed with processing data.
             const remoteData = {
@@ -314,6 +338,18 @@ export const useSupabaseData = (offlineMode: boolean) => {
         setSyncStatus('syncing');
         setLastSyncError(null);
 
+        // --- Date Sanitization Helpers ---
+        const toISOStringOrNull = (date: any): string | null => {
+            if (date === null || date === undefined || date === '') return null;
+            const d = new Date(date);
+            return !isNaN(d.getTime()) ? d.toISOString() : null;
+        };
+        const toISOStringOrNow = (date: any): string => {
+            if (date === null || date === undefined || date === '') return new Date().toISOString();
+            const d = new Date(date);
+            return !isNaN(d.getTime()) ? d.toISOString() : new Date().toISOString();
+        };
+
         try {
             // Map application's camelCase to database's snake_case before upserting.
             const clientsToUpsert = currentData.clients.map(({ cases, contactInfo, ...client }) => ({
@@ -333,14 +369,14 @@ export const useSupabaseData = (offlineMode: boolean) => {
                 ...stage,
                 case_id: cs.id,
                 case_number: caseNumber,
-                first_session_date: firstSessionDate,
+                first_session_date: toISOStringOrNull(firstSessionDate),
             }))));
 
             const sessionsToUpsert = currentData.clients.flatMap(c =>
                 c.cases.flatMap(cs =>
                     cs.stages.flatMap(st =>
                         st.sessions.map(({
-                            caseNumber, clientName, opponentName, postponementReason, isPostponed, nextSessionDate, nextPostponementReason, ...session
+                            caseNumber, clientName, opponentName, postponementReason, isPostponed, nextSessionDate, nextPostponementReason, date, ...session
                         }) => ({
                             ...session,
                             stage_id: st.id,
@@ -349,7 +385,8 @@ export const useSupabaseData = (offlineMode: boolean) => {
                             opponent_name: opponentName,
                             postponement_reason: postponementReason,
                             is_postponed: isPostponed,
-                            next_session_date: nextSessionDate,
+                            date: toISOStringOrNow(date),
+                            next_session_date: toISOStringOrNull(nextSessionDate),
                             next_postponement_reason: nextPostponementReason,
                         }))
                     )
@@ -358,16 +395,18 @@ export const useSupabaseData = (offlineMode: boolean) => {
             
             const adminTasksToUpsert = currentData.adminTasks.map(({ dueDate, ...task }) => ({
                 ...task,
-                due_date: dueDate
+                due_date: toISOStringOrNow(dueDate)
             }));
             
-            const appointmentsToUpsert = currentData.appointments.map(({ reminderTimeInMinutes, ...apt }) => ({
+            const appointmentsToUpsert = currentData.appointments.map(({ reminderTimeInMinutes, date, ...apt }) => ({
                 ...apt,
+                date: toISOStringOrNow(date),
                 reminder_time_in_minutes: reminderTimeInMinutes
             }));
             
-            const accountingEntriesToUpsert = currentData.accountingEntries.map(({ clientId, caseId, clientName, ...entry }) => ({
+            const accountingEntriesToUpsert = currentData.accountingEntries.map(({ clientId, caseId, clientName, date, ...entry }) => ({
                 ...entry,
+                date: toISOStringOrNow(date),
                 client_id: clientId,
                 case_id: caseId,
                 client_name: clientName,
@@ -375,19 +414,25 @@ export const useSupabaseData = (offlineMode: boolean) => {
 
             const assistantsToUpsert = currentData.assistants.map(name => ({ name }));
             const credentialsToUpsert = currentData.credentials;
+            
+            // Define non-existent values for delete queries to ensure all rows are targeted.
+            // Using type-appropriate values prevents potential database errors.
+            const NON_EXISTENT_UUID = '00000000-0000-0000-0000-000000000000';
+            const NON_EXISTENT_NAME = 'non-existent-placeholder-name-for-delete';
+            const NON_EXISTENT_ID = 0;
 
 
             // Delete all related data first. This is safer than relying on complex upsert logic across multiple tables.
             // Execute sequentially to avoid race conditions and overwhelming the server.
-            await supabase.from('sessions').delete().neq('id', 'placeholder-to-delete-all');
-            await supabase.from('stages').delete().neq('id', 'placeholder-to-delete-all');
-            await supabase.from('cases').delete().neq('id', 'placeholder-to-delete-all');
-            await supabase.from('clients').delete().neq('id', 'placeholder-to-delete-all');
-            await supabase.from('admin_tasks').delete().neq('id', 'placeholder-to-delete-all');
-            await supabase.from('appointments').delete().neq('id', 'placeholder-to-delete-all');
-            await supabase.from('accounting_entries').delete().neq('id', 'placeholder-to-delete-all');
-            await supabase.from('assistants').delete().neq('name', 'placeholder-to-delete-all');
-            await supabase.from('credentials').delete().neq('id', 'placeholder-to-delete-all');
+            await supabase.from('sessions').delete().neq('id', NON_EXISTENT_UUID);
+            await supabase.from('stages').delete().neq('id', NON_EXISTENT_UUID);
+            await supabase.from('cases').delete().neq('id', NON_EXISTENT_UUID);
+            await supabase.from('clients').delete().neq('id', NON_EXISTENT_UUID);
+            await supabase.from('admin_tasks').delete().neq('id', NON_EXISTENT_UUID);
+            await supabase.from('appointments').delete().neq('id', NON_EXISTENT_UUID);
+            await supabase.from('accounting_entries').delete().neq('id', NON_EXISTENT_UUID);
+            await supabase.from('assistants').delete().neq('name', NON_EXISTENT_NAME);
+            await supabase.from('credentials').delete().neq('id', NON_EXISTENT_ID);
 
             // Upsert data sequentially to respect foreign key constraints and prevent connection errors.
             const { error: clientsError } = await supabase.from('clients').upsert(clientsToUpsert);
