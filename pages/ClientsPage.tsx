@@ -36,6 +36,8 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
     const [caseToDelete, setCaseToDelete] = React.useState<{ caseId: string, clientId: string, caseSubject: string } | null>(null);
     const [isDeleteClientModalOpen, setIsDeleteClientModalOpen] = React.useState(false);
     const [clientToDelete, setClientToDelete] = React.useState<Client | null>(null);
+    const [isDeleteStageModalOpen, setIsDeleteStageModalOpen] = React.useState(false);
+    const [stageToDelete, setStageToDelete] = React.useState<{ stageId: string; caseId: string; clientId: string; stageInfo: string } | null>(null);
     
     // State for printing logic
     const [isPrintChoiceModalOpen, setIsPrintChoiceModalOpen] = React.useState(false);
@@ -201,25 +203,59 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
             if (sessionData.date) sessionData.date = new Date(sessionData.date);
             if (sessionData.nextSessionDate) sessionData.nextSessionDate = new Date(sessionData.nextSessionDate);
 
-            // If the isPostponed checkbox is checked in the modal
-            if (sessionData.isPostponed && sessionData.nextSessionDate && sessionData.nextPostponementReason) {
-                onUpdateSession(context.item.id, {
-                    nextSessionDate: sessionData.nextSessionDate,
-                    nextPostponementReason: sessionData.nextPostponementReason
-                });
-            } else { // Regular edit without postponement logic
-                 setClients(prev => prev.map(c => c.id === context.client.id ? {
-                     ...c,
-                     cases: c.cases.map(cs => cs.id === context.case.id ? {
-                         ...cs,
-                         stages: cs.stages.map(st => st.id === context.stage.id ? {
-                             ...st,
-                             sessions: isEditing
-                                 ? st.sessions.map(s => s.id === context.item.id ? { ...s, ...sessionData, isPostponed: false } : s)
-                                 : [...st.sessions, { id: `session-${Date.now()}`, isPostponed: false, ...sessionData }]
-                         } : st)
-                     } : cs)
-                 } : c));
+            if (isEditing) {
+                if (sessionData.isPostponed && sessionData.nextSessionDate && sessionData.nextPostponementReason) {
+                    onUpdateSession(context.item.id, {
+                        nextSessionDate: sessionData.nextSessionDate,
+                        nextPostponementReason: sessionData.nextPostponementReason
+                    });
+                } else { // Regular edit
+                     setClients(prev => prev.map(c => c.id === context.client.id ? {
+                         ...c,
+                         cases: c.cases.map(cs => cs.id === context.case.id ? {
+                             ...cs,
+                             stages: cs.stages.map(st => st.id === context.stage.id ? {
+                                 ...st,
+                                 sessions: st.sessions.map(s => s.id === context.item.id ? { ...s, ...sessionData } : s)
+                             } : st)
+                         } : cs)
+                     } : c));
+                }
+            } else { // Adding new session
+                setClients(prev => prev.map(client => {
+                    if (client.id !== context.clientId) return client;
+                    return {
+                        ...client,
+                        cases: client.cases.map(caseItem => {
+                            if (caseItem.id !== context.caseId) return caseItem;
+                            return {
+                                ...caseItem,
+                                stages: caseItem.stages.map(stage => {
+                                    if (stage.id !== context.stageId) return stage;
+                                    
+                                    const newSession: Session = {
+                                        id: `session-${Date.now()}`,
+                                        isPostponed: false,
+                                        court: stage.court,
+                                        caseNumber: stage.caseNumber,
+                                        clientName: caseItem.clientName,
+                                        opponentName: caseItem.opponentName,
+                                        date: sessionData.date,
+                                        assignee: sessionData.assignee || 'بدون تخصيص',
+                                        postponementReason: sessionData.postponementReason,
+                                        nextPostponementReason: undefined,
+                                        nextSessionDate: undefined,
+                                    };
+                                    
+                                    return {
+                                        ...stage,
+                                        sessions: [...stage.sessions, newSession]
+                                    };
+                                })
+                            };
+                        })
+                    };
+                }));
             }
         }
         handleCloseModal();
@@ -287,16 +323,41 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
 
 
     const handleDeleteStage = (stageId: string, caseId: string, clientId: string) => {
-        if (window.confirm('هل أنت متأكد من حذف هذه المرحلة؟ سيتم حذف جميع جلساتها.')) {
-            setClients(prev => prev.map(c => c.id === clientId ? {
-                ...c,
-                cases: c.cases.map(cs => cs.id === caseId ? {
-                    ...cs,
-                    stages: cs.stages.filter(st => st.id !== stageId)
-                } : cs)
-            } : c));
+        const client = clients.find(c => c.id === clientId);
+        const caseItem = client?.cases.find(c => c.id === caseId);
+        const stage = caseItem?.stages.find(s => s.id === stageId);
+
+        if (stage) {
+            setStageToDelete({
+                stageId,
+                caseId,
+                clientId,
+                stageInfo: `مرحلة المحكمة "${stage.court}" برقم أساس "${stage.caseNumber}"`
+            });
+            setIsDeleteStageModalOpen(true);
         }
     };
+
+    const handleConfirmDeleteStage = () => {
+        if (!stageToDelete) return;
+
+        const { stageId, caseId, clientId } = stageToDelete;
+        setClients(prev => prev.map(c => c.id === clientId ? {
+            ...c,
+            cases: c.cases.map(cs => cs.id === caseId ? {
+                ...cs,
+                stages: cs.stages.filter(st => st.id !== stageId)
+            } : cs)
+        } : c));
+
+        closeDeleteStageModal();
+    };
+
+    const closeDeleteStageModal = () => {
+        setIsDeleteStageModalOpen(false);
+        setStageToDelete(null);
+    };
+
 
     const handleDeleteSession = (sessionId: string, stageId: string, caseId: string, clientId: string) => {
         const client = clients.find(c => c.id === clientId);
@@ -622,6 +683,42 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                                 type="button"
                                 className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors"
                                 onClick={handleConfirmDeleteClient}
+                            >
+                                نعم، قم بالحذف
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isDeleteStageModalOpen && stageToDelete && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={closeDeleteStageModal}>
+                    <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                        <div className="text-center">
+                            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
+                                <ExclamationTriangleIcon className="h-8 w-8 text-red-600" aria-hidden="true" />
+                            </div>
+                            <h3 className="text-2xl font-bold text-gray-900">
+                                تأكيد حذف المرحلة
+                            </h3>
+                            <p className="text-gray-600 my-4">
+                                هل أنت متأكد من حذف {stageToDelete.stageInfo}؟<br />
+                                سيؤدي هذا الإجراء إلى إزالة جميع جلساتها بشكل نهائي. <br/>
+                                <strong className="font-semibold text-red-700">هذا الإجراء لا يمكن التراجع عنه.</strong>
+                            </p>
+                        </div>
+                        <div className="mt-6 flex justify-center gap-4">
+                            <button
+                                type="button"
+                                className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
+                                onClick={closeDeleteStageModal}
+                            >
+                                إلغاء
+                            </button>
+                            <button
+                                type="button"
+                                className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors"
+                                onClick={handleConfirmDeleteStage}
                             >
                                 نعم، قم بالحذف
                             </button>
