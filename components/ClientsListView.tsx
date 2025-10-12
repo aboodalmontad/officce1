@@ -22,6 +22,8 @@ interface ClientsListViewProps {
     onEditClient: (client: Client) => void;
     onDeleteClient: (clientId: string) => void;
     onPrintClientStatement: (clientId: string) => void;
+    assistants: string[];
+    onUpdateSession: (sessionId: string, updatedFields: Partial<Session>) => void;
 }
 
 const statusMap: Record<Case['status'], { text: string, className: string }> = {
@@ -35,7 +37,8 @@ const ClientsListView: React.FC<ClientsListViewProps> = (props) => {
         clients, onEditClient, onDeleteClient, onAddCase, 
         onEditCase, onDeleteCase, onAddStage, 
         onEditStage, onDeleteStage, onAddSession, 
-        onEditSession, onDeleteSession, onPrintClientStatement, ...rest 
+        onEditSession, onDeleteSession, onPrintClientStatement, 
+        assistants, onUpdateSession, ...rest 
     } = props;
     const [openClientId, setOpenClientId] = React.useState<string | null>(null);
     
@@ -110,6 +113,8 @@ const ClientsListView: React.FC<ClientsListViewProps> = (props) => {
                                                     onEdit={(session) => onEditSession(session, stage, caseItem, client)}
                                                     onDelete={(sessionId) => onDeleteSession(sessionId, stage.id, caseItem.id, client.id)}
                                                     showSessionDate={true}
+                                                    onUpdate={onUpdateSession}
+                                                    assistants={assistants}
                                                 />
                                             </div>
                                         )) : <p className="text-sm text-gray-500 text-center py-4">لا توجد مراحل لهذه القضية. قم بإضافة مرحلة جديدة.</p>}

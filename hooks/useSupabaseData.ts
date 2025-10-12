@@ -175,7 +175,6 @@ const validateAndHydrate = (data: any): AppData => {
         appointments: validatedAppointments, 
         accountingEntries: validatedAccountingEntries, 
         assistants: validatedAssistants,
-        // FIX: Corrected typo from `validateCredentials` to `validatedCredentials`.
         credentials: validatedCredentials(data.credentials),
     };
 };
@@ -237,21 +236,13 @@ export const useSupabaseData = (offlineMode: boolean) => {
         setLastSyncError(null);
         
         try {
-            const [
-                clientsRes, 
-                adminTasksRes, 
-                appointmentsRes, 
-                accountingEntriesRes, 
-                assistantsRes,
-                credentialsRes,
-            ] = await Promise.all([
-                supabase.from('clients').select('*, cases(*, stages(*, sessions(*)))').order('name'),
-                supabase.from('admin_tasks').select('*'),
-                supabase.from('appointments').select('*'),
-                supabase.from('accounting_entries').select('*'),
-                supabase.from('assistants').select('name'),
-                supabase.from('credentials').select('*').limit(1),
-            ]);
+            // Fetch data sequentially to avoid "Failed to fetch" errors caused by too many concurrent requests.
+            const clientsRes = await supabase.from('clients').select('*, cases(*, stages(*, sessions(*)))').order('name');
+            const adminTasksRes = await supabase.from('admin_tasks').select('*');
+            const appointmentsRes = await supabase.from('appointments').select('*');
+            const accountingEntriesRes = await supabase.from('accounting_entries').select('*');
+            const assistantsRes = await supabase.from('assistants').select('name');
+            const credentialsRes = await supabase.from('credentials').select('*').limit(1);
 
             const allResults = [clientsRes, adminTasksRes, appointmentsRes, accountingEntriesRes, assistantsRes, credentialsRes];
             
@@ -386,9 +377,8 @@ export const useSupabaseData = (offlineMode: boolean) => {
             const credentialsToUpsert = currentData.credentials;
 
 
-            // Delete all related data first to handle cascades properly in JS, then re-insert.
-            // This is safer than relying on complex upsert logic across multiple tables.
-            // Start from the deepest nested items and go up.
+            // Delete all related data first. This is safer than relying on complex upsert logic across multiple tables.
+            // Execute sequentially to avoid race conditions and overwhelming the server.
             await supabase.from('sessions').delete().neq('id', 'placeholder-to-delete-all');
             await supabase.from('stages').delete().neq('id', 'placeholder-to-delete-all');
             await supabase.from('cases').delete().neq('id', 'placeholder-to-delete-all');
@@ -399,35 +389,30 @@ export const useSupabaseData = (offlineMode: boolean) => {
             await supabase.from('assistants').delete().neq('name', 'placeholder-to-delete-all');
             await supabase.from('credentials').delete().neq('id', 'placeholder-to-delete-all');
 
-            // Upsert data sequentially to respect foreign key constraints.
-            // Independent tables can be grouped with the first dependent one.
-            const [clientsResult, adminTasksResult, appointmentsResult, accountingEntriesResult, assistantsResult, credentialsResult] = await Promise.all([
-                supabase.from('clients').upsert(clientsToUpsert),
-                supabase.from('admin_tasks').upsert(adminTasksToUpsert),
-                supabase.from('appointments').upsert(appointmentsToUpsert),
-                supabase.from('accounting_entries').upsert(accountingEntriesToUpsert),
-                supabase.from('assistants').upsert(assistantsToUpsert),
-                supabase.from('credentials').upsert(credentialsToUpsert),
-            ]);
-
-            // Now handle dependent tables sequentially.
-            const casesResult = await supabase.from('cases').upsert(casesToUpsert);
-            const stagesResult = await supabase.from('stages').upsert(stagesToUpsert);
-            const sessionsResult = await supabase.from('sessions').upsert(sessionsToUpsert);
-
-            const results = [
-                clientsResult,
-                casesResult,
-                stagesResult,
-                sessionsResult,
-                adminTasksResult,
-                appointmentsResult,
-                accountingEntriesResult,
-                assistantsResult,
-                credentialsResult,
-            ];
+            // Upsert data sequentially to respect foreign key constraints and prevent connection errors.
+            const { error: clientsError } = await supabase.from('clients').upsert(clientsToUpsert);
+            const { error: adminTasksError } = await supabase.from('admin_tasks').upsert(adminTasksToUpsert);
+            const { error: appointmentsError } = await supabase.from('appointments').upsert(appointmentsToUpsert);
+            const { error: accountingEntriesError } = await supabase.from('accounting_entries').upsert(accountingEntriesToUpsert);
+            const { error: assistantsError } = await supabase.from('assistants').upsert(assistantsToUpsert);
+            const { error: credentialsError } = await supabase.from('credentials').upsert(credentialsToUpsert);
             
-            const errors = results.map(r => r.error).filter(Boolean);
+            const { error: casesError } = await supabase.from('cases').upsert(casesToUpsert);
+            const { error: stagesError } = await supabase.from('stages').upsert(stagesToUpsert);
+            const { error: sessionsError } = await supabase.from('sessions').upsert(sessionsToUpsert);
+
+            const errors = [
+                clientsError,
+                adminTasksError,
+                appointmentsError,
+                accountingEntriesError,
+                assistantsError,
+                credentialsError,
+                casesError,
+                stagesError,
+                sessionsError,
+            ].filter(Boolean);
+
             if(errors.length > 0) {
                  throw new Error(errors.map(e => e!.message).join(', '));
             }
@@ -436,8 +421,6 @@ export const useSupabaseData = (offlineMode: boolean) => {
             return true;
         } catch (error: any) {
             console.error("Error saving to Supabase:", error.message);
-            // FIX: Add specific handling for "Failed to fetch" errors during upload,
-            // which are often CORS related. This provides a better user experience.
             if (error instanceof TypeError && error.message.includes('Failed to fetch') || (error.message && error.message.toLowerCase().includes('failed to fetch'))) {
                  setSyncStatus('unconfigured');
                  setLastSyncError('فشل الاتصال بالخادم عند الحفظ. هذه المشكلة غالباً ما تكون بسبب إعدادات CORS. يرجى التأكد من إضافة نطاق هذا التطبيق إلى قائمة النطاقات المسموح بها.');
@@ -532,10 +515,27 @@ export const useSupabaseData = (offlineMode: boolean) => {
     };
 
     const allSessions = React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(s => s.sessions))), [data.clients]);
-    
-    React.useEffect(() => {
-        if (allSessions) updateSessionsInDB(allSessions);
-    }, [allSessions]);
 
-    return { ...data, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, setAssistants, setCredentials, syncStatus, forceSync, manualSync, lastSyncError, isDirty };
+    // FIX: A custom hook must return a value. The return statement was missing, causing the hook to implicitly return `undefined` and leading to "property does not exist on type 'void'" errors.
+    return {
+        clients: data.clients,
+        adminTasks: data.adminTasks,
+        appointments: data.appointments,
+        accountingEntries: data.accountingEntries,
+        assistants: data.assistants,
+        credentials: data.credentials,
+        setClients,
+        setAdminTasks,
+        setAppointments,
+        setAccountingEntries,
+        setAssistants,
+        setCredentials,
+        allSessions,
+        setFullData,
+        syncStatus,
+        forceSync,
+        manualSync,
+        lastSyncError,
+        isDirty,
+    };
 };

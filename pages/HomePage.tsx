@@ -416,6 +416,34 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
             }));
         });
     };
+    
+    const handleUpdateSession = (sessionId: string, updatedFields: Partial<Session>) => {
+        setClients(currentClients => {
+            return currentClients.map(client => ({
+                ...client,
+                cases: client.cases.map(caseItem => ({
+                    ...caseItem,
+                    stages: caseItem.stages.map(stage => {
+                        const sessionIndex = stage.sessions.findIndex(s => s.id === sessionId);
+                        if (sessionIndex === -1) {
+                            return stage;
+                        }
+
+                        const updatedSessions = [...stage.sessions];
+                        updatedSessions[sessionIndex] = {
+                            ...updatedSessions[sessionIndex],
+                            ...updatedFields,
+                        };
+
+                        return {
+                            ...stage,
+                            sessions: updatedSessions,
+                        };
+                    }),
+                })),
+            }));
+        });
+    };
 
     // Memos
     const dailyData = React.useMemo(() => {
@@ -569,19 +597,19 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                                 <>
                                     <div className="bg-white rounded-lg shadow overflow-hidden">
                                         <h3 className="text-lg font-bold p-4 bg-gray-50 border-b">جدول الجلسات</h3>
-                                        <SessionsTable sessions={dailyData.dailySessions} onPostpone={handlePostponeSession} />
+                                        <SessionsTable sessions={dailyData.dailySessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} assistants={assistants} />
                                     </div>
                                     <AppointmentsTable appointments={dailyData.dailyAppointments} onAddAppointment={handleOpenAddAppointmentModal} onEdit={handleOpenEditAppointmentModal} onDelete={openDeleteAppointmentModal} />
                                 </>
                             )}
                             {viewMode === 'unpostponed' && (
                                 <div className="bg-white rounded-lg shadow overflow-hidden">
-                                    <SessionsTable sessions={unpostponedSessions} onPostpone={handlePostponeSession} />
+                                    <SessionsTable sessions={unpostponedSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} assistants={assistants} />
                                 </div>
                             )}
                             {viewMode === 'upcoming' && (
                                 <div className="bg-white rounded-lg shadow overflow-hidden">
-                                    <SessionsTable sessions={upcomingSessions} onPostpone={handlePostponeSession} />
+                                    <SessionsTable sessions={upcomingSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} assistants={assistants} />
                                 </div>
                             )}
                         </div>

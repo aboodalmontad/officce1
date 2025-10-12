@@ -23,6 +23,8 @@ interface ClientsTreeViewProps {
     onEditClient: (client: Client) => void;
     onDeleteClient: (clientId: string) => void;
     onPrintClientStatement: (clientId: string) => void;
+    assistants: string[];
+    onUpdateSession: (sessionId: string, updatedFields: Partial<Session>) => void;
 }
 
 interface CaseDetailsProps {
@@ -38,9 +40,11 @@ interface CaseDetailsProps {
     accountingEntries: AccountingEntry[];
     setAccountingEntries: (updater: (prev: AccountingEntry[]) => AccountingEntry[]) => void;
     setClients: (updater: (prevClients: Client[]) => Client[]) => void;
+    assistants: string[];
+    onUpdateSession: (sessionId: string, updatedFields: Partial<Session>) => void;
 }
 
-const CaseDetails: React.FC<CaseDetailsProps> = ({ client, caseData, onAddStage, onEditStage, onDeleteStage, onAddSession, onEditSession, onDeleteSession, onPostponeSession, accountingEntries, setAccountingEntries, setClients }) => {
+const CaseDetails: React.FC<CaseDetailsProps> = ({ client, caseData, onAddStage, onEditStage, onDeleteStage, onAddSession, onEditSession, onDeleteSession, onPostponeSession, accountingEntries, setAccountingEntries, setClients, assistants, onUpdateSession }) => {
     const [activeTab, setActiveTab] = React.useState('stages');
 
     const handleFeeAgreementChange = (newFeeAgreement: string) => {
@@ -85,6 +89,8 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ client, caseData, onAddStage,
                                     onEdit={(session) => onEditSession(session, stage)}
                                     onDelete={(sessionId) => onDeleteSession(sessionId, stage.id)}
                                     showSessionDate={true}
+                                    onUpdate={onUpdateSession}
+                                    assistants={assistants}
                                 />
                             </div>
                         </TreeItem>
@@ -152,7 +158,8 @@ const ClientsTreeView: React.FC<ClientsTreeViewProps> = (props) => {
         onAddCase, onEditCase, onDeleteCase,
         onAddStage, onEditStage, onDeleteStage,
         onAddSession, onEditSession, onDeleteSession,
-        onPostponeSession, onEditClient, onDeleteClient, onPrintClientStatement
+        onPostponeSession, onEditClient, onDeleteClient, onPrintClientStatement,
+        assistants, onUpdateSession
     } = props;
     const [openClientId, setOpenClientId] = React.useState<string | null>(null);
 
@@ -209,6 +216,8 @@ const ClientsTreeView: React.FC<ClientsTreeViewProps> = (props) => {
                                     accountingEntries={accountingEntries}
                                     setAccountingEntries={setAccountingEntries}
                                     setClients={setClients}
+                                    assistants={assistants}
+                                    onUpdateSession={onUpdateSession}
                                 />
                             </TreeItem>
                         ))}

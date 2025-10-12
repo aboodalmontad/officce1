@@ -9,11 +9,15 @@ interface SessionsTableProps {
     onEdit?: (session: Session) => void;
     onDelete?: (sessionId: string) => void;
     showSessionDate?: boolean;
+    onUpdate?: (sessionId: string, updatedFields: Partial<Session>) => void;
+    assistants?: string[];
 }
 
-const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onEdit, onDelete, showSessionDate = false }) => {
+const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onEdit, onDelete, showSessionDate = false, onUpdate, assistants }) => {
     const [postponeData, setPostponeData] = React.useState<Record<string, { date: string; reason: string }>>({});
     const [errors, setErrors] = React.useState<Record<string, string>>({});
+    const [editingCell, setEditingCell] = React.useState<{ sessionId: string; field: keyof Session } | null>(null);
+    const [editValue, setEditValue] = React.useState<string | number | undefined>('');
 
     const handleInputChange = (sessionId: string, field: 'date' | 'reason', value: string) => {
         setPostponeData(prev => ({
@@ -90,6 +94,36 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
         }
     };
 
+    const handleCellClick = (session: Session, field: keyof Session) => {
+        if (!onUpdate) return;
+        setEditingCell({ sessionId: session.id, field });
+        setEditValue(session[field]);
+    };
+
+    const handleSaveEdit = () => {
+        if (!editingCell || !onUpdate) return;
+        
+        const currentSession = sessions.find(s => s.id === editingCell.sessionId);
+        if (currentSession && currentSession[editingCell.field] !== editValue) {
+             onUpdate(editingCell.sessionId, { [editingCell.field]: editValue });
+        }
+       
+        setEditingCell(null);
+    };
+
+    const handleCancelEdit = () => {
+        setEditingCell(null);
+    };
+
+    const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleSaveEdit();
+        } else if (e.key === 'Escape') {
+            handleCancelEdit();
+        }
+    };
+
     if (sessions.length === 0) {
         return <p className="p-4 text-gray-500 text-center">لا توجد جلسات لعرضها.</p>;
     }
@@ -114,16 +148,31 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                 <tbody>
                     {sessions.map(s => {
                         const showPostponeFields = !s.isPostponed && !isBeforeToday(s.date);
+                        const isEditing = (field: keyof Session) => onUpdate && editingCell?.sessionId === s.id && editingCell?.field === field;
+                        const cellClasses = onUpdate ? "cursor-pointer hover:bg-blue-50 transition-colors duration-150" : "";
+                        const nextReasonCellClasses = (onUpdate && s.isPostponed) ? "cursor-pointer hover:bg-blue-50 transition-colors duration-150" : "";
 
                         return (
-                        <tr key={s.id} className="bg-white border-b hover:bg-gray-50">
-                            <td className="px-2 sm:px-6 py-4">{s.court}</td>
-                            <td className="px-2 sm:px-6 py-4">{s.caseNumber}</td>
+                        <tr key={s.id} className={`bg-white border-b hover:bg-gray-50 ${editingCell?.sessionId === s.id ? 'bg-blue-50' : ''}`}>
+                            <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('court') && handleCellClick(s, 'court')}>
+                                {isEditing('court') ? <input type="text" value={editValue as string} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : s.court}
+                            </td>
+                            <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('caseNumber') && handleCellClick(s, 'caseNumber')}>
+                                {isEditing('caseNumber') ? <input type="text" value={editValue as string} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : s.caseNumber}
+                            </td>
                             {showSessionDate && <td className="px-2 sm:px-6 py-4">{formatDate(s.date)}</td>}
-                            <td className="px-2 sm:px-6 py-4">{s.clientName}</td>
-                            <td className="px-2 sm:px-6 py-4">{s.opponentName}</td>
-                            <td className="px-2 sm:px-6 py-4">{s.assignee || '-'}</td>
-                            <td className="px-2 sm:px-6 py-4">{s.postponementReason || 'لا يوجد'}</td>
+                            <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('clientName') && handleCellClick(s, 'clientName')}>
+                                {isEditing('clientName') ? <input type="text" value={editValue as string} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : s.clientName}
+                            </td>
+                            <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('opponentName') && handleCellClick(s, 'opponentName')}>
+                                {isEditing('opponentName') ? <input type="text" value={editValue as string} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : s.opponentName}
+                            </td>
+                            <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('assignee') && handleCellClick(s, 'assignee')}>
+                                {isEditing('assignee') ? <select value={editValue as string} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus>{assistants?.map(a => <option key={a} value={a}>{a}</option>)}</select> : (s.assignee || '-')}
+                            </td>
+                            <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('postponementReason') && handleCellClick(s, 'postponementReason')}>
+                                {isEditing('postponementReason') ? <input type="text" value={editValue as string || ''} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : (s.postponementReason || 'لا يوجد')}
+                            </td>
                             
                             {showPostponeFields ? (
                                 <>
@@ -167,7 +216,9 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                             ) : (
                                 <>
                                     <td className="px-2 sm:px-6 py-4 text-center">{s.nextSessionDate ? formatDate(s.nextSessionDate) : '-'}</td>
-                                    <td className="px-2 sm:px-6 py-4">{s.nextPostponementReason || '-'}</td>
+                                    <td className={`px-2 sm:px-6 py-4 ${nextReasonCellClasses}`} onClick={() => !isEditing('nextPostponementReason') && s.isPostponed && handleCellClick(s, 'nextPostponementReason')}>
+                                        {isEditing('nextPostponementReason') ? <input type="text" value={editValue as string || ''} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : (s.nextPostponementReason || '-')}
+                                    </td>
                                     <td className="px-2 sm:px-6 py-4 text-center">
                                        {(onEdit || onDelete) ? (
                                             <div className="flex items-center justify-center gap-2">
