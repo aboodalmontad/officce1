@@ -604,7 +604,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                             )}
                             {viewMode === 'unpostponed' && (
                                 <div className="bg-white rounded-lg shadow overflow-hidden">
-                                    <SessionsTable sessions={unpostponedSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} assistants={assistants} />
+                                    <SessionsTable sessions={unpostponedSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} assistants={assistants} allowPostponingPastSessions={true} />
                                 </div>
                             )}
                             {viewMode === 'upcoming' && (

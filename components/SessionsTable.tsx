@@ -11,9 +11,10 @@ interface SessionsTableProps {
     showSessionDate?: boolean;
     onUpdate?: (sessionId: string, updatedFields: Partial<Session>) => void;
     assistants?: string[];
+    allowPostponingPastSessions?: boolean;
 }
 
-const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onEdit, onDelete, showSessionDate = false, onUpdate, assistants }) => {
+const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onEdit, onDelete, showSessionDate = false, onUpdate, assistants, allowPostponingPastSessions = false }) => {
     const [postponeData, setPostponeData] = React.useState<Record<string, { date: string; reason: string }>>({});
     const [errors, setErrors] = React.useState<Record<string, string>>({});
     const [editingCell, setEditingCell] = React.useState<{ sessionId: string; field: keyof Session } | null>(null);
@@ -147,7 +148,7 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                 </thead>
                 <tbody>
                     {sessions.map(s => {
-                        const showPostponeFields = !s.isPostponed && !isBeforeToday(s.date);
+                        const showPostponeFields = !s.isPostponed && (!isBeforeToday(s.date) || allowPostponingPastSessions);
                         const isEditing = (field: keyof Session) => onUpdate && editingCell?.sessionId === s.id && editingCell?.field === field;
                         const cellClasses = onUpdate ? "cursor-pointer hover:bg-blue-50 transition-colors duration-150" : "";
                         const nextReasonCellClasses = (onUpdate && s.isPostponed) ? "cursor-pointer hover:bg-blue-50 transition-colors duration-150" : "";

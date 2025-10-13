@@ -162,10 +162,42 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
         const { type, context, isEditing } = modal;
 
         if (type === 'client') {
+            const clientName = formData.name?.trim();
+            if (!clientName) {
+                alert("اسم الموكل مطلوب.");
+                return;
+            }
+            
+            const normalizedClientName = clientName.toLowerCase();
+            const foundClient = clients.find(c => c.name.trim().toLowerCase() === normalizedClientName);
+
+            if (foundClient) {
+                // A client with this name exists. Check if it's a true duplicate.
+                
+                // Case 1: We are ADDING a new client. Any match is a duplicate.
+                if (!isEditing) {
+                    alert(`تنبيه: الموكل "${clientName}" موجود بالفعل.`);
+                    return;
+                }
+                
+                // Case 2: We are EDITING a client. It's a duplicate ONLY if the found client's ID is different from the one we are editing.
+                if (isEditing && context?.item?.id !== foundClient.id) {
+                     alert(`تنبيه: الموكل "${clientName}" موجود بالفعل.`);
+                     return;
+                }
+            }
+            
             if (isEditing) {
-                setClients(prev => prev.map(c => c.id === context.item.id ? { ...c, ...formData } : c));
+                 if (context?.item?.id) {
+                    setClients(prev => prev.map(c => c.id === context.item.id ? { ...c, ...formData, name: clientName } : c));
+                }
             } else {
-                const newClient: Client = { id: `client-${Date.now()}`, ...formData, cases: [] };
+                const newClient: Client = { 
+                    id: `client-${Date.now()}`, 
+                    name: clientName, 
+                    contactInfo: formData.contactInfo || '', 
+                    cases: [] 
+                };
                 setClients(prev => [...prev, newClient]);
             }
         } else if (type === 'case') {
@@ -177,12 +209,30 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
             } else {
                 const clientForCase = clients.find(c => c.id === context.clientId);
                 if (clientForCase) {
-                    const newCase: Case = { 
-                        id: `case-${Date.now()}`, 
-                        ...formData, 
+                    // Explicitly create the case object to avoid adding extra properties from formData
+                    const newCase: Case = {
+                        id: `case-${Date.now()}`,
+                        subject: formData.subject || 'قضية بدون موضوع',
+                        opponentName: formData.opponentName || '',
+                        feeAgreement: formData.feeAgreement || '',
+                        status: formData.status || 'active',
                         clientName: clientForCase.name,
-                        stages: [] 
+                        stages: []
                     };
+
+                    // If first stage data is provided, create and add it
+                    const { court, caseNumber, firstSessionDate } = formData;
+                    if (court || caseNumber) {
+                        const newStage: Stage = {
+                            id: `stage-${Date.now()}`,
+                            court: court || 'غير محدد',
+                            caseNumber: caseNumber || '',
+                            firstSessionDate: firstSessionDate ? new Date(firstSessionDate) : undefined,
+                            sessions: [],
+                        };
+                        newCase.stages.push(newStage);
+                    }
+
                     setClients(prev => prev.map(c => c.id === context.clientId ? { ...c, cases: [...c.cases, newCase] } : c));
                 }
             }
@@ -547,12 +597,32 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                                 <div><label>الاسم</label><input name="name" value={formData.name || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
                                 <div><label>معلومات الاتصال</label><input name="contactInfo" value={formData.contactInfo || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
                             </>}
-                             {modal.type === 'case' && <>
-                                <div><label>الموضوع</label><input name="subject" value={formData.subject || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
-                                <div><label>اسم الخصم</label><input name="opponentName" value={formData.opponentName || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
-                                <div><label>اتفاقية الأتعاب</label><input name="feeAgreement" value={formData.feeAgreement || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
-                                <div><label>الحالة</label><select name="status" value={formData.status || 'active'} onChange={handleFormChange} className="w-full p-2 border rounded"><option value="active">نشطة</option><option value="closed">مغلقة</option><option value="on_hold">معلقة</option></select></div>
-                            </>}
+                             {modal.type === 'case' && (
+                                modal.isEditing ? (
+                                    <>
+                                        <div><label>الموضوع</label><input name="subject" value={formData.subject || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
+                                        <div><label>اسم الخصم</label><input name="opponentName" value={formData.opponentName || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                        <div><label>اتفاقية الأتعاب</label><input name="feeAgreement" value={formData.feeAgreement || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                        <div><label>الحالة</label><select name="status" value={formData.status || 'active'} onChange={handleFormChange} className="w-full p-2 border rounded"><option value="active">نشطة</option><option value="closed">مغلقة</option><option value="on_hold">معلقة</option></select></div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <h3 className="text-lg font-bold border-b pb-2 mb-4 text-gray-700">بيانات القضية الأساسية</h3>
+                                        <div><label>الموضوع</label><input name="subject" value={formData.subject || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
+                                        <div><label>اسم الخصم</label><input name="opponentName" value={formData.opponentName || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                        <div><label>اتفاقية الأتعاب</label><input name="feeAgreement" value={formData.feeAgreement || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                        <div><label>الحالة</label><select name="status" value={formData.status || 'active'} onChange={handleFormChange} className="w-full p-2 border rounded"><option value="active">نشطة</option><option value="closed">مغلقة</option><option value="on_hold">معلقة</option></select></div>
+
+                                        <div className="mt-6 pt-4 border-t">
+                                            <h3 className="text-lg font-bold text-gray-700">المرحلة الأولى (اختياري)</h3>
+                                            <p className="text-sm text-gray-500 mb-4">يمكنك إضافة بيانات المرحلة الأولى مباشرة. سيتم إنشاء مرحلة جديدة لهذه القضية.</p>
+                                            <div><label>المحكمة</label><input name="court" value={formData.court || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                            <div><label>رقم الأساس</label><input name="caseNumber" value={formData.caseNumber || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                            <div><label>تاريخ أول جلسة</label><input type="date" name="firstSessionDate" value={formData.firstSessionDate || ''} onChange={handleFormChange} className="w-full p-2 border rounded" placeholder="DD/MM/YYYY" /></div>
+                                        </div>
+                                    </>
+                                )
+                            )}
                             {modal.type === 'stage' && <>
                                 <div><label>المحكمة</label><input name="court" value={formData.court || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
                                 <div><label>رقم الأساس</label><input name="caseNumber" value={formData.caseNumber || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>

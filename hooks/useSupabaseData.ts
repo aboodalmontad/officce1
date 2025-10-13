@@ -422,8 +422,7 @@ export const useSupabaseData = (offlineMode: boolean) => {
             const NON_EXISTENT_ID = 0;
 
 
-            // Delete all related data first. This is safer than relying on complex upsert logic across multiple tables.
-            // Execute sequentially to avoid race conditions and overwhelming the server.
+            // Delete all related data first, from child to parent, to respect foreign key constraints.
             await supabase.from('sessions').delete().neq('id', NON_EXISTENT_UUID);
             await supabase.from('stages').delete().neq('id', NON_EXISTENT_UUID);
             await supabase.from('cases').delete().neq('id', NON_EXISTENT_UUID);
@@ -434,33 +433,34 @@ export const useSupabaseData = (offlineMode: boolean) => {
             await supabase.from('assistants').delete().neq('name', NON_EXISTENT_NAME);
             await supabase.from('credentials').delete().neq('id', NON_EXISTENT_ID);
 
-            // Upsert data sequentially to respect foreign key constraints and prevent connection errors.
+            // Upsert data sequentially, from parent to child, throwing on the first error to identify the root cause.
             const { error: clientsError } = await supabase.from('clients').upsert(clientsToUpsert);
-            const { error: adminTasksError } = await supabase.from('admin_tasks').upsert(adminTasksToUpsert);
-            const { error: appointmentsError } = await supabase.from('appointments').upsert(appointmentsToUpsert);
-            const { error: accountingEntriesError } = await supabase.from('accounting_entries').upsert(accountingEntriesToUpsert);
-            const { error: assistantsError } = await supabase.from('assistants').upsert(assistantsToUpsert);
-            const { error: credentialsError } = await supabase.from('credentials').upsert(credentialsToUpsert);
-            
+            if (clientsError) throw new Error(`Error saving clients: ${clientsError.message}`);
+
             const { error: casesError } = await supabase.from('cases').upsert(casesToUpsert);
+            if (casesError) throw new Error(`Error saving cases: ${casesError.message}`);
+
             const { error: stagesError } = await supabase.from('stages').upsert(stagesToUpsert);
+            if (stagesError) throw new Error(`Error saving stages: ${stagesError.message}`);
+
             const { error: sessionsError } = await supabase.from('sessions').upsert(sessionsToUpsert);
+            if (sessionsError) throw new Error(`Error saving sessions: ${sessionsError.message}`);
 
-            const errors = [
-                clientsError,
-                adminTasksError,
-                appointmentsError,
-                accountingEntriesError,
-                assistantsError,
-                credentialsError,
-                casesError,
-                stagesError,
-                sessionsError,
-            ].filter(Boolean);
+            // Upsert independent tables
+            const { error: adminTasksError } = await supabase.from('admin_tasks').upsert(adminTasksToUpsert);
+            if (adminTasksError) throw new Error(`Error saving admin tasks: ${adminTasksError.message}`);
 
-            if(errors.length > 0) {
-                 throw new Error(errors.map(e => e!.message).join(', '));
-            }
+            const { error: appointmentsError } = await supabase.from('appointments').upsert(appointmentsToUpsert);
+            if (appointmentsError) throw new Error(`Error saving appointments: ${appointmentsError.message}`);
+
+            const { error: accountingEntriesError } = await supabase.from('accounting_entries').upsert(accountingEntriesToUpsert);
+            if (accountingEntriesError) throw new Error(`Error saving accounting entries: ${accountingEntriesError.message}`);
+
+            const { error: assistantsError } = await supabase.from('assistants').upsert(assistantsToUpsert);
+            if (assistantsError) throw new Error(`Error saving assistants: ${assistantsError.message}`);
+            
+            const { error: credentialsError } = await supabase.from('credentials').upsert(credentialsToUpsert);
+            if (credentialsError) throw new Error(`Error saving credentials: ${credentialsError.message}`);
             
             setIsDirty(false);
             return true;
