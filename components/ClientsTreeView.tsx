@@ -48,6 +48,7 @@ interface CaseDetailsProps {
 
 const CaseDetails: React.FC<CaseDetailsProps> = ({ client, caseData, onAddStage, onEditStage, onDeleteStage, onAddSession, onEditSession, onDeleteSession, onPostponeSession, onDecide, accountingEntries, setAccountingEntries, setClients, assistants, onUpdateSession }) => {
     const [activeTab, setActiveTab] = React.useState('stages');
+    const [openStageId, setOpenStageId] = React.useState<string | null>(null);
 
     const handleFeeAgreementChange = (newFeeAgreement: string) => {
         setClients(prevClients => prevClients.map(c => c.id === client.id ? {
@@ -74,40 +75,68 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ client, caseData, onAddStage,
                             <span>إضافة مرحلة</span>
                         </button>
                     </div>
-                    {caseData.stages.map(stage => (
-                        <TreeItem 
-                            key={stage.id} 
-                            title={`مرحلة: ${stage.court}`} 
-                            subtitle={`رقم الأساس: ${stage.caseNumber}${stage.firstSessionDate ? ` | أول جلسة: ${formatDate(stage.firstSessionDate)}` : ''}`} 
-                            level={0} 
-                            onAdd={() => onAddSession(stage.id)}
-                            onEdit={() => onEditStage(stage)}
-                            onDelete={() => onDeleteStage(stage.id)}
-                        >
-                            <div className="p-2 space-y-2">
-                                {stage.decisionDate && (
-                                    <div className="p-3 bg-green-50 border border-green-200 rounded-md text-sm space-y-1">
-                                        <h5 className="font-bold text-green-800 flex items-center gap-2"><ScaleIcon className="w-4 h-4" />القرار الحاسم</h5>
-                                        <p><strong>تاريخ الحسم:</strong> {formatDate(stage.decisionDate)}</p>
-                                        <p><strong>رقم القرار:</strong> {stage.decisionNumber || 'غير محدد'}</p>
-                                        <p><strong>ملخص القرار:</strong> {stage.decisionSummary || 'لا يوجد'}</p>
-                                        {stage.decisionNotes && <p><strong>ملاحظات:</strong> {stage.decisionNotes}</p>}
+                    {caseData.stages.map(stage => {
+                        const isStageOpen = openStageId === stage.id;
+                        return (
+                            <div key={stage.id} className="border-b border-gray-200 last:border-b-0 py-3 px-2 ms-4">
+                                <div 
+                                    className="flex justify-between items-start gap-2 cursor-pointer p-2 rounded-md hover:bg-gray-100"
+                                    onClick={() => setOpenStageId(isStageOpen ? null : stage.id)}
+                                >
+                                    <div className="flex items-start gap-2 flex-grow min-w-0">
+                                        <div className="text-gray-500 pt-1 flex-shrink-0">
+                                            {isStageOpen ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronLeftIcon className="w-4 h-4" />}
+                                        </div>
+                                        <div className="flex-grow">
+                                            <p className="text-sm text-gray-800 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                                                <strong className="font-semibold">المحكمة:</strong>
+                                                <span className="font-normal text-gray-600">{stage.court}</span>
+                                                <strong className="font-semibold">رقم الأساس:</strong>
+                                                <span className="font-normal text-gray-600">{stage.caseNumber || 'غير محدد'}</span>
+                                                {stage.decisionDate && <>
+                                                    <strong className="font-semibold text-green-700">تاريخ الحسم:</strong>
+                                                    <span className="font-normal text-gray-600">{formatDate(stage.decisionDate)}</span>
+                                                </>}
+                                                {stage.decisionNumber && <>
+                                                    <strong className="font-semibold text-green-700">رقم القرار:</strong>
+                                                    <span className="font-normal text-gray-600">{stage.decisionNumber}</span>
+                                                </>}
+                                                {stage.decisionSummary && <>
+                                                    <strong className="font-semibold text-green-700">ملخص القرار:</strong>
+                                                    <span className="font-normal text-gray-600">{stage.decisionSummary}</span>
+                                                </>}
+                                                {stage.decisionNotes && <>
+                                                    <strong className="font-semibold text-green-700">ملاحظات:</strong>
+                                                    <span className="font-normal text-gray-600">{stage.decisionNotes}</span>
+                                                </>}
+                                            </p>
+                                        </div>
                                     </div>
+                                    <div className="flex items-center flex-shrink-0" onClick={e => e.stopPropagation()}>
+                                        <button onClick={() => onAddSession(stage.id)} className="p-1 text-blue-600 rounded-full hover:bg-blue-100" aria-label="إضافة جلسة"><PlusIcon className="w-5 h-5" /></button>
+                                        <button onClick={() => onEditStage(stage)} className="p-1 text-gray-500 rounded-full hover:bg-gray-100" aria-label="تعديل المرحلة"><PencilIcon className="w-4 h-4" /></button>
+                                        <button onClick={() => onDeleteStage(stage.id)} className="p-1 text-red-500 rounded-full hover:bg-red-100" aria-label="حذف المرحلة"><TrashIcon className="w-4 h-4" /></button>
+                                    </div>
+                                </div>
+                                
+                                {isStageOpen && (
+                                     <div className="p-2 space-y-2 ms-4">
+                                         <SessionsTable
+                                             sessions={stage.sessions}
+                                             onPostpone={onPostponeSession}
+                                             onEdit={(session) => onEditSession(session, stage)}
+                                             onDelete={(sessionId) => onDeleteSession(sessionId, stage.id)}
+                                             onDecide={(session) => onDecide(session, stage)}
+                                             showSessionDate={true}
+                                             onUpdate={onUpdateSession}
+                                             assistants={assistants}
+                                             stage={stage}
+                                         />
+                                     </div>
                                 )}
-                                <SessionsTable 
-                                    sessions={stage.sessions} 
-                                    onPostpone={onPostponeSession}
-                                    onEdit={(session) => onEditSession(session, stage)}
-                                    onDelete={(sessionId) => onDeleteSession(sessionId, stage.id)}
-                                    onDecide={(session) => onDecide(session, stage)}
-                                    showSessionDate={true}
-                                    onUpdate={onUpdateSession}
-                                    assistants={assistants}
-                                    stage={stage}
-                                />
                             </div>
-                        </TreeItem>
-                    ))}
+                        )
+                    })}
                 </>
             )}
             {activeTab === 'accounting' && (

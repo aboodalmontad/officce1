@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
-import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ScaleIcon } from './icons';
+import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ScaleIcon, ChevronDownIcon, ChevronLeftIcon } from './icons';
 import SessionsTable from './SessionsTable';
 import CaseAccounting from './CaseAccounting';
 import { formatDate } from '../utils/dateUtils';
@@ -43,6 +43,15 @@ const ClientsListView: React.FC<ClientsListViewProps> = (props) => {
         assistants, onUpdateSession, onDecide, ...rest 
     } = props;
     const [openClientId, setOpenClientId] = React.useState<string | null>(null);
+    const [openStageIds, setOpenStageIds] = React.useState<string[]>([]);
+
+    const toggleStage = (stageId: string) => {
+        setOpenStageIds(prev =>
+            prev.includes(stageId)
+                ? prev.filter(id => id !== stageId)
+                : [...prev, stageId]
+        );
+    };
     
     if (clients.length === 0) {
         return <p className="text-center text-gray-500 py-8">لا يوجد موكلين لعرضهم. قم بإضافة موكل جديد للبدء.</p>;
@@ -96,41 +105,65 @@ const ClientsListView: React.FC<ClientsListViewProps> = (props) => {
                                     </div>
 
                                     <div className="space-y-4">
-                                        {caseItem.stages.length > 0 ? caseItem.stages.map(stage => (
-                                            <div key={stage.id} className="bg-gray-50/50 p-3 rounded-md">
-                                                <div className="flex justify-between items-center mb-2">
-                                                     <p className="text-sm font-semibold text-gray-600">{stage.court} - <span className="font-normal">رقم الأساس: {stage.caseNumber}</span></p>
-                                                     <div className="flex items-center gap-1 flex-shrink-0">
-                                                         <button onClick={() => onEditStage(stage, caseItem, client)} className="p-2 text-gray-500 rounded-full hover:bg-gray-200" aria-label="تعديل المرحلة"><PencilIcon className="w-4 h-4" /></button>
-                                                         <button onClick={() => onDeleteStage(stage.id, caseItem.id, client.id)} className="p-2 text-red-500 rounded-full hover:bg-red-100" aria-label="حذف المرحلة"><TrashIcon className="w-4 h-4" /></button>
-                                                         <button onClick={() => onAddSession(client.id, caseItem.id, stage.id)} className="flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-lg hover:bg-blue-100 transition-colors">
-                                                             <PlusIcon className="w-3 h-3" />
-                                                             <span>جلسة</span>
-                                                         </button>
-                                                     </div>
-                                                </div>
-                                                {stage.decisionDate && (
-                                                    <div className="mb-2 p-3 bg-green-50 border border-green-200 rounded-md text-sm space-y-1">
-                                                        <h5 className="font-bold text-green-800 flex items-center gap-2"><ScaleIcon className="w-4 h-4" />القرار الحاسم</h5>
-                                                        <p><strong>تاريخ الحسم:</strong> {formatDate(stage.decisionDate)}</p>
-                                                        <p><strong>رقم القرار:</strong> {stage.decisionNumber || 'غير محدد'}</p>
-                                                        <p><strong>ملخص القرار:</strong> {stage.decisionSummary || 'لا يوجد'}</p>
-                                                        {stage.decisionNotes && <p><strong>ملاحظات:</strong> {stage.decisionNotes}</p>}
+                                        {caseItem.stages.length > 0 ? caseItem.stages.map(stage => {
+                                            const isStageOpen = openStageIds.includes(stage.id);
+                                            return (
+                                                <div key={stage.id} className="bg-gray-50/50 p-3 rounded-md">
+                                                    <div className="flex justify-between items-start mb-2 cursor-pointer gap-2" onClick={() => toggleStage(stage.id)}>
+                                                        <div className="flex items-start gap-2 flex-grow min-w-0">
+                                                            <div className="text-gray-500 pt-1 flex-shrink-0">
+                                                                {isStageOpen ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronLeftIcon className="w-4 h-4" />}
+                                                            </div>
+                                                            <div className="flex-grow">
+                                                                <p className="text-sm text-gray-800 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                                                                    <strong className="font-semibold">المحكمة:</strong>
+                                                                    <span className="font-normal text-gray-600">{stage.court}</span>
+                                                                    <strong className="font-semibold">رقم الأساس:</strong>
+                                                                    <span className="font-normal text-gray-600">{stage.caseNumber || 'غير محدد'}</span>
+                                                                    {stage.decisionDate && <>
+                                                                        <strong className="font-semibold text-green-700">تاريخ الحسم:</strong>
+                                                                        <span className="font-normal text-gray-600">{formatDate(stage.decisionDate)}</span>
+                                                                    </>}
+                                                                    {stage.decisionNumber && <>
+                                                                        <strong className="font-semibold text-green-700">رقم القرار:</strong>
+                                                                        <span className="font-normal text-gray-600">{stage.decisionNumber}</span>
+                                                                    </>}
+                                                                    {stage.decisionSummary && <>
+                                                                        <strong className="font-semibold text-green-700">ملخص القرار:</strong>
+                                                                        <span className="font-normal text-gray-600">{stage.decisionSummary}</span>
+                                                                    </>}
+                                                                    {stage.decisionNotes && <>
+                                                                        <strong className="font-semibold text-green-700">ملاحظات:</strong>
+                                                                        <span className="font-normal text-gray-600">{stage.decisionNotes}</span>
+                                                                    </>}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                         <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                                                             <button onClick={() => onEditStage(stage, caseItem, client)} className="p-2 text-gray-500 rounded-full hover:bg-gray-200" aria-label="تعديل المرحلة"><PencilIcon className="w-4 h-4" /></button>
+                                                             <button onClick={() => onDeleteStage(stage.id, caseItem.id, client.id)} className="p-2 text-red-500 rounded-full hover:bg-red-100" aria-label="حذف المرحلة"><TrashIcon className="w-4 h-4" /></button>
+                                                             <button onClick={() => onAddSession(client.id, caseItem.id, stage.id)} className="flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-lg hover:bg-blue-100 transition-colors">
+                                                                 <PlusIcon className="w-3 h-3" />
+                                                                 <span>جلسة</span>
+                                                             </button>
+                                                         </div>
                                                     </div>
-                                                )}
-                                                <SessionsTable 
-                                                    sessions={stage.sessions} 
-                                                    onPostpone={props.onPostponeSession}
-                                                    onEdit={(session) => onEditSession(session, stage, caseItem, client)}
-                                                    onDelete={(sessionId) => onDeleteSession(sessionId, stage.id, caseItem.id, client.id)}
-                                                    onDecide={(session) => onDecide(session, stage)}
-                                                    showSessionDate={true}
-                                                    onUpdate={onUpdateSession}
-                                                    assistants={assistants}
-                                                    stage={stage}
-                                                />
-                                            </div>
-                                        )) : <p className="text-sm text-gray-500 text-center py-4">لا توجد مراحل لهذه القضية. قم بإضافة مرحلة جديدة.</p>}
+                                                    {isStageOpen && (
+                                                        <SessionsTable 
+                                                            sessions={stage.sessions} 
+                                                            onPostpone={props.onPostponeSession}
+                                                            onEdit={(session) => onEditSession(session, stage, caseItem, client)}
+                                                            onDelete={(sessionId) => onDeleteSession(sessionId, stage.id, caseItem.id, client.id)}
+                                                            onDecide={(session) => onDecide(session, stage)}
+                                                            showSessionDate={true}
+                                                            onUpdate={onUpdateSession}
+                                                            assistants={assistants}
+                                                            stage={stage}
+                                                        />
+                                                    )}
+                                                </div>
+                                            )
+                                        }) : <p className="text-sm text-gray-500 text-center py-4">لا توجد مراحل لهذه القضية. قم بإضافة مرحلة جديدة.</p>}
                                     </div>
                                 </div>
                             )) : <p className="text-center text-gray-500 py-4">لا توجد قضايا لهذا الموكل. قم بإضافة قضية جديدة.</p>}

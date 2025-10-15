@@ -218,7 +218,7 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                                                 >
                                                     ترحيل
                                                 </button>
-                                                {onDecide && <button onClick={() => onDecide(s)} className="p-2 text-gray-500 hover:text-green-600" title="تسجيل قرار حاسم"><ScaleIcon className="w-4 h-4" /></button>}
+                                                {onDecide && <button onClick={() => onDecide(s)} className="p-2 text-gray-500 hover:text-green-600" title="تسجيل قرار الحسم"><ScaleIcon className="w-4 h-4" /></button>}
                                                 {onEdit && <button onClick={() => onEdit(s)} className="p-2 text-gray-500 hover:text-blue-600" aria-label="تعديل"><PencilIcon className="w-4 h-4" /></button>}
                                                 {onDelete && <button onClick={() => onDelete(s.id)} className="p-2 text-gray-500 hover:text-red-600" aria-label="حذف"><TrashIcon className="w-4 h-4" /></button>}
                                             </div>

@@ -115,9 +115,10 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     const [printableReportData, setPrintableReportData] = React.useState<any | null>(null);
     const printReportRef = React.useRef<HTMLDivElement>(null);
     
-    // State for drag-and-drop
-    const [draggedTask, setDraggedTask] = React.useState<string | null>(null);
-    const [dragOverLocation, setDragOverLocation] = React.useState<string | null>(null);
+    // State for drag-and-drop of task groups
+    const [locationOrder, setLocationOrder] = React.useState<string[]>([]);
+    const [draggedGroupLocation, setDraggedGroupLocation] = React.useState<string | null>(null);
+    const [dropIndicator, setDropIndicator] = React.useState<{target: string, position: 'before' | 'after'} | null>(null);
     
     // State for inline assignee editing
     const [editingAssigneeTaskId, setEditingAssigneeTaskId] = React.useState<string | null>(null);
@@ -563,6 +564,16 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
         return grouped;
     }, [adminTasks, activeTaskTab, adminTaskSearch]);
 
+     React.useEffect(() => {
+        const currentLocations = Object.keys(groupedTasks);
+        setLocationOrder(prevOrder => {
+            const preservedOrder = prevOrder.filter(loc => currentLocations.includes(loc));
+            const newLocations = currentLocations.filter(loc => !prevOrder.includes(loc));
+            return [...preservedOrder, ...newLocations];
+        });
+    }, [adminTasks, activeTaskTab, adminTaskSearch]);
+
+
     const handleDateSelect = (date: Date) => {
         setSelectedDate(date);
         setViewMode('daily');
@@ -706,110 +717,143 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                     </nav>
                 </div>
                 <div className="mt-4 space-y-6">
-                    {Object.keys(groupedTasks).length > 0 ? (
-                        Object.entries(groupedTasks).map(([location, tasks]) => (
-                            <div 
-                                key={location}
-                                onDragOver={(e) => {
-                                    e.preventDefault();
-                                    if (activeTaskTab === 'pending' && location !== dragOverLocation) {
-                                        setDragOverLocation(location);
-                                    }
-                                }}
-                                onDragLeave={() => setDragOverLocation(null)}
-                                onDrop={(e) => {
-                                    if (activeTaskTab !== 'pending') return;
-                                    e.preventDefault();
-                                    const taskId = e.dataTransfer.getData('taskId');
-                                    const task = adminTasks.find(t => t.id === taskId);
-                                    if (task && task.location !== location) {
-                                        setAdminTasks(prevTasks =>
-                                            prevTasks.map(t =>
-                                                t.id === taskId ? { ...t, location: location } : t
-                                            )
-                                        );
-                                    }
-                                    setDragOverLocation(null);
-                                    setDraggedTask(null);
-                                }}
-                                className={`rounded-lg transition-colors duration-200 ${dragOverLocation === location ? 'bg-blue-100 border-2 border-dashed border-blue-500' : ''}`}
-                            >
-                                <h3 className="text-lg font-semibold text-gray-700 bg-gray-100 p-3 rounded-t-lg">{location} <span className="text-sm font-normal text-gray-500">({tasks.length} مهام)</span></h3>
-                                <div className="overflow-x-auto border border-t-0 rounded-b-lg">
-                                    <table className="w-full text-sm text-right text-gray-600">
-                                        <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-                                            <tr>
-                                                <th className="px-4 py-3 w-12">إنجاز</th>
-                                                <th className="px-6 py-3">المهمة</th>
-                                                <th className="px-6 py-3">المسؤول</th>
-                                                <th className="px-6 py-3">تاريخ الاستحقاق</th>
-                                                <th className="px-6 py-3">الأهمية</th>
-                                                <th className="px-6 py-3">إجراءات</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {tasks.map(task => (
-                                                <tr 
-                                                    key={task.id} 
-                                                    draggable={activeTaskTab === 'pending'}
-                                                    onDragStart={(e) => {
-                                                        if (activeTaskTab !== 'pending') return;
-                                                        e.dataTransfer.setData('taskId', task.id);
-                                                        setDraggedTask(task.id);
-                                                    }}
-                                                    onDragEnd={() => {
-                                                        setDraggedTask(null);
-                                                        setDragOverLocation(null);
-                                                    }}
-                                                    className={`border-b transition-opacity ${task.completed ? 'bg-green-50' : 'bg-white hover:bg-gray-50'} ${draggedTask === task.id ? 'opacity-50' : ''} ${activeTaskTab === 'pending' ? 'cursor-grab' : ''}`}
-                                                >
-                                                    <td className="px-4 py-4 text-center">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={task.completed}
-                                                            onChange={() => handleToggleTaskComplete(task.id)}
-                                                            className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-                                                        />
-                                                    </td>
-                                                    <td className={`px-6 py-4 font-medium ${task.completed ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.task}</td>
-                                                    <td className="px-6 py-4 text-gray-500" onClick={() => activeTaskTab === 'pending' && setEditingAssigneeTaskId(task.id)}>
-                                                        {editingAssigneeTaskId === task.id ? (
-                                                            <select
-                                                                value={task.assignee}
-                                                                onChange={(e) => handleAssigneeChange(task.id, e.target.value)}
-                                                                onBlur={() => setEditingAssigneeTaskId(null)}
-                                                                className="w-full p-1 border rounded bg-white text-sm focus:ring-blue-500 focus:border-blue-500"
-                                                                autoFocus
-                                                            >
-                                                                {assistants.map(name => (
-                                                                    <option key={name} value={name}>
-                                                                        {name}
-                                                                    </option>
-                                                                ))}
-                                                            </select>
-                                                        ) : (
-                                                            <span className={activeTaskTab === 'pending' ? 'cursor-pointer hover:text-blue-600' : ''}>
-                                                                {task.assignee || '-'}
-                                                            </span>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-6 py-4">{formatDate(task.dueDate)}</td>
-                                                    <td className="px-6 py-4">
-                                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${importanceMapAdminTasks[task.importance]?.className}`}>
-                                                            {importanceMapAdminTasks[task.importance]?.text}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-6 py-4 flex items-center gap-2">
-                                                        <button onClick={() => handleOpenTaskModal(task)} className="p-2 text-gray-500 hover:text-blue-600"><PencilIcon className="w-4 h-4" /></button>
-                                                        <button onClick={() => openDeleteTaskModal(task)} className="p-2 text-gray-500 hover:text-red-600"><TrashIcon className="w-4 h-4" /></button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        ))
+                    {locationOrder.length > 0 ? (
+                        locationOrder.map(location => {
+                            const tasks = groupedTasks[location];
+                            if (!tasks || tasks.length === 0) return null;
+                            
+                            return (
+                                <React.Fragment key={location}>
+                                    {dropIndicator?.target === location && dropIndicator.position === 'before' && (
+                                        <div className="h-2 bg-blue-500 rounded-full my-2 animate-pulse" />
+                                    )}
+                                    <div
+                                        onDragOver={(e) => {
+                                            e.preventDefault();
+                                            if (!draggedGroupLocation || draggedGroupLocation === location || activeTaskTab !== 'pending') {
+                                                setDropIndicator(null);
+                                                return;
+                                            }
+                                            const rect = e.currentTarget.getBoundingClientRect();
+                                            const midpoint = rect.top + rect.height / 2;
+                                            if (e.clientY < midpoint) {
+                                                setDropIndicator({ target: location, position: 'before' });
+                                            } else {
+                                                setDropIndicator({ target: location, position: 'after' });
+                                            }
+                                        }}
+                                        onDragLeave={() => {
+                                            setDropIndicator(null);
+                                        }}
+                                        onDrop={(e) => {
+                                            e.preventDefault();
+                                            if (!draggedGroupLocation || !dropIndicator || activeTaskTab !== 'pending') return;
+
+                                            setLocationOrder(prevOrder => {
+                                                const newOrder = prevOrder.filter(item => item !== draggedGroupLocation);
+                                                const targetIndex = newOrder.indexOf(dropIndicator.target);
+                                                
+                                                if (targetIndex === -1) return prevOrder;
+
+                                                if (dropIndicator.position === 'before') {
+                                                    newOrder.splice(targetIndex, 0, draggedGroupLocation);
+                                                } else {
+                                                    newOrder.splice(targetIndex + 1, 0, draggedGroupLocation);
+                                                }
+                                                return newOrder;
+                                            });
+
+                                            setDraggedGroupLocation(null);
+                                            setDropIndicator(null);
+                                        }}
+                                        className={`transition-opacity ${draggedGroupLocation === location ? 'opacity-40' : ''}`}
+                                    >
+                                        <h3 
+                                            draggable={activeTaskTab === 'pending'}
+                                            onDragStart={(e) => {
+                                                if (activeTaskTab !== 'pending') return;
+                                                e.dataTransfer.setData('application/lawyer-app-group-location', location);
+                                                e.dataTransfer.effectAllowed = 'move';
+                                                setDraggedGroupLocation(location);
+                                            }}
+                                            onDragEnd={() => {
+                                                setDraggedGroupLocation(null);
+                                                setDropIndicator(null);
+                                            }}
+                                            className={`text-lg font-semibold text-gray-700 bg-gray-100 p-3 rounded-t-lg ${activeTaskTab === 'pending' ? 'cursor-grab' : ''}`}
+                                        >
+                                            {location} <span className="text-sm font-normal text-gray-500">({tasks.length} مهام)</span>
+                                        </h3>
+                                        <div className="overflow-x-auto border border-t-0 rounded-b-lg">
+                                            <table className="w-full text-sm text-right text-gray-600">
+                                                <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                                                    <tr>
+                                                        <th className="px-4 py-3 w-12">إنجاز</th>
+                                                        <th className="px-6 py-3">المهمة</th>
+                                                        <th className="px-6 py-3">المسؤول</th>
+                                                        <th className="px-6 py-3">تاريخ الاستحقاق</th>
+                                                        <th className="px-6 py-3">الأهمية</th>
+                                                        <th className="px-6 py-3">إجراءات</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {tasks.map(task => (
+                                                        <tr 
+                                                            key={task.id} 
+                                                            className={`border-b ${task.completed ? 'bg-green-50' : 'bg-white hover:bg-gray-50'}`}
+                                                        >
+                                                            <td className="px-4 py-4 text-center">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={task.completed}
+                                                                    onChange={() => handleToggleTaskComplete(task.id)}
+                                                                    className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                                                                />
+                                                            </td>
+                                                            <td className={`px-6 py-4 font-medium ${task.completed ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.task}</td>
+                                                            <td className="px-6 py-4 text-gray-500" onClick={() => activeTaskTab === 'pending' && setEditingAssigneeTaskId(task.id)}>
+                                                                {editingAssigneeTaskId === task.id ? (
+                                                                    <select
+                                                                        value={task.assignee}
+                                                                        onChange={(e) => handleAssigneeChange(task.id, e.target.value)}
+                                                                        onBlur={() => setEditingAssigneeTaskId(null)}
+                                                                        className="w-full p-1 border rounded bg-white text-sm focus:ring-blue-500 focus:border-blue-500"
+                                                                        autoFocus
+                                                                    >
+                                                                        {assistants.map(name => (
+                                                                            <option key={name} value={name}>
+                                                                                {name}
+                                                                            </option>
+                                                                        ))}
+                                                                    </select>
+                                                                ) : (
+                                                                    <span className={activeTaskTab === 'pending' ? 'cursor-pointer hover:text-blue-600' : ''}>
+                                                                        {task.assignee || '-'}
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-6 py-4">{formatDate(task.dueDate)}</td>
+                                                            <td className="px-6 py-4">
+                                                                <span className={`px-2 py-1 text-xs font-medium rounded-full ${importanceMapAdminTasks[task.importance]?.className}`}>
+                                                                    {importanceMapAdminTasks[task.importance]?.text}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4 flex items-center gap-2">
+                                                                <button onClick={() => handleOpenTaskModal(task)} className="p-2 text-gray-500 hover:text-blue-600"><PencilIcon className="w-4 h-4" /></button>
+                                                                <button onClick={() => openDeleteTaskModal(task)} className="p-2 text-gray-500 hover:text-red-600"><TrashIcon className="w-4 h-4" /></button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    {dropIndicator?.target === location && dropIndicator.position === 'after' && (
+                                        <div className="h-2 bg-blue-500 rounded-full my-2 animate-pulse" />
+                                    )}
+                                </React.Fragment>
+                            )
+                        })
                     ) : (
                         <p className="text-center text-gray-500 py-8">لا توجد مهام لعرضها.</p>
                     )}
@@ -999,7 +1043,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
             {decideModal.isOpen && decideModal.session && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={handleCloseDecideModal}>
                     <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                        <h2 className="text-xl font-bold mb-4">تسجيل قرار حاسم</h2>
+                        <h2 className="text-xl font-bold mb-4">تسجيل قرار الحسم</h2>
                         <form onSubmit={handleDecideSubmit} className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">تاريخ الحسم</label>

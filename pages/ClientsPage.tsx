@@ -86,8 +86,12 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
             if (type === 'session') {
                  setFormData({ ...item, date: toInputDateString(item.date), nextSessionDate: toInputDateString(item.nextSessionDate) });
             } else if (type === 'stage') {
-                const { firstSessionDate, ...restOfStage } = item;
-                setFormData({ ...restOfStage, firstSessionDate: toInputDateString(firstSessionDate) });
+                const { firstSessionDate, decisionDate, ...restOfStage } = item;
+                setFormData({ 
+                    ...restOfStage, 
+                    firstSessionDate: toInputDateString(firstSessionDate),
+                    decisionDate: toInputDateString(decisionDate)
+                });
             } else {
                 setFormData(item);
             }
@@ -101,7 +105,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
         setFormData({});
     };
 
-    const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
         const isCheckbox = type === 'checkbox';
         // @ts-ignore
@@ -214,7 +218,6 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
             } else {
                 const clientForCase = clients.find(c => c.id === context.clientId);
                 if (clientForCase) {
-                    // Explicitly create the case object to avoid adding extra properties from formData
                     const newCase: Case = {
                         id: `case-${Date.now()}`,
                         subject: formData.subject || 'قضية بدون موضوع',
@@ -224,10 +227,9 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                         clientName: clientForCase.name,
                         stages: []
                     };
-
-                    // If first stage data is provided, create and add it
-                    const { court, caseNumber, firstSessionDate } = formData;
-                    if (court || caseNumber) {
+        
+                    const { court, caseNumber, firstSessionDate, firstSessionReason } = formData;
+                    if (court || caseNumber || firstSessionDate) {
                         const newStage: Stage = {
                             id: `stage-${Date.now()}`,
                             court: court || 'غير محدد',
@@ -235,18 +237,34 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                             firstSessionDate: firstSessionDate ? new Date(firstSessionDate) : undefined,
                             sessions: [],
                         };
+        
+                        if (firstSessionDate) {
+                            const newSession: Session = {
+                                id: `session-${Date.now()}-first`,
+                                court: newStage.court,
+                                caseNumber: newStage.caseNumber,
+                                date: new Date(firstSessionDate),
+                                clientName: clientForCase.name,
+                                opponentName: newCase.opponentName,
+                                isPostponed: false,
+                                postponementReason: firstSessionReason || undefined,
+                                assignee: 'بدون تخصيص'
+                            };
+                            newStage.sessions.push(newSession);
+                        }
+        
                         newCase.stages.push(newStage);
                     }
-
+        
                     setClients(prev => prev.map(c => c.id === context.clientId ? { ...c, cases: [...c.cases, newCase] } : c));
                 }
             }
         } else if (type === 'stage') {
-            const stageData = { ...formData };
-            if (stageData.firstSessionDate) {
-                 stageData.firstSessionDate = new Date(stageData.firstSessionDate);
-            }
             if (isEditing) {
+                const stageData = { ...formData };
+                stageData.firstSessionDate = stageData.firstSessionDate ? new Date(stageData.firstSessionDate) : undefined;
+                stageData.decisionDate = stageData.decisionDate ? new Date(stageData.decisionDate) : undefined;
+                
                 setClients(prev => prev.map(c => c.id === context.client.id ? {
                     ...c,
                     cases: c.cases.map(cs => cs.id === context.case.id ? {
@@ -255,11 +273,38 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                     } : cs)
                 } : c));
             } else {
-                 const newStage: Stage = { id: `stage-${Date.now()}`, sessions: [], ...stageData };
-                 setClients(prev => prev.map(c => c.id === context.clientId ? {
-                     ...c,
-                     cases: c.cases.map(cs => cs.id === context.caseId ? { ...cs, stages: [...cs.stages, newStage] } : cs)
-                 } : c));
+                const stageData = { ...formData };
+                const newStage: Stage = {
+                    id: `stage-${Date.now()}`,
+                    court: stageData.court || 'غير محدد',
+                    caseNumber: stageData.caseNumber || '',
+                    firstSessionDate: stageData.firstSessionDate ? new Date(stageData.firstSessionDate) : undefined,
+                    sessions: [],
+                };
+        
+                if (newStage.firstSessionDate) {
+                    const client = clients.find(c => c.id === context.clientId);
+                    const caseItem = client?.cases.find(cs => cs.id === context.caseId);
+                    if (client && caseItem) {
+                        const newSession: Session = {
+                            id: `session-${Date.now()}-first`,
+                            court: newStage.court,
+                            caseNumber: newStage.caseNumber,
+                            date: newStage.firstSessionDate,
+                            clientName: client.name,
+                            opponentName: caseItem.opponentName,
+                            isPostponed: false,
+                            postponementReason: stageData.postponementReason || undefined,
+                            assignee: 'بدون تخصيص'
+                        };
+                        newStage.sessions.push(newSession);
+                    }
+                }
+        
+                setClients(prev => prev.map(c => c.id === context.clientId ? {
+                    ...c,
+                    cases: c.cases.map(cs => cs.id === context.caseId ? { ...cs, stages: [...cs.stages, newStage] } : cs)
+                } : c));
             }
         } else if (type === 'session') {
             const sessionData = { ...formData };
@@ -671,6 +716,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                                                 <div><label className="block text-xs font-medium">المحكمة</label><input type="text" name="court" value={formData.court || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
                                                 <div><label className="block text-xs font-medium">رقم الأساس</label><input type="text" name="caseNumber" value={formData.caseNumber || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
                                                 <div><label className="block text-xs font-medium">تاريخ أول جلسة</label><input type="date" name="firstSessionDate" value={formData.firstSessionDate || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                                <div><label className="block text-xs font-medium">سبب التأجيل (إن وجد)</label><input type="text" name="firstSessionReason" value={formData.firstSessionReason || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
                                             </div>
                                         </div>
                                     )}
@@ -681,6 +727,22 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                                     <div><label className="block text-sm font-medium">المحكمة</label><input type="text" name="court" value={formData.court || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
                                     <div><label className="block text-sm font-medium">رقم الأساس</label><input type="text" name="caseNumber" value={formData.caseNumber || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
                                     <div><label className="block text-sm font-medium">تاريخ أول جلسة</label><input type="date" name="firstSessionDate" value={formData.firstSessionDate || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                    
+                                    {!modal.isEditing && (
+                                        <div><label className="block text-sm font-medium">سبب التأجيل لأول جلسة (إن وجد)</label><input type="text" name="postponementReason" value={formData.postponementReason || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                    )}
+
+                                    {modal.isEditing && (
+                                        <div className="p-4 bg-green-50 rounded-lg border border-green-200 mt-4">
+                                            <h3 className="text-md font-semibold text-gray-700 mb-2 flex items-center gap-2"><ScaleIcon className="w-5 h-5 text-green-600"/>معلومات الحسم (اختياري)</h3>
+                                            <div className="space-y-2">
+                                                <div><label className="block text-xs font-medium">تاريخ الحسم</label><input type="date" name="decisionDate" value={formData.decisionDate || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                                <div><label className="block text-xs font-medium">رقم القرار</label><input type="text" name="decisionNumber" value={formData.decisionNumber || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                                <div><label className="block text-xs font-medium">ملخص القرار</label><textarea name="decisionSummary" value={formData.decisionSummary || ''} onChange={handleFormChange} className="w-full p-2 border rounded" rows={2}></textarea></div>
+                                                <div><label className="block text-xs font-medium">ملاحظات</label><textarea name="decisionNotes" value={formData.decisionNotes || ''} onChange={handleFormChange} className="w-full p-2 border rounded" rows={2}></textarea></div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </>
                             )}
                              {modal.type === 'session' && (
@@ -790,7 +852,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
             {decideModal.isOpen && decideModal.session && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={handleCloseDecideModal}>
                     <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                        <h2 className="text-xl font-bold mb-4">تسجيل قرار حاسم</h2>
+                        <h2 className="text-xl font-bold mb-4">تسجيل قرار الحسم</h2>
                         <form onSubmit={handleDecideSubmit} className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">تاريخ الحسم</label>
