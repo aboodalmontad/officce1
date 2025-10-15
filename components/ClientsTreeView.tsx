@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
 import { formatDate } from '../utils/dateUtils';
-import { ChevronDownIcon, ChevronLeftIcon, PlusIcon, PencilIcon, TrashIcon, PrintIcon } from './icons';
+import { ChevronDownIcon, ChevronLeftIcon, PlusIcon, PencilIcon, TrashIcon, PrintIcon, ScaleIcon } from './icons';
 import SessionsTable from './SessionsTable';
 import CaseAccounting from './CaseAccounting';
 
@@ -25,6 +25,7 @@ interface ClientsTreeViewProps {
     onPrintClientStatement: (clientId: string) => void;
     assistants: string[];
     onUpdateSession: (sessionId: string, updatedFields: Partial<Session>) => void;
+    onDecide: (session: Session, stage: Stage) => void;
 }
 
 interface CaseDetailsProps {
@@ -37,6 +38,7 @@ interface CaseDetailsProps {
     onEditSession: (session: Session, stage: Stage) => void;
     onDeleteSession: (sessionId: string, stageId: string) => void;
     onPostponeSession: (sessionId: string, newDate: Date, reason: string) => void;
+    onDecide: (session: Session, stage: Stage) => void;
     accountingEntries: AccountingEntry[];
     setAccountingEntries: (updater: (prev: AccountingEntry[]) => AccountingEntry[]) => void;
     setClients: (updater: (prevClients: Client[]) => Client[]) => void;
@@ -44,7 +46,7 @@ interface CaseDetailsProps {
     onUpdateSession: (sessionId: string, updatedFields: Partial<Session>) => void;
 }
 
-const CaseDetails: React.FC<CaseDetailsProps> = ({ client, caseData, onAddStage, onEditStage, onDeleteStage, onAddSession, onEditSession, onDeleteSession, onPostponeSession, accountingEntries, setAccountingEntries, setClients, assistants, onUpdateSession }) => {
+const CaseDetails: React.FC<CaseDetailsProps> = ({ client, caseData, onAddStage, onEditStage, onDeleteStage, onAddSession, onEditSession, onDeleteSession, onPostponeSession, onDecide, accountingEntries, setAccountingEntries, setClients, assistants, onUpdateSession }) => {
     const [activeTab, setActiveTab] = React.useState('stages');
 
     const handleFeeAgreementChange = (newFeeAgreement: string) => {
@@ -82,15 +84,26 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ client, caseData, onAddStage,
                             onEdit={() => onEditStage(stage)}
                             onDelete={() => onDeleteStage(stage.id)}
                         >
-                            <div className="p-2">
+                            <div className="p-2 space-y-2">
+                                {stage.decisionDate && (
+                                    <div className="p-3 bg-green-50 border border-green-200 rounded-md text-sm space-y-1">
+                                        <h5 className="font-bold text-green-800 flex items-center gap-2"><ScaleIcon className="w-4 h-4" />القرار الحاسم</h5>
+                                        <p><strong>تاريخ الحسم:</strong> {formatDate(stage.decisionDate)}</p>
+                                        <p><strong>رقم القرار:</strong> {stage.decisionNumber || 'غير محدد'}</p>
+                                        <p><strong>ملخص القرار:</strong> {stage.decisionSummary || 'لا يوجد'}</p>
+                                        {stage.decisionNotes && <p><strong>ملاحظات:</strong> {stage.decisionNotes}</p>}
+                                    </div>
+                                )}
                                 <SessionsTable 
                                     sessions={stage.sessions} 
                                     onPostpone={onPostponeSession}
                                     onEdit={(session) => onEditSession(session, stage)}
                                     onDelete={(sessionId) => onDeleteSession(sessionId, stage.id)}
+                                    onDecide={(session) => onDecide(session, stage)}
                                     showSessionDate={true}
                                     onUpdate={onUpdateSession}
                                     assistants={assistants}
+                                    stage={stage}
                                 />
                             </div>
                         </TreeItem>
@@ -159,7 +172,7 @@ const ClientsTreeView: React.FC<ClientsTreeViewProps> = (props) => {
         onAddStage, onEditStage, onDeleteStage,
         onAddSession, onEditSession, onDeleteSession,
         onPostponeSession, onEditClient, onDeleteClient, onPrintClientStatement,
-        assistants, onUpdateSession
+        assistants, onUpdateSession, onDecide
     } = props;
     const [openClientId, setOpenClientId] = React.useState<string | null>(null);
 
@@ -213,6 +226,7 @@ const ClientsTreeView: React.FC<ClientsTreeViewProps> = (props) => {
                                     onEditSession={(session, stage) => onEditSession(session, stage, c, client)}
                                     onDeleteSession={(sessionId, stageId) => onDeleteSession(sessionId, stageId, c.id, client.id)}
                                     onPostponeSession={onPostponeSession}
+                                    onDecide={onDecide}
                                     accountingEntries={accountingEntries}
                                     setAccountingEntries={setAccountingEntries}
                                     setClients={setClients}

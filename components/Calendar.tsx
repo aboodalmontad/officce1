@@ -8,10 +8,11 @@ interface CalendarProps {
     selectedDate: Date;
     sessions: Session[];
     appointments: Appointment[];
+    currentDate: Date;
+    setCurrentDate: (date: Date) => void;
 }
 
-const Calendar: React.FC<CalendarProps> = ({ onDateSelect, selectedDate, sessions, appointments }) => {
-    const [currentDate, setCurrentDate] = React.useState(new Date());
+const Calendar: React.FC<CalendarProps> = ({ onDateSelect, selectedDate, sessions, appointments, currentDate, setCurrentDate }) => {
 
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();

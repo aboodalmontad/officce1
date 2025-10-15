@@ -1,20 +1,22 @@
 import * as React from 'react';
-import { Session } from '../types';
+import { Session, Stage } from '../types';
 import { formatDate, isBeforeToday, isWeekend, getPublicHoliday } from '../utils/dateUtils';
-import { PencilIcon, TrashIcon } from './icons';
+import { PencilIcon, TrashIcon, ScaleIcon } from './icons';
 
 interface SessionsTableProps {
     sessions: Session[];
     onPostpone: (sessionId: string, newDate: Date, reason: string) => void;
     onEdit?: (session: Session) => void;
     onDelete?: (sessionId: string) => void;
+    onDecide?: (session: Session) => void;
     showSessionDate?: boolean;
     onUpdate?: (sessionId: string, updatedFields: Partial<Session>) => void;
     assistants?: string[];
     allowPostponingPastSessions?: boolean;
+    stage?: Stage;
 }
 
-const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onEdit, onDelete, showSessionDate = false, onUpdate, assistants, allowPostponingPastSessions = false }) => {
+const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onEdit, onDelete, onDecide, showSessionDate = false, onUpdate, assistants, allowPostponingPastSessions = false, stage }) => {
     const [postponeData, setPostponeData] = React.useState<Record<string, { date: string; reason: string }>>({});
     const [errors, setErrors] = React.useState<Record<string, string>>({});
     const [editingCell, setEditingCell] = React.useState<{ sessionId: string; field: keyof Session } | null>(null);
@@ -148,7 +150,8 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                 </thead>
                 <tbody>
                     {sessions.map(s => {
-                        const showPostponeFields = !s.isPostponed && (!isBeforeToday(s.date) || allowPostponingPastSessions);
+                        const isStageDecided = stage ? !!stage.decisionDate : !!s.stageDecisionDate;
+                        const showPostponeFields = !s.isPostponed && !isStageDecided && (!isBeforeToday(s.date) || allowPostponingPastSessions);
                         const isEditing = (field: keyof Session) => onUpdate && editingCell?.sessionId === s.id && editingCell?.field === field;
                         const cellClasses = onUpdate ? "cursor-pointer hover:bg-blue-50 transition-colors duration-150" : "";
                         const nextReasonCellClasses = (onUpdate && s.isPostponed) ? "cursor-pointer hover:bg-blue-50 transition-colors duration-150" : "";
@@ -171,8 +174,15 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                             <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('assignee') && handleCellClick(s, 'assignee')}>
                                 {isEditing('assignee') ? <select value={editValue as string} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus>{assistants?.map(a => <option key={a} value={a}>{a}</option>)}</select> : (s.assignee || '-')}
                             </td>
-                            <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('postponementReason') && handleCellClick(s, 'postponementReason')}>
-                                {isEditing('postponementReason') ? <input type="text" value={editValue as string || ''} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : (s.postponementReason || 'لا يوجد')}
+                            <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('postponementReason') && !isStageDecided && handleCellClick(s, 'postponementReason')}>
+                                {isStageDecided ? (
+                                    <span className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-green-700 bg-green-100 rounded-full">
+                                        <ScaleIcon className="w-3 h-3"/>
+                                        الدعوى حسمت
+                                    </span>
+                                ) : (
+                                    isEditing('postponementReason') ? <input type="text" value={editValue as string || ''} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : (s.postponementReason || 'لا يوجد')
+                                )}
                             </td>
                             
                             {showPostponeFields ? (
@@ -204,9 +214,11 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                                                     onClick={() => handlePostponeClick(s.id)}
                                                     className="px-3 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-300"
                                                     disabled={!postponeData[s.id]?.date || !postponeData[s.id]?.reason}
+                                                    title="ترحيل"
                                                 >
                                                     ترحيل
                                                 </button>
+                                                {onDecide && <button onClick={() => onDecide(s)} className="p-2 text-gray-500 hover:text-green-600" title="تسجيل قرار حاسم"><ScaleIcon className="w-4 h-4" /></button>}
                                                 {onEdit && <button onClick={() => onEdit(s)} className="p-2 text-gray-500 hover:text-blue-600" aria-label="تعديل"><PencilIcon className="w-4 h-4" /></button>}
                                                 {onDelete && <button onClick={() => onDelete(s.id)} className="p-2 text-gray-500 hover:text-red-600" aria-label="حذف"><TrashIcon className="w-4 h-4" /></button>}
                                             </div>

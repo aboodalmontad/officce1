@@ -31,8 +31,19 @@ CREATE TABLE IF NOT EXISTS public.stages (
     court TEXT NOT NULL,
     case_number TEXT,
     first_session_date TIMESTAMPTZ,
-    case_id TEXT REFERENCES public.cases(id) ON DELETE CASCADE
+    case_id TEXT REFERENCES public.cases(id) ON DELETE CASCADE,
+    decision_date TIMESTAMPTZ,
+    decision_number TEXT,
+    decision_summary TEXT,
+    decision_notes TEXT
 );
+
+-- Safely add columns to the stages table if they don't exist. This handles migrations for users with older database schemas.
+ALTER TABLE public.stages ADD COLUMN IF NOT EXISTS decision_date TIMESTAMPTZ;
+ALTER TABLE public.stages ADD COLUMN IF NOT EXISTS decision_number TEXT;
+ALTER TABLE public.stages ADD COLUMN IF NOT EXISTS decision_summary TEXT;
+ALTER TABLE public.stages ADD COLUMN IF NOT EXISTS decision_notes TEXT;
+
 
 -- Create Sessions Table
 CREATE TABLE IF NOT EXISTS public.sessions (

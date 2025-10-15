@@ -105,7 +105,7 @@ const validateAndHydrate = (data: any): AppData => {
             id: caseItem.id || `case-${Date.now()}-${Math.random()}`,
             subject: String(caseItem.subject || 'قضية بدون موضوع'),
             clientName: String(caseItem.client_name || client.name || 'موكل غير مسمى'),
-            opponentName: String(caseItem.opponent_name || 'خصم غير مسمى'),
+            opponentName: (caseItem.opponent_name && typeof caseItem.opponent_name === 'string') ? caseItem.opponent_name : '',
             feeAgreement: String(caseItem.fee_agreement || ''),
             status: ['active', 'closed', 'on_hold'].includes(caseItem.status) ? caseItem.status : 'active',
             stages: safeArray(caseItem.stages, (stage: any): Stage => ({
@@ -119,13 +119,17 @@ const validateAndHydrate = (data: any): AppData => {
                     caseNumber: String(session.case_number || stage.case_number || '0'),
                     date: session.date && !isNaN(new Date(session.date).getTime()) ? new Date(session.date) : new Date(),
                     clientName: String(session.client_name || caseItem.client_name || client.name || 'موكل غير مسمى'),
-                    opponentName: String(session.opponent_name || caseItem.opponent_name || 'خصم غير مسمى'),
+                    opponentName: (session.opponent_name && typeof session.opponent_name === 'string') ? session.opponent_name : ((caseItem.opponent_name && typeof caseItem.opponent_name === 'string') ? caseItem.opponent_name : ''),
                     isPostponed: typeof session.is_postponed === 'boolean' ? session.is_postponed : false,
                     postponementReason: sanitizeString(session.postponement_reason),
                     nextPostponementReason: sanitizeString(session.next_postponement_reason),
                     nextSessionDate: sanitizeOptionalDate(session.next_session_date),
                     assignee: isValidAssistant(session.assignee) ? session.assignee : defaultAssignee,
                 })),
+                decisionDate: sanitizeOptionalDate(stage.decision_date),
+                decisionNumber: sanitizeString(stage.decision_number),
+                decisionSummary: sanitizeString(stage.decision_summary),
+                decisionNotes: sanitizeString(stage.decision_notes),
             })),
         })),
     }));
@@ -365,18 +369,22 @@ export const useSupabaseData = (offlineMode: boolean) => {
                 fee_agreement: feeAgreement,
             })));
 
-            const stagesToUpsert = currentData.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.map(({ sessions, caseNumber, firstSessionDate, ...stage }) => ({
+            const stagesToUpsert = currentData.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.map(({ sessions, caseNumber, firstSessionDate, decisionDate, decisionNumber, decisionSummary, decisionNotes, ...stage }) => ({
                 ...stage,
                 case_id: cs.id,
                 case_number: caseNumber,
                 first_session_date: toISOStringOrNull(firstSessionDate),
+                decision_date: toISOStringOrNull(decisionDate),
+                decision_number: decisionNumber,
+                decision_summary: decisionSummary,
+                decision_notes: decisionNotes,
             }))));
 
             const sessionsToUpsert = currentData.clients.flatMap(c =>
                 c.cases.flatMap(cs =>
                     cs.stages.flatMap(st =>
                         st.sessions.map(({
-                            caseNumber, clientName, opponentName, postponementReason, isPostponed, nextSessionDate, nextPostponementReason, date, ...session
+                            caseNumber, clientName, opponentName, postponementReason, isPostponed, nextSessionDate, nextPostponementReason, date, stageId, stageDecisionDate, ...session
                         }) => ({
                             ...session,
                             stage_id: st.id,
@@ -469,6 +477,9 @@ export const useSupabaseData = (offlineMode: boolean) => {
             if (error instanceof TypeError && error.message.includes('Failed to fetch') || (error.message && error.message.toLowerCase().includes('failed to fetch'))) {
                  setSyncStatus('unconfigured');
                  setLastSyncError('فشل الاتصال بالخادم عند الحفظ. هذه المشكلة غالباً ما تكون بسبب إعدادات CORS. يرجى التأكد من إضافة نطاق هذا التطبيق إلى قائمة النطاقات المسموح بها.');
+            } else if (error.message && (error.message.includes('schema cache') || error.message.includes('does not exist') || error.message.includes('column'))) { // Catch schema-related errors
+                 setSyncStatus('uninitialized');
+                 setLastSyncError('فشل الحفظ بسبب عدم تطابق مخطط قاعدة البيانات. يرجى تشغيل شيفرة التهيئة في Supabase من صفحة الإعدادات، والانتظار لمدة دقيقة، ثم المحاولة مرة أخرى.');
             } else {
                 setSyncStatus('error');
                 setLastSyncError(`فشل رفع البيانات: ${error.message}`);

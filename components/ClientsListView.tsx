@@ -1,8 +1,9 @@
 import * as React from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
-import { PlusIcon, PencilIcon, TrashIcon, PrintIcon } from './icons';
+import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ScaleIcon } from './icons';
 import SessionsTable from './SessionsTable';
 import CaseAccounting from './CaseAccounting';
+import { formatDate } from '../utils/dateUtils';
 
 interface ClientsListViewProps {
     clients: Client[];
@@ -24,6 +25,7 @@ interface ClientsListViewProps {
     onPrintClientStatement: (clientId: string) => void;
     assistants: string[];
     onUpdateSession: (sessionId: string, updatedFields: Partial<Session>) => void;
+    onDecide: (session: Session, stage: Stage) => void;
 }
 
 const statusMap: Record<Case['status'], { text: string, className: string }> = {
@@ -38,7 +40,7 @@ const ClientsListView: React.FC<ClientsListViewProps> = (props) => {
         onEditCase, onDeleteCase, onAddStage, 
         onEditStage, onDeleteStage, onAddSession, 
         onEditSession, onDeleteSession, onPrintClientStatement, 
-        assistants, onUpdateSession, ...rest 
+        assistants, onUpdateSession, onDecide, ...rest 
     } = props;
     const [openClientId, setOpenClientId] = React.useState<string | null>(null);
     
@@ -107,14 +109,25 @@ const ClientsListView: React.FC<ClientsListViewProps> = (props) => {
                                                          </button>
                                                      </div>
                                                 </div>
+                                                {stage.decisionDate && (
+                                                    <div className="mb-2 p-3 bg-green-50 border border-green-200 rounded-md text-sm space-y-1">
+                                                        <h5 className="font-bold text-green-800 flex items-center gap-2"><ScaleIcon className="w-4 h-4" />القرار الحاسم</h5>
+                                                        <p><strong>تاريخ الحسم:</strong> {formatDate(stage.decisionDate)}</p>
+                                                        <p><strong>رقم القرار:</strong> {stage.decisionNumber || 'غير محدد'}</p>
+                                                        <p><strong>ملخص القرار:</strong> {stage.decisionSummary || 'لا يوجد'}</p>
+                                                        {stage.decisionNotes && <p><strong>ملاحظات:</strong> {stage.decisionNotes}</p>}
+                                                    </div>
+                                                )}
                                                 <SessionsTable 
                                                     sessions={stage.sessions} 
                                                     onPostpone={props.onPostponeSession}
                                                     onEdit={(session) => onEditSession(session, stage, caseItem, client)}
                                                     onDelete={(sessionId) => onDeleteSession(sessionId, stage.id, caseItem.id, client.id)}
+                                                    onDecide={(session) => onDecide(session, stage)}
                                                     showSessionDate={true}
                                                     onUpdate={onUpdateSession}
                                                     assistants={assistants}
+                                                    stage={stage}
                                                 />
                                             </div>
                                         )) : <p className="text-sm text-gray-500 text-center py-4">لا توجد مراحل لهذه القضية. قم بإضافة مرحلة جديدة.</p>}

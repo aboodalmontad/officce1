@@ -161,7 +161,7 @@ const AccountingPage: React.FC<AccountingPageProps> = ({ accountingEntries, setA
             </div>
             
             {modal.isOpen && (
-                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={handleCloseModal}>
+                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={handleCloseModal}>
                     <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
                         <h2 className="text-xl font-bold mb-4">{modal.data ? 'تعديل القيد' : 'إضافة قيد جديد'}</h2>
                         <form onSubmit={handleSubmit} className="space-y-4">
@@ -203,7 +203,7 @@ const AccountingPage: React.FC<AccountingPageProps> = ({ accountingEntries, setA
             )}
 
             {isDeleteModalOpen && entryToDelete && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={closeDeleteModal}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={closeDeleteModal}>
                     <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
                         <div className="text-center">
                             <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">

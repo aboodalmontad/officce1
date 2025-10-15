@@ -1,7 +1,7 @@
 import * as React from 'react';
 import ClientsTreeView from '../components/ClientsTreeView';
 import ClientsListView from '../components/ClientsListView';
-import { PlusIcon, SearchIcon, ListBulletIcon, ViewColumnsIcon, ExclamationTriangleIcon, PrintIcon } from '../components/icons';
+import { PlusIcon, SearchIcon, ListBulletIcon, ViewColumnsIcon, ExclamationTriangleIcon, PrintIcon, ScaleIcon } from '../components/icons';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
 import { formatDate } from '../utils/dateUtils';
 import PrintableClientReport from '../components/PrintableClientReport';
@@ -45,6 +45,11 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
     const [isPrintModalOpen, setIsPrintModalOpen] = React.useState(false);
     const [printData, setPrintData] = React.useState<{ client: Client; caseData?: Case; entries: AccountingEntry[]; totals: any } | null>(null);
     const printClientReportRef = React.useRef<HTMLDivElement>(null);
+
+    // State for Decide Session Modal
+    const [decideModal, setDecideModal] = React.useState<{ isOpen: boolean; session?: Session, stage?: Stage }>({ isOpen: false });
+    const [decideFormData, setDecideFormData] = React.useState({ decisionNumber: '', decisionSummary: '', decisionNotes: '' });
+
 
     const filteredClients = React.useMemo(() => {
         if (!searchQuery) return clients;
@@ -496,6 +501,42 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
         setIsPrintChoiceModalOpen(false);
         setIsPrintModalOpen(true);
     };
+    
+    const handleOpenDecideModal = (session: Session, stage: Stage) => {
+        setDecideFormData({ decisionNumber: '', decisionSummary: '', decisionNotes: '' });
+        setDecideModal({ isOpen: true, session, stage });
+    };
+
+    const handleCloseDecideModal = () => {
+        setDecideModal({ isOpen: false });
+    };
+
+    const handleDecideSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const { session, stage } = decideModal;
+        if (!session || !stage) return;
+
+        setClients(currentClients => currentClients.map(client => ({
+            ...client,
+            cases: client.cases.map(c => ({
+                ...c,
+                stages: c.stages.map(st => {
+                    if (st.id === stage.id) {
+                        return {
+                            ...st,
+                            decisionDate: session.date,
+                            decisionNumber: decideFormData.decisionNumber,
+                            decisionSummary: decideFormData.decisionSummary,
+                            decisionNotes: decideFormData.decisionNotes,
+                        };
+                    }
+                    return st;
+                })
+            }))
+        })));
+        
+        handleCloseDecideModal();
+    };
 
     
     const getModalTitle = () => {
@@ -526,24 +567,33 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                             <SearchIcon className="w-4 h-4 text-gray-500" />
                         </div>
                     </div>
-                    <button onClick={() => handleOpenModal('client')} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap">
-                        <PlusIcon className="w-5 h-5" />
-                        <span>إضافة موكل</span>
-                    </button>
+                    <div className="flex-shrink-0 flex items-center gap-2">
+                         <div className="bg-gray-200 rounded-lg p-0.5 flex">
+                            <button 
+                                onClick={() => setViewMode('tree')} 
+                                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${viewMode === 'tree' ? 'bg-white shadow' : 'text-gray-600'}`}
+                            >
+                                <ViewColumnsIcon className="w-5 h-5" />
+                            </button>
+                            <button 
+                                onClick={() => setViewMode('list')} 
+                                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${viewMode === 'list' ? 'bg-white shadow' : 'text-gray-600'}`}
+                            >
+                                <ListBulletIcon className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <button onClick={() => handleOpenModal('client')} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap">
+                            <PlusIcon className="w-5 h-5" />
+                            <span>إضافة موكل</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <div className="bg-white p-4 rounded-lg shadow">
-                 <div className="flex justify-between items-center border-b pb-3 mb-3">
-                    <h2 className="text-xl font-semibold">قائمة الموكلين والقضايا</h2>
-                    <div className="flex items-center gap-2 p-1 bg-gray-100 rounded-lg">
-                        <button onClick={() => setViewMode('tree')} className={`px-3 py-1 text-sm rounded-md ${viewMode === 'tree' ? 'bg-white shadow' : ''}`} aria-label="عرض شجري"><ViewColumnsIcon className="w-5 h-5" /></button>
-                        <button onClick={() => setViewMode('list')} className={`px-3 py-1 text-sm rounded-md ${viewMode === 'list' ? 'bg-white shadow' : ''}`} aria-label="عرض قائمة"><ListBulletIcon className="w-5 h-5" /></button>
-                    </div>
-                </div>
+            <div className="bg-white rounded-lg shadow overflow-hidden">
                 {viewMode === 'tree' ? (
-                     <ClientsTreeView
-                        clients={filteredClients}
+                     <ClientsTreeView 
+                        clients={filteredClients} 
                         setClients={setClients}
                         accountingEntries={accountingEntries}
                         setAccountingEntries={setAccountingEntries}
@@ -556,15 +606,16 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                         onAddSession={(clientId, caseId, stageId) => handleOpenModal('session', false, { clientId, caseId, stageId })}
                         onEditSession={(session, stage, caseItem, client) => handleOpenModal('session', true, { item: session, stage, case: caseItem, client })}
                         onDeleteSession={handleDeleteSession}
-                        onPostponeSession={(sessionId, newDate, reason) => onUpdateSession(sessionId, { nextSessionDate: newDate, nextPostponementReason: reason })}
+                        onPostponeSession={(sessionId, newDate, reason) => onUpdateSession(sessionId, { nextSessionDate: newDate, nextPostponementReason: reason, isPostponed: true })}
                         onEditClient={(client) => handleOpenModal('client', true, { item: client })}
                         onDeleteClient={(clientId) => handleDeleteClient(clients.find(c => c.id === clientId)!)}
                         onPrintClientStatement={(clientId) => handleOpenPrintChoice(clients.find(c => c.id === clientId)!)}
                         assistants={assistants}
                         onUpdateSession={onUpdateSession}
+                        onDecide={(session, stage) => handleOpenDecideModal(session, stage)}
                     />
                 ) : (
-                    <ClientsListView
+                    <ClientsListView 
                         clients={filteredClients}
                         setClients={setClients}
                         accountingEntries={accountingEntries}
@@ -578,82 +629,87 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                         onAddSession={(clientId, caseId, stageId) => handleOpenModal('session', false, { clientId, caseId, stageId })}
                         onEditSession={(session, stage, caseItem, client) => handleOpenModal('session', true, { item: session, stage, case: caseItem, client })}
                         onDeleteSession={handleDeleteSession}
-                        onPostponeSession={(sessionId, newDate, reason) => onUpdateSession(sessionId, { nextSessionDate: newDate, nextPostponementReason: reason })}
+                        onPostponeSession={(sessionId, newDate, reason) => onUpdateSession(sessionId, { nextSessionDate: newDate, nextPostponementReason: reason, isPostponed: true })}
                         onEditClient={(client) => handleOpenModal('client', true, { item: client })}
                         onDeleteClient={(clientId) => handleDeleteClient(clients.find(c => c.id === clientId)!)}
                         onPrintClientStatement={(clientId) => handleOpenPrintChoice(clients.find(c => c.id === clientId)!)}
                         assistants={assistants}
                         onUpdateSession={onUpdateSession}
+                        onDecide={(session, stage) => handleOpenDecideModal(session, stage)}
                     />
                 )}
             </div>
 
             {modal.type && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={handleCloseModal}>
-                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={handleCloseModal}>
+                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
                         <h2 className="text-xl font-bold mb-4">{getModalTitle()}</h2>
                         <form onSubmit={handleSubmit} className="space-y-4">
-                            {modal.type === 'client' && <>
-                                <div><label>الاسم</label><input name="name" value={formData.name || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
-                                <div><label>معلومات الاتصال</label><input name="contactInfo" value={formData.contactInfo || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
-                            </>}
-                             {modal.type === 'case' && (
-                                modal.isEditing ? (
-                                    <>
-                                        <div><label>الموضوع</label><input name="subject" value={formData.subject || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
-                                        <div><label>اسم الخصم</label><input name="opponentName" value={formData.opponentName || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
-                                        <div><label>اتفاقية الأتعاب</label><input name="feeAgreement" value={formData.feeAgreement || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
-                                        <div><label>الحالة</label><select name="status" value={formData.status || 'active'} onChange={handleFormChange} className="w-full p-2 border rounded"><option value="active">نشطة</option><option value="closed">مغلقة</option><option value="on_hold">معلقة</option></select></div>
-                                    </>
-                                ) : (
-                                    <>
-                                        <h3 className="text-lg font-bold border-b pb-2 mb-4 text-gray-700">بيانات القضية الأساسية</h3>
-                                        <div><label>الموضوع</label><input name="subject" value={formData.subject || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
-                                        <div><label>اسم الخصم</label><input name="opponentName" value={formData.opponentName || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
-                                        <div><label>اتفاقية الأتعاب</label><input name="feeAgreement" value={formData.feeAgreement || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
-                                        <div><label>الحالة</label><select name="status" value={formData.status || 'active'} onChange={handleFormChange} className="w-full p-2 border rounded"><option value="active">نشطة</option><option value="closed">مغلقة</option><option value="on_hold">معلقة</option></select></div>
-
-                                        <div className="mt-6 pt-4 border-t">
-                                            <h3 className="text-lg font-bold text-gray-700">المرحلة الأولى (اختياري)</h3>
-                                            <p className="text-sm text-gray-500 mb-4">يمكنك إضافة بيانات المرحلة الأولى مباشرة. سيتم إنشاء مرحلة جديدة لهذه القضية.</p>
-                                            <div><label>المحكمة</label><input name="court" value={formData.court || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
-                                            <div><label>رقم الأساس</label><input name="caseNumber" value={formData.caseNumber || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
-                                            <div><label>تاريخ أول جلسة</label><input type="date" name="firstSessionDate" value={formData.firstSessionDate || ''} onChange={handleFormChange} className="w-full p-2 border rounded" placeholder="DD/MM/YYYY" /></div>
-                                        </div>
-                                    </>
-                                )
+                            {modal.type === 'client' && (
+                                <>
+                                    <div><label className="block text-sm font-medium">اسم الموكل</label><input type="text" name="name" value={formData.name || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
+                                    <div><label className="block text-sm font-medium">معلومات الاتصال</label><input type="text" name="contactInfo" value={formData.contactInfo || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                </>
                             )}
-                            {modal.type === 'stage' && <>
-                                <div><label>المحكمة</label><input name="court" value={formData.court || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
-                                <div><label>رقم الأساس</label><input name="caseNumber" value={formData.caseNumber || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
-                                <div><label>تاريخ أول جلسة (اختياري)</label><input type="date" name="firstSessionDate" value={formData.firstSessionDate || ''} onChange={handleFormChange} className="w-full p-2 border rounded" placeholder="DD/MM/YYYY" /></div>
-                            </>}
-                             {modal.type === 'session' && <>
-                                 {modal.isEditing && modal.context.item && (
-                                     <>
-                                        <p className="text-sm"><strong>المحكمة:</strong> {modal.context.item.court}</p>
-                                        <p className="text-sm"><strong>رقم الأساس:</strong> {modal.context.item.caseNumber}</p>
-                                        <p className="text-sm"><strong>الموكل:</strong> {modal.context.item.clientName}</p>
-                                        <p className="text-sm"><strong>الخصم:</strong> {modal.context.item.opponentName}</p>
-                                        <hr className="my-2"/>
-                                     </>
-                                 )}
-                                <div><label>تاريخ الجلسة</label><input type="date" name="date" value={formData.date || ''} onChange={handleFormChange} className="w-full p-2 border rounded" placeholder="DD/MM/YYYY" required /></div>
-                                <div><label>المكلف بالحضور</label><select name="assignee" value={formData.assignee || 'بدون تخصيص'} onChange={handleFormChange} className="w-full p-2 border rounded">{assistants.map(a => <option key={a} value={a}>{a}</option>)}</select></div>
-                                <div><label>سبب التأجيل (من الجلسة السابقة)</label><input name="postponementReason" value={formData.postponementReason || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
-                                {modal.isEditing && <div className="mt-4 p-4 border border-yellow-300 bg-yellow-50 rounded-lg">
-                                    <h3 className="font-semibold text-yellow-800">ترحيل الجلسة</h3>
-                                    <p className="text-xs text-yellow-700 mb-2">املأ الحقول أدناه لترحيل هذه الجلسة وإنشاء جلسة جديدة بالتاريخ القادم.</p>
-                                    <div className="flex items-center gap-2">
-                                        <input type="checkbox" id="isPostponed" name="isPostponed" checked={formData.isPostponed || false} onChange={handleFormChange} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                                        <label htmlFor="isPostponed" className="text-sm font-medium text-gray-700">ترحيل هذه الجلسة؟</label>
+                             {modal.type === 'case' && (
+                                <>
+                                    <div><label className="block text-sm font-medium">موضوع القضية</label><input type="text" name="subject" value={formData.subject || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
+                                    <div><label className="block text-sm font-medium">اسم الخصم</label><input type="text" name="opponentName" value={formData.opponentName || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                    <div><label className="block text-sm font-medium">اتفاقية الأتعاب</label><input type="text" name="feeAgreement" value={formData.feeAgreement || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                    <div>
+                                        <label className="block text-sm font-medium">الحالة</label>
+                                        <select name="status" value={formData.status || 'active'} onChange={handleFormChange} className="w-full p-2 border rounded">
+                                            <option value="active">نشطة</option>
+                                            <option value="closed">مغلقة</option>
+                                            <option value="on_hold">معلقة</option>
+                                        </select>
                                     </div>
-                                    {formData.isPostponed && <>
-                                         <div className="mt-2"><label className="text-sm">تاريخ الجلسة القادمة</label><input type="date" name="nextSessionDate" value={formData.nextSessionDate || ''} onChange={handleFormChange} className="w-full p-2 border rounded mt-1" placeholder="DD/MM/YYYY" /></div>
-                                         <div className="mt-2"><label className="text-sm">سبب التأجيل القادم</label><input name="nextPostponementReason" value={formData.nextPostponementReason || ''} onChange={handleFormChange} className="w-full p-2 border rounded mt-1" /></div>
-                                    </>}
-                                </div>}
-                            </>}
+                                    {!modal.isEditing && (
+                                        <div className="p-4 bg-gray-50 rounded-lg border mt-4">
+                                            <h3 className="text-md font-semibold text-gray-700 mb-2">إضافة مرحلة أولى (اختياري)</h3>
+                                            <div className="space-y-2">
+                                                <div><label className="block text-xs font-medium">المحكمة</label><input type="text" name="court" value={formData.court || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                                <div><label className="block text-xs font-medium">رقم الأساس</label><input type="text" name="caseNumber" value={formData.caseNumber || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                                <div><label className="block text-xs font-medium">تاريخ أول جلسة</label><input type="date" name="firstSessionDate" value={formData.firstSessionDate || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                             {modal.type === 'stage' && (
+                                <>
+                                    <div><label className="block text-sm font-medium">المحكمة</label><input type="text" name="court" value={formData.court || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
+                                    <div><label className="block text-sm font-medium">رقم الأساس</label><input type="text" name="caseNumber" value={formData.caseNumber || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                    <div><label className="block text-sm font-medium">تاريخ أول جلسة</label><input type="date" name="firstSessionDate" value={formData.firstSessionDate || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                </>
+                            )}
+                             {modal.type === 'session' && (
+                                <>
+                                    <div><label className="block text-sm font-medium">تاريخ الجلسة</label><input type="date" name="date" value={formData.date || ''} onChange={handleFormChange} className="w-full p-2 border rounded" placeholder="DD/MM/YYYY" required /></div>
+                                    <div><label className="block text-sm font-medium">سبب التأجيل (إن وجد)</label><input type="text" name="postponementReason" value={formData.postponementReason || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                    <div>
+                                        <label className="block text-sm font-medium">الشخص المسؤول عن الحضور</label>
+                                        <select name="assignee" value={formData.assignee || 'بدون تخصيص'} onChange={handleFormChange} className="w-full p-2 border rounded">
+                                            {assistants.map(name => <option key={name} value={name}>{name}</option>)}
+                                        </select>
+                                    </div>
+                                    {modal.isEditing && (
+                                        <div className="mt-4 p-4 border rounded-lg bg-yellow-50">
+                                            <h3 className="font-semibold text-yellow-800">ترحيل الجلسة</h3>
+                                            <div className="flex items-center gap-2 mt-2">
+                                                <input type="checkbox" id="isPostponed" name="isPostponed" checked={formData.isPostponed || false} onChange={handleFormChange} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                                <label htmlFor="isPostponed">هذه الجلسة تم ترحيلها</label>
+                                            </div>
+                                            {formData.isPostponed && (
+                                                <div className="space-y-2 mt-2 animate-fade-in">
+                                                    <div><label className="block text-sm font-medium">تاريخ الجلسة القادمة</label><input type="date" name="nextSessionDate" value={formData.nextSessionDate || ''} onChange={handleFormChange} className="w-full p-2 border rounded" placeholder="DD/MM/YYYY" /></div>
+                                                    <div><label className="block text-sm font-medium">سبب التأجيل القادم</label><input type="text" name="nextPostponementReason" value={formData.nextPostponementReason || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </>
+                            )}
                             <div className="mt-6 flex justify-end gap-4">
                                 <button type="button" onClick={handleCloseModal} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">إلغاء</button>
                                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">حفظ</button>
@@ -663,152 +719,108 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                 </div>
             )}
 
-            {isDeleteSessionModalOpen && sessionToDelete && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={closeDeleteSessionModal}>
+            {isDeleteClientModalOpen && clientToDelete && (
+                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={closeDeleteClientModal}>
                     <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
                         <div className="text-center">
                             <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
                                 <ExclamationTriangleIcon className="h-8 w-8 text-red-600" aria-hidden="true" />
                             </div>
-                            <h3 className="text-2xl font-bold text-gray-900">
-                                تأكيد حذف الجلسة
-                            </h3>
-                            <p className="text-gray-600 my-4 whitespace-pre-line">
-                                {sessionToDelete.message}
-                            </p>
+                            <h3 className="text-2xl font-bold text-gray-900">تأكيد حذف الموكل</h3>
+                            <p className="text-gray-600 my-4">هل أنت متأكد من حذف الموكل "{clientToDelete.name}"؟<br />سيتم حذف جميع القضايا والجلسات والقيود المحاسبية المرتبطة به. هذا الإجراء لا يمكن التراجع عنه.</p>
                         </div>
                         <div className="mt-6 flex justify-center gap-4">
-                            <button
-                                type="button"
-                                className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
-                                onClick={closeDeleteSessionModal}
-                            >
-                                إلغاء
-                            </button>
-                            <button
-                                type="button"
-                                className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors"
-                                onClick={handleConfirmDeleteSession}
-                            >
-                                نعم، قم بالحذف
-                            </button>
+                            <button type="button" className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300" onClick={closeDeleteClientModal}>إلغاء</button>
+                            <button type="button" className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700" onClick={handleConfirmDeleteClient}>نعم، قم بالحذف</button>
                         </div>
                     </div>
                 </div>
             )}
             
             {isDeleteCaseModalOpen && caseToDelete && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={closeDeleteCaseModal}>
+                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={closeDeleteCaseModal}>
                     <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
                         <div className="text-center">
                             <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
                                 <ExclamationTriangleIcon className="h-8 w-8 text-red-600" aria-hidden="true" />
                             </div>
-                            <h3 className="text-2xl font-bold text-gray-900">
-                                تأكيد حذف القضية
-                            </h3>
-                            <p className="text-gray-600 my-4">
-                                هل أنت متأكد من حذف قضية "{caseToDelete.caseSubject}"؟<br />
-                                سيؤدي هذا الإجراء إلى إزالة جميع مراحلها وجلساتها والقيود المحاسبية المرتبطة بها بشكل نهائي. <br/>
-                                <strong className="font-semibold text-red-700">هذا الإجراء لا يمكن التراجع عنه.</strong>
-                            </p>
+                            <h3 className="text-2xl font-bold text-gray-900">تأكيد حذف القضية</h3>
+                            <p className="text-gray-600 my-4">هل أنت متأكد من حذف قضية "{caseToDelete.caseSubject}"؟<br />سيتم حذف جميع مراحلها وجلساتها والقيود المحاسبية المرتبطة بها. هذا الإجراء لا يمكن التراجع عنه.</p>
                         </div>
                         <div className="mt-6 flex justify-center gap-4">
-                            <button
-                                type="button"
-                                className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
-                                onClick={closeDeleteCaseModal}
-                            >
-                                إلغاء
-                            </button>
-                            <button
-                                type="button"
-                                className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors"
-                                onClick={handleConfirmDeleteCase}
-                            >
-                                نعم، قم بالحذف
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {isDeleteClientModalOpen && clientToDelete && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={closeDeleteClientModal}>
-                    <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-                        <div className="text-center">
-                            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
-                                <ExclamationTriangleIcon className="h-8 w-8 text-red-600" aria-hidden="true" />
-                            </div>
-                            <h3 className="text-2xl font-bold text-gray-900">
-                                تأكيد حذف الموكل
-                            </h3>
-                            <p className="text-gray-600 my-4">
-                                هل أنت متأكد من حذف الموكل "{clientToDelete.name}"؟<br />
-                                سيؤدي هذا الإجراء إلى إزالة جميع قضاياه وجلساته وقيوده المحاسبية المرتبطة به بشكل نهائي. <br/>
-                                <strong className="font-semibold text-red-700">هذا الإجراء لا يمكن التراجع عنه.</strong>
-                            </p>
-                        </div>
-                        <div className="mt-6 flex justify-center gap-4">
-                            <button
-                                type="button"
-                                className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
-                                onClick={closeDeleteClientModal}
-                            >
-                                إلغاء
-                            </button>
-                            <button
-                                type="button"
-                                className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors"
-                                onClick={handleConfirmDeleteClient}
-                            >
-                                نعم، قم بالحذف
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {isDeleteStageModalOpen && stageToDelete && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={closeDeleteStageModal}>
-                    <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-                        <div className="text-center">
-                            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
-                                <ExclamationTriangleIcon className="h-8 w-8 text-red-600" aria-hidden="true" />
-                            </div>
-                            <h3 className="text-2xl font-bold text-gray-900">
-                                تأكيد حذف المرحلة
-                            </h3>
-                            <p className="text-gray-600 my-4">
-                                هل أنت متأكد من حذف {stageToDelete.stageInfo}؟<br />
-                                سيؤدي هذا الإجراء إلى إزالة جميع جلساتها بشكل نهائي. <br/>
-                                <strong className="font-semibold text-red-700">هذا الإجراء لا يمكن التراجع عنه.</strong>
-                            </p>
-                        </div>
-                        <div className="mt-6 flex justify-center gap-4">
-                            <button
-                                type="button"
-                                className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
-                                onClick={closeDeleteStageModal}
-                            >
-                                إلغاء
-                            </button>
-                            <button
-                                type="button"
-                                className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors"
-                                onClick={handleConfirmDeleteStage}
-                            >
-                                نعم، قم بالحذف
-                            </button>
+                            <button type="button" className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300" onClick={closeDeleteCaseModal}>إلغاء</button>
+                            <button type="button" className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700" onClick={handleConfirmDeleteCase}>نعم، قم بالحذف</button>
                         </div>
                     </div>
                 </div>
             )}
             
-            {isPrintChoiceModalOpen && clientForPrintChoice && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={() => setIsPrintChoiceModalOpen(false)}>
+            {isDeleteStageModalOpen && stageToDelete && (
+                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={closeDeleteStageModal}>
+                    <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                        <div className="text-center">
+                            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4"><ExclamationTriangleIcon className="h-8 w-8 text-red-600" /></div>
+                            <h3 className="text-2xl font-bold text-gray-900">تأكيد حذف المرحلة</h3>
+                            <p className="text-gray-600 my-4">هل أنت متأكد من حذف "{stageToDelete.stageInfo}"؟<br />سيتم حذف جميع جلساتها. هذا الإجراء لا يمكن التراجع عنه.</p>
+                        </div>
+                        <div className="mt-6 flex justify-center gap-4">
+                            <button type="button" className="px-6 py-2 bg-gray-200 rounded-lg" onClick={closeDeleteStageModal}>إلغاء</button>
+                            <button type="button" className="px-6 py-2 bg-red-600 text-white rounded-lg" onClick={handleConfirmDeleteStage}>نعم، قم بالحذف</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isDeleteSessionModalOpen && sessionToDelete && (
+                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={closeDeleteSessionModal}>
+                    <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                        <div className="text-center">
+                            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4"><ExclamationTriangleIcon className="h-8 w-8 text-red-600" /></div>
+                            <h3 className="text-2xl font-bold text-gray-900">تأكيد حذف الجلسة</h3>
+                            <p className="text-gray-600 my-4 whitespace-pre-line">{sessionToDelete.message}</p>
+                        </div>
+                        <div className="mt-6 flex justify-center gap-4">
+                            <button type="button" className="px-6 py-2 bg-gray-200 rounded-lg" onClick={closeDeleteSessionModal}>إلغاء</button>
+                            <button type="button" className="px-6 py-2 bg-red-600 text-white rounded-lg" onClick={handleConfirmDeleteSession}>نعم، قم بالحذف</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {decideModal.isOpen && decideModal.session && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={handleCloseDecideModal}>
                     <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                        <h2 className="text-xl font-bold mb-4 border-b pb-3">اختر كشف حساب للطباعة لـِ: {clientForPrintChoice.name}</h2>
+                        <h2 className="text-xl font-bold mb-4">تسجيل قرار حاسم</h2>
+                        <form onSubmit={handleDecideSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">تاريخ الحسم</label>
+                                <input type="date" value={toInputDateString(decideModal.session.date)} readOnly className="w-full p-2 border rounded bg-gray-100" />
+                            </div>
+                             <div>
+                                <label className="block text-sm font-medium text-gray-700">رقم القرار</label>
+                                <input type="text" value={decideFormData.decisionNumber} onChange={e => setDecideFormData(p => ({...p, decisionNumber: e.target.value}))} className="w-full p-2 border rounded" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">ملخص القرار</label>
+                                <textarea value={decideFormData.decisionSummary} onChange={e => setDecideFormData(p => ({...p, decisionSummary: e.target.value}))} className="w-full p-2 border rounded" rows={3}></textarea>
+                            </div>
+                             <div>
+                                <label className="block text-sm font-medium text-gray-700">ملاحظات</label>
+                                <textarea value={decideFormData.decisionNotes} onChange={e => setDecideFormData(p => ({...p, decisionNotes: e.target.value}))} className="w-full p-2 border rounded" rows={2}></textarea>
+                            </div>
+                            <div className="mt-6 flex justify-end gap-4">
+                                <button type="button" onClick={handleCloseDecideModal} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">إلغاء</button>
+                                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">حفظ القرار</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+            
+             {isPrintChoiceModalOpen && clientForPrintChoice && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={() => setIsPrintChoiceModalOpen(false)}>
+                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+                        <h2 className="text-xl font-bold mb-4 border-b pb-3">اختر التقرير المراد طباعته لـِ: {clientForPrintChoice.name}</h2>
                         <div className="space-y-3 max-h-80 overflow-y-auto">
                             <button
                                 onClick={() => handleGeneratePrintData(clientForPrintChoice.id)}
@@ -816,17 +828,16 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                             >
                                 كشف حساب شامل للموكل
                             </button>
-                            <h3 className="text-md font-semibold text-gray-600 pt-2">أو طباعة كشف لقضية محددة:</h3>
+                            <h3 className="text-md font-semibold text-gray-600 pt-2">أو طباعة كشف حساب لقضية محددة:</h3>
                             {clientForPrintChoice.cases.map(caseItem => (
                                 <button
                                     key={caseItem.id}
                                     onClick={() => handleGeneratePrintData(clientForPrintChoice.id, caseItem.id)}
                                     className="w-full text-right block px-4 py-2 bg-gray-50 text-gray-800 rounded-md hover:bg-gray-100 transition-colors"
                                 >
-                                    {caseItem.subject}
+                                    {caseItem.subject} (ضد: {caseItem.opponentName})
                                 </button>
                             ))}
-                             {clientForPrintChoice.cases.length === 0 && <p className="text-sm text-gray-500 text-center py-4">لا توجد قضايا لهذا الموكل.</p>}
                         </div>
                         <div className="mt-6 flex justify-end">
                             <button type="button" onClick={() => setIsPrintChoiceModalOpen(false)} className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors">إغلاق</button>
@@ -834,36 +845,28 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                     </div>
                 </div>
             )}
-            
+
             {isPrintModalOpen && printData && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setIsPrintModalOpen(false)}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] no-print" onClick={() => setIsPrintModalOpen(false)}>
                     <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                         <div className="overflow-y-auto" ref={printClientReportRef}>
-                            <PrintableClientReport {...printData} />
+                            <PrintableClientReport 
+                                client={printData.client} 
+                                caseData={printData.caseData}
+                                entries={printData.entries}
+                                totals={printData.totals}
+                            />
                         </div>
-                        <div className="mt-6 flex justify-end gap-4 border-t pt-4 no-print">
-                            <button
-                                type="button"
-                                className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
-                                onClick={() => setIsPrintModalOpen(false)}
-                            >
-                                إغلاق
-                            </button>
-                            <button
-                                type="button"
-                                className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-                                onClick={() => printElement(printClientReportRef.current)}
-                            >
-                                <PrintIcon className="w-5 h-5" />
-                                <span>طباعة</span>
-                            </button>
+                        <div className="mt-6 flex justify-end gap-4 border-t pt-4">
+                            <button type="button" onClick={() => setIsPrintModalOpen(false)} className="px-6 py-2 bg-gray-200 rounded-lg">إغلاق</button>
+                            <button type="button" onClick={() => printElement(printClientReportRef.current)} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg"><PrintIcon className="w-5 h-5"/>طباعة</button>
                         </div>
                     </div>
                 </div>
             )}
-
         </div>
     );
 };
 
+// FIX: Add default export to make the component importable.
 export default ClientsPage;

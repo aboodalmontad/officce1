@@ -1,4 +1,5 @@
 
+
 export interface Session {
   id: string;
   court: string;
@@ -11,6 +12,9 @@ export interface Session {
   isPostponed: boolean;
   nextSessionDate?: Date;
   assignee?: string;
+  // For contextual rendering in flat lists
+  stageId?: string;
+  stageDecisionDate?: Date;
 }
 
 export interface Stage {
@@ -19,6 +23,10 @@ export interface Stage {
   caseNumber: string;
   firstSessionDate?: Date;
   sessions: Session[];
+  decisionDate?: Date;
+  decisionNumber?: string;
+  decisionSummary?: string;
+  decisionNotes?: string;
 }
 
 export interface Case {

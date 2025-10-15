@@ -67,8 +67,22 @@ const App: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
   const [offlineModeSetting, setOfflineModeSetting] = useLocalStorage('lawyerAppOfflineMode', false);
   
   // The data hook now directly uses the user's setting.
-  const { clients, adminTasks, appointments, accountingEntries, setClients, setAdminTasks, setAppointments, setAccountingEntries, allSessions, setFullData, assistants, setAssistants, credentials, setCredentials, syncStatus, forceSync, manualSync, lastSyncError, isDirty } = useSupabaseData(offlineModeSetting);
+  const { clients, adminTasks, appointments, accountingEntries, setClients, setAdminTasks, setAppointments, setAccountingEntries, setFullData, assistants, setAssistants, credentials, setCredentials, syncStatus, forceSync, manualSync, lastSyncError, isDirty } = useSupabaseData(offlineModeSetting);
   
+  const allSessions = React.useMemo(() => 
+    clients.flatMap(c => 
+        c.cases.flatMap(cs => 
+            cs.stages.flatMap(st => 
+                st.sessions.map(sess => ({ 
+                    ...sess, 
+                    stageId: st.id, 
+                    stageDecisionDate: st.decisionDate 
+                }))
+            )
+        )
+    ), 
+[clients]);
+
   const { analysisStatus, lastAnalysis, triggerAnalysis, analysisReport } = useAnalysis();
   // FIX: Correctly destructure `setIsMenuOpen` from `React.useState` and fix syntax.
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);

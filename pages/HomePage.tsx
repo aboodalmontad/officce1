@@ -2,7 +2,7 @@ import * as React from 'react';
 import Calendar from '../components/Calendar';
 import { Session, AdminTask, Appointment, Stage, Client } from '../types';
 import { formatDate, isSameDay, isBeforeToday } from '../utils/dateUtils';
-import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, CalendarIcon, ChevronLeftIcon } from '../components/icons';
+import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, CalendarIcon, ChevronLeftIcon, ScaleIcon } from '../components/icons';
 import SessionsTable from '../components/SessionsTable';
 import PrintableReport from '../components/PrintableReport';
 import { printElement } from '../utils/printUtils';
@@ -87,6 +87,7 @@ interface HomePageProps {
 
 const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessions, setAppointments, adminTasks, setAdminTasks, assistants }) => {
     const [selectedDate, setSelectedDate] = React.useState(new Date());
+    const [calendarViewDate, setCalendarViewDate] = React.useState(new Date());
     type ViewMode = 'daily' | 'unpostponed' | 'upcoming';
     const [viewMode, setViewMode] = React.useState<ViewMode>('daily');
     const [isAppointmentModalOpen, setIsAppointmentModalOpen] = React.useState(false);
@@ -120,6 +121,10 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     
     // State for inline assignee editing
     const [editingAssigneeTaskId, setEditingAssigneeTaskId] = React.useState<string | null>(null);
+    
+    // State for Decide Session Modal
+    const [decideModal, setDecideModal] = React.useState<{ isOpen: boolean; session?: Session }>({ isOpen: false });
+    const [decideFormData, setDecideFormData] = React.useState({ decisionNumber: '', decisionSummary: '', decisionNotes: '' });
 
 
     const toInputDateString = (date: Date) => {
@@ -445,6 +450,42 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
         });
     };
 
+    const handleOpenDecideModal = (session: Session) => {
+        setDecideFormData({ decisionNumber: '', decisionSummary: '', decisionNotes: '' });
+        setDecideModal({ isOpen: true, session });
+    };
+
+    const handleCloseDecideModal = () => {
+        setDecideModal({ isOpen: false });
+    };
+    
+    const handleDecideSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const session = decideModal.session;
+        if (!session || !session.stageId) return;
+
+        setClients(currentClients => currentClients.map(client => ({
+            ...client,
+            cases: client.cases.map(c => ({
+                ...c,
+                stages: c.stages.map(st => {
+                    if (st.id === session.stageId) {
+                        return {
+                            ...st,
+                            decisionDate: session.date,
+                            decisionNumber: decideFormData.decisionNumber,
+                            decisionSummary: decideFormData.decisionSummary,
+                            decisionNotes: decideFormData.decisionNotes,
+                        };
+                    }
+                    return st;
+                })
+            }))
+        })));
+        
+        handleCloseDecideModal();
+    };
+
     // Memos
     const dailyData = React.useMemo(() => {
         const dailySessions = allSessions.filter(s => isSameDay(s.date, selectedDate));
@@ -528,7 +569,9 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     };
 
     const handleShowTodaysAgenda = () => {
-        setSelectedDate(new Date());
+        const today = new Date();
+        setSelectedDate(today);
+        setCalendarViewDate(today);
         setViewMode('daily');
     };
 
@@ -554,7 +597,14 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-1 bg-white p-4 rounded-lg shadow space-y-4 no-print">
-                    <Calendar onDateSelect={handleDateSelect} selectedDate={selectedDate} sessions={allSessions} appointments={appointments} />
+                    <Calendar 
+                        onDateSelect={handleDateSelect} 
+                        selectedDate={selectedDate} 
+                        sessions={allSessions} 
+                        appointments={appointments}
+                        currentDate={calendarViewDate}
+                        setCurrentDate={setCalendarViewDate}
+                    />
                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <div className="relative">
                             <button
@@ -597,19 +647,19 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                                 <>
                                     <div className="bg-white rounded-lg shadow overflow-hidden">
                                         <h3 className="text-lg font-bold p-4 bg-gray-50 border-b">جدول الجلسات</h3>
-                                        <SessionsTable sessions={dailyData.dailySessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} assistants={assistants} />
+                                        <SessionsTable sessions={dailyData.dailySessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} allowPostponingPastSessions={true} />
                                     </div>
                                     <AppointmentsTable appointments={dailyData.dailyAppointments} onAddAppointment={handleOpenAddAppointmentModal} onEdit={handleOpenEditAppointmentModal} onDelete={openDeleteAppointmentModal} />
                                 </>
                             )}
                             {viewMode === 'unpostponed' && (
                                 <div className="bg-white rounded-lg shadow overflow-hidden">
-                                    <SessionsTable sessions={unpostponedSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} assistants={assistants} allowPostponingPastSessions={true} />
+                                    <SessionsTable sessions={unpostponedSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} allowPostponingPastSessions={true} />
                                 </div>
                             )}
                             {viewMode === 'upcoming' && (
                                 <div className="bg-white rounded-lg shadow overflow-hidden">
-                                    <SessionsTable sessions={upcomingSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} assistants={assistants} />
+                                    <SessionsTable sessions={upcomingSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} />
                                 </div>
                             )}
                         </div>
@@ -768,7 +818,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
 
 
             {isAppointmentModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={handleCloseAppointmentModal}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={handleCloseAppointmentModal}>
                     <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
                         <h2 className="text-xl font-bold mb-4">{editingAppointment ? 'تعديل موعد' : 'إضافة موعد جديد'}</h2>
                         <form onSubmit={handleSaveAppointment}>
@@ -820,7 +870,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
             )}
 
             {isTaskModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={handleCloseTaskModal}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={handleCloseTaskModal}>
                     <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
                         <h2 className="text-xl font-bold mb-4">{editingTask ? 'تعديل مهمة' : 'إضافة مهمة جديدة'}</h2>
                         <form onSubmit={handleTaskSubmit} className="space-y-4">
@@ -877,7 +927,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
             )}
 
             {isDeleteAppointmentModalOpen && appointmentToDelete && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={closeDeleteAppointmentModal}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={closeDeleteAppointmentModal}>
                     <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
                         <div className="text-center">
                             <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
@@ -912,7 +962,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
             )}
 
             {isDeleteTaskModalOpen && taskToDelete && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={closeDeleteTaskModal}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={closeDeleteTaskModal}>
                     <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
                         <div className="text-center">
                             <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
@@ -945,9 +995,39 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                     </div>
                 </div>
             )}
+            
+            {decideModal.isOpen && decideModal.session && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={handleCloseDecideModal}>
+                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+                        <h2 className="text-xl font-bold mb-4">تسجيل قرار حاسم</h2>
+                        <form onSubmit={handleDecideSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">تاريخ الحسم</label>
+                                <input type="date" value={toInputDateString(decideModal.session.date)} readOnly className="w-full p-2 border rounded bg-gray-100" />
+                            </div>
+                             <div>
+                                <label className="block text-sm font-medium text-gray-700">رقم القرار</label>
+                                <input type="text" value={decideFormData.decisionNumber} onChange={e => setDecideFormData(p => ({...p, decisionNumber: e.target.value}))} className="w-full p-2 border rounded" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">ملخص القرار</label>
+                                <textarea value={decideFormData.decisionSummary} onChange={e => setDecideFormData(p => ({...p, decisionSummary: e.target.value}))} className="w-full p-2 border rounded" rows={3}></textarea>
+                            </div>
+                             <div>
+                                <label className="block text-sm font-medium text-gray-700">ملاحظات</label>
+                                <textarea value={decideFormData.decisionNotes} onChange={e => setDecideFormData(p => ({...p, decisionNotes: e.target.value}))} className="w-full p-2 border rounded" rows={2}></textarea>
+                            </div>
+                            <div className="mt-6 flex justify-end gap-4">
+                                <button type="button" onClick={handleCloseDecideModal} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">إلغاء</button>
+                                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">حفظ القرار</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {isPrintAssigneeModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={() => setIsPrintAssigneeModalOpen(false)}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={() => setIsPrintAssigneeModalOpen(false)}>
                     <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
                         <h2 className="text-xl font-bold mb-4 border-b pb-3">اختر الشخص لطباعة جدول أعماله</h2>
                         <div className="space-y-3 max-h-80 overflow-y-auto">

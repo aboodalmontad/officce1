@@ -449,7 +449,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
             </div>
 
             {isConfirmModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setIsConfirmModalOpen(false)}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={() => setIsConfirmModalOpen(false)}>
                     <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
                         <div className="text-center">
                             <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
@@ -484,7 +484,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
             )}
 
             {isDeleteAssistantModalOpen && assistantToDelete && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => { setIsDeleteAssistantModalOpen(false); setAssistantToDelete(null); }}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={() => { setIsDeleteAssistantModalOpen(false); setAssistantToDelete(null); }}>
                     <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
                         <div className="text-center">
                             <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
