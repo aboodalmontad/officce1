@@ -115,10 +115,12 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     const [printableReportData, setPrintableReportData] = React.useState<any | null>(null);
     const printReportRef = React.useRef<HTMLDivElement>(null);
     
-    // State for drag-and-drop of task groups
+    // State for drag-and-drop of tasks
+    const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
+    
+    // State for drag-and-drop of groups
     const [locationOrder, setLocationOrder] = React.useState<string[]>([]);
     const [draggedGroupLocation, setDraggedGroupLocation] = React.useState<string | null>(null);
-    const [dropIndicator, setDropIndicator] = React.useState<{target: string, position: 'before' | 'after'} | null>(null);
     
     // State for inline assignee editing
     const [editingAssigneeTaskId, setEditingAssigneeTaskId] = React.useState<string | null>(null);
@@ -303,6 +305,84 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
         setEditingAssigneeTaskId(null); // Exit edit mode
     };
 
+    // --- Drag and Drop Handlers ---
+
+    const handleDragStart = (e: React.DragEvent, type: 'task' | 'group', id: string) => {
+        e.stopPropagation();
+        document.body.classList.add('grabbing');
+        if (type === 'task') {
+            e.dataTransfer.setData('application/lawyer-app-task-id', id);
+            e.dataTransfer.effectAllowed = 'move';
+            setDraggedTaskId(id);
+        } else {
+            e.dataTransfer.setData('application/lawyer-app-group-location', id);
+            e.dataTransfer.effectAllowed = 'move';
+            setDraggedGroupLocation(id);
+        }
+    };
+
+    const handleDragEnd = () => {
+        document.body.classList.remove('grabbing');
+        setDraggedTaskId(null);
+        setDraggedGroupLocation(null);
+    };
+
+    const handleTaskDrop = (targetTaskId: string | null, targetLocation: string, position: 'before' | 'after') => {
+        if (!draggedTaskId) return;
+
+        setAdminTasks(currentTasks => {
+            const taskToMoveIndex = currentTasks.findIndex(t => t.id === draggedTaskId);
+            if (taskToMoveIndex === -1) return currentTasks;
+            
+            const taskToMove = { ...currentTasks[taskToMoveIndex], location: targetLocation };
+
+            const remainingTasks = currentTasks.filter(t => t.id !== draggedTaskId);
+
+            let targetIndex: number;
+
+            if (targetTaskId) {
+                const initialTargetIndex = remainingTasks.findIndex(t => t.id === targetTaskId);
+                targetIndex = position === 'before' ? initialTargetIndex : initialTargetIndex + 1;
+            } else {
+                const tasksInTargetLocation = remainingTasks.filter(t => t.location === targetLocation);
+                targetIndex = tasksInTargetLocation.length > 0
+                    ? remainingTasks.indexOf(tasksInTargetLocation[tasksInTargetLocation.length - 1]) + 1
+                    : remainingTasks.length;
+            }
+            
+            remainingTasks.splice(targetIndex, 0, taskToMove);
+
+            return remainingTasks;
+        });
+    };
+    
+    const handleGroupDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+    };
+    
+    const handleGroupDrop = (e: React.DragEvent, targetLocation: string) => {
+        e.preventDefault();
+        const taskId = e.dataTransfer.getData('application/lawyer-app-task-id');
+        const sourceGroupLocation = e.dataTransfer.getData('application/lawyer-app-group-location');
+
+        if (taskId) {
+            handleTaskDrop(null, targetLocation, 'after');
+        } else if (sourceGroupLocation && sourceGroupLocation !== targetLocation) {
+             setLocationOrder(currentOrder => {
+                const sourceIndex = currentOrder.indexOf(sourceGroupLocation);
+                const targetIndex = currentOrder.indexOf(targetLocation);
+                
+                if (sourceIndex === -1 || targetIndex === -1) return currentOrder;
+        
+                const newOrder = Array.from(currentOrder);
+                const [movedGroup] = newOrder.splice(sourceIndex, 1);
+                newOrder.splice(targetIndex, 0, movedGroup);
+        
+                return newOrder;
+            });
+        }
+    };
+
     // Printing Logic
     const handleGenerateAssigneeReport = (assignee: string | null) => {
         const dailyAppointments = appointments
@@ -328,18 +408,13 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     
         for (const location in groupedAndSortedTasks) {
             groupedAndSortedTasks[location].sort((a, b) => {
-                const dateA = new Date(a.dueDate).getTime();
-                const dateB = new Date(b.dueDate).getTime();
-                if (dateA !== dateB) return dateA - dateB;
-    
                 const importanceA = importanceOrder[a.importance];
                 const importanceB = importanceOrder[b.importance];
                 if (importanceA !== importanceB) return importanceB - importanceA;
     
-                const assigneeA = a.assignee || '';
-                const assigneeB = b.assignee || '';
-                const assigneeComparison = assigneeA.localeCompare(assigneeB, 'ar');
-                if (assigneeComparison !== 0) return assigneeComparison;
+                const dateA = new Date(a.dueDate).getTime();
+                const dateB = new Date(b.dueDate).getTime();
+                if (dateA !== dateB) return dateA - dateB;
     
                 return a.task.localeCompare(b.task, 'ar');
             });
@@ -495,7 +570,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     }, [selectedDate, allSessions, appointments]);
 
     const unpostponedSessions = React.useMemo(() => {
-        return allSessions.filter(s => !s.isPostponed && isBeforeToday(s.date));
+        return allSessions.filter(s => !s.isPostponed && isBeforeToday(s.date) && !s.stageDecisionDate);
     }, [allSessions]);
     
     const upcomingSessions = React.useMemo(() => {
@@ -510,17 +585,32 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
 
     const groupedTasks: Record<string, AdminTask[]> = React.useMemo(() => {
         const isCompleted = activeTaskTab === 'completed';
-        const filtered = adminTasks
-            .filter(task => {
-                const searchLower = adminTaskSearch.toLowerCase();
-                const matchesSearch = searchLower === '' ||
-                    task.task.toLowerCase().includes(searchLower) ||
-                    (task.assignee && task.assignee.toLowerCase().includes(searchLower)) ||
-                    (task.location && task.location.toLowerCase().includes(searchLower));
-                return task.completed === isCompleted && matchesSearch;
+        const filtered = adminTasks.filter(task => {
+            const searchLower = adminTaskSearch.toLowerCase();
+            const matchesSearch = searchLower === '' ||
+                task.task.toLowerCase().includes(searchLower) ||
+                (task.assignee && task.assignee.toLowerCase().includes(searchLower)) ||
+                (task.location && task.location.toLowerCase().includes(searchLower));
+            return task.completed === isCompleted && matchesSearch;
+        });
+    
+        const importanceOrder = { 'urgent': 3, 'important': 2, 'normal': 1 };
+        
+        if (activeTaskTab === 'pending') {
+            filtered.sort((a, b) => {
+                const importanceA = importanceOrder[a.importance];
+                const importanceB = importanceOrder[b.importance];
+                if (importanceA !== importanceB) return importanceB - importanceA;
+                
+                const dateA = new Date(a.dueDate).getTime();
+                const dateB = new Date(b.dueDate).getTime();
+                if (dateA !== dateB) return dateA - dateB;
+                
+                return a.task.localeCompare(b.task, 'ar');
             });
-
-        const grouped = filtered.reduce((acc, task) => {
+        }
+        
+        return filtered.reduce((acc, task) => {
             const location = task.location || 'غير محدد';
             if (!acc[location]) {
                 acc[location] = [];
@@ -528,50 +618,21 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
             acc[location].push(task);
             return acc;
         }, {} as Record<string, AdminTask[]>);
-
-        // Define the order of importance for sorting
-        const importanceOrder = { 'urgent': 3, 'important': 2, 'normal': 1 };
-
-        for (const location in grouped) {
-            grouped[location].sort((a, b) => {
-                 // 1. Sort by due date (ascending)
-                const dateA = new Date(a.dueDate).getTime();
-                const dateB = new Date(b.dueDate).getTime();
-                if (dateA !== dateB) {
-                    return dateA - dateB;
-                }
-                
-                // 2. Sort by importance (descending: urgent -> important -> normal)
-                const importanceA = importanceOrder[a.importance];
-                const importanceB = importanceOrder[b.importance];
-                if (importanceA !== importanceB) {
-                    return importanceB - importanceA; // Descending
-                }
-                
-                // 3. Sort by assignee (alphabetical)
-                const assigneeA = a.assignee || '';
-                const assigneeB = b.assignee || '';
-                const assigneeComparison = assigneeA.localeCompare(assigneeB, 'ar');
-                if (assigneeComparison !== 0) {
-                    return assigneeComparison;
-                }
-                
-                // 4. Sort by task name as a final tie-breaker
-                return a.task.localeCompare(b.task, 'ar');
-            });
-        }
-
-        return grouped;
+    
     }, [adminTasks, activeTaskTab, adminTaskSearch]);
-
-     React.useEffect(() => {
-        const currentLocations = Object.keys(groupedTasks);
-        setLocationOrder(prevOrder => {
-            const preservedOrder = prevOrder.filter(loc => currentLocations.includes(loc));
-            const newLocations = currentLocations.filter(loc => !prevOrder.includes(loc));
-            return [...preservedOrder, ...newLocations];
+    
+    React.useEffect(() => {
+        const newLocations = Object.keys(groupedTasks);
+        setLocationOrder(currentOrder => {
+            const currentOrderSet = new Set(currentOrder);
+            const newLocationsSet = new Set(newLocations);
+            
+            const updatedOrder = currentOrder.filter(loc => newLocationsSet.has(loc));
+            const newlyAddedLocations = newLocations.filter(loc => !currentOrderSet.has(loc));
+            
+            return [...updatedOrder, ...newlyAddedLocations];
         });
-    }, [adminTasks, activeTaskTab, adminTaskSearch]);
+    }, [groupedTasks]);
 
 
     const handleDateSelect = (date: Date) => {
@@ -595,6 +656,10 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                 return `جدول أعمال يوم: ${formatDate(selectedDate)}`;
         }
     };
+    
+    const DropIndicator: React.FC = () => (
+        <tr><td colSpan={6} className="p-0 h-2 bg-blue-300 animate-pulse"></td></tr>
+    );
 
     return (
         <div className="space-y-6">
@@ -665,12 +730,12 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                             )}
                             {viewMode === 'unpostponed' && (
                                 <div className="bg-white rounded-lg shadow overflow-hidden">
-                                    <SessionsTable sessions={unpostponedSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} allowPostponingPastSessions={true} />
+                                    <SessionsTable sessions={unpostponedSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} allowPostponingPastSessions={true} showSessionDate={true} />
                                 </div>
                             )}
                             {viewMode === 'upcoming' && (
                                 <div className="bg-white rounded-lg shadow overflow-hidden">
-                                    <SessionsTable sessions={upcomingSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} />
+                                    <SessionsTable sessions={upcomingSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} showSessionDate={true} />
                                 </div>
                             )}
                         </div>
@@ -723,84 +788,51 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                             if (!tasks || tasks.length === 0) return null;
                             
                             return (
-                                <React.Fragment key={location}>
-                                    {dropIndicator?.target === location && dropIndicator.position === 'before' && (
-                                        <div className="h-2 bg-blue-500 rounded-full my-2 animate-pulse" />
-                                    )}
-                                    <div
-                                        onDragOver={(e) => {
-                                            e.preventDefault();
-                                            if (!draggedGroupLocation || draggedGroupLocation === location || activeTaskTab !== 'pending') {
-                                                setDropIndicator(null);
-                                                return;
-                                            }
-                                            const rect = e.currentTarget.getBoundingClientRect();
-                                            const midpoint = rect.top + rect.height / 2;
-                                            if (e.clientY < midpoint) {
-                                                setDropIndicator({ target: location, position: 'before' });
-                                            } else {
-                                                setDropIndicator({ target: location, position: 'after' });
-                                            }
-                                        }}
-                                        onDragLeave={() => {
-                                            setDropIndicator(null);
-                                        }}
-                                        onDrop={(e) => {
-                                            e.preventDefault();
-                                            if (!draggedGroupLocation || !dropIndicator || activeTaskTab !== 'pending') return;
-
-                                            setLocationOrder(prevOrder => {
-                                                const newOrder = prevOrder.filter(item => item !== draggedGroupLocation);
-                                                const targetIndex = newOrder.indexOf(dropIndicator.target);
-                                                
-                                                if (targetIndex === -1) return prevOrder;
-
-                                                if (dropIndicator.position === 'before') {
-                                                    newOrder.splice(targetIndex, 0, draggedGroupLocation);
-                                                } else {
-                                                    newOrder.splice(targetIndex + 1, 0, draggedGroupLocation);
-                                                }
-                                                return newOrder;
-                                            });
-
-                                            setDraggedGroupLocation(null);
-                                            setDropIndicator(null);
-                                        }}
-                                        className={`transition-opacity ${draggedGroupLocation === location ? 'opacity-40' : ''}`}
-                                    >
-                                        <h3 
-                                            draggable={activeTaskTab === 'pending'}
-                                            onDragStart={(e) => {
-                                                if (activeTaskTab !== 'pending') return;
-                                                e.dataTransfer.setData('application/lawyer-app-group-location', location);
-                                                e.dataTransfer.effectAllowed = 'move';
-                                                setDraggedGroupLocation(location);
-                                            }}
-                                            onDragEnd={() => {
-                                                setDraggedGroupLocation(null);
-                                                setDropIndicator(null);
-                                            }}
-                                            className={`text-lg font-semibold text-gray-700 bg-gray-100 p-3 rounded-t-lg ${activeTaskTab === 'pending' ? 'cursor-grab' : ''}`}
-                                        >
-                                            {location} <span className="text-sm font-normal text-gray-500">({tasks.length} مهام)</span>
-                                        </h3>
-                                        <div className="overflow-x-auto border border-t-0 rounded-b-lg">
-                                            <table className="w-full text-sm text-right text-gray-600">
-                                                <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-                                                    <tr>
-                                                        <th className="px-4 py-3 w-12">إنجاز</th>
-                                                        <th className="px-6 py-3">المهمة</th>
-                                                        <th className="px-6 py-3">المسؤول</th>
-                                                        <th className="px-6 py-3">تاريخ الاستحقاق</th>
-                                                        <th className="px-6 py-3">الأهمية</th>
-                                                        <th className="px-6 py-3">إجراءات</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {tasks.map(task => (
+                                <div 
+                                    key={location}
+                                    draggable={activeTaskTab === 'pending'}
+                                    onDragStart={e => activeTaskTab === 'pending' && handleDragStart(e, 'group', location)}
+                                    onDragOver={handleGroupDragOver}
+                                    onDrop={e => handleGroupDrop(e, location)}
+                                    onDragEnd={handleDragEnd}
+                                    className={`transition-opacity ${draggedGroupLocation === location ? 'opacity-40' : ''}`}
+                                >
+                                    <h3 className={`text-lg font-semibold text-gray-700 bg-gray-100 p-3 rounded-t-lg ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`}>
+                                        {location} <span className="text-sm font-normal text-gray-500">({tasks.length} مهام)</span>
+                                    </h3>
+                                    <div className="overflow-x-auto border border-t-0 rounded-b-lg">
+                                        <table className="w-full text-sm text-right text-gray-600">
+                                            <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                                                <tr>
+                                                    <th className="px-4 py-3 w-12">إنجاز</th>
+                                                    <th className="px-6 py-3">المهمة</th>
+                                                    <th className="px-6 py-3">المسؤول</th>
+                                                    <th className="px-6 py-3">تاريخ الاستحقاق</th>
+                                                    <th className="px-6 py-3">الأهمية</th>
+                                                    <th className="px-6 py-3">إجراءات</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {tasks.map(task => (
+                                                    <React.Fragment key={task.id}>
                                                         <tr 
-                                                            key={task.id} 
-                                                            className={`border-b ${task.completed ? 'bg-green-50' : 'bg-white hover:bg-gray-50'}`}
+                                                            draggable={activeTaskTab === 'pending'}
+                                                            onDragStart={e => handleDragStart(e, 'task', task.id)}
+                                                            onDragEnd={handleDragEnd}
+                                                            onDragOver={e => {
+                                                                if (activeTaskTab !== 'pending' || !draggedTaskId || draggedTaskId === task.id) return;
+                                                                e.preventDefault();
+                                                            }}
+                                                            onDrop={e => {
+                                                                if (activeTaskTab !== 'pending') return;
+                                                                e.preventDefault();
+                                                                e.stopPropagation(); // Prevent group drop from firing
+                                                                const rect = e.currentTarget.getBoundingClientRect();
+                                                                const midpoint = rect.top + rect.height / 2;
+                                                                const position = e.clientY < midpoint ? 'before' : 'after';
+                                                                handleTaskDrop(task.id, location, position);
+                                                            }}
+                                                            className={`border-b transition-opacity ${draggedTaskId === task.id ? 'opacity-40' : ''} ${task.completed ? 'bg-green-50' : 'bg-white hover:bg-gray-50'} ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`}
                                                         >
                                                             <td className="px-4 py-4 text-center">
                                                                 <input
@@ -843,15 +875,12 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
                                                                 <button onClick={() => openDeleteTaskModal(task)} className="p-2 text-gray-500 hover:text-red-600"><TrashIcon className="w-4 h-4" /></button>
                                                             </td>
                                                         </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
+                                                    </React.Fragment>
+                                                ))}
+                                            </tbody>
+                                        </table>
                                     </div>
-                                    {dropIndicator?.target === location && dropIndicator.position === 'after' && (
-                                        <div className="h-2 bg-blue-500 rounded-full my-2 animate-pulse" />
-                                    )}
-                                </React.Fragment>
+                                </div>
                             )
                         })
                     ) : (
