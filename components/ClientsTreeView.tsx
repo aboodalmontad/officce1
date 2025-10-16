@@ -59,6 +59,7 @@ const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props:
                         assistants={props.assistants}
                         onDecide={(session) => props.onDecide(session, stage)}
                         stage={stage}
+                        showSessionDate={true}
                     />
                 </div>
             )}

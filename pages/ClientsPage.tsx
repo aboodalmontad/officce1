@@ -119,7 +119,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                 ...client,
                 cases: client.cases.map(caseItem => ({
                     ...caseItem,
-                    stages: client.cases.map(stage => {
+                    stages: caseItem.stages.map(stage => {
                         const sessionIndex = stage.sessions.findIndex(s => s.id === sessionId);
                         if (sessionIndex === -1) {
                             return stage;
@@ -128,7 +128,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                         const updatedSessions = [...stage.sessions];
                         const currentSession = updatedSessions[sessionIndex];
                         
-                        // If postponing, create the new session and update the old one
+                        // Logic for postponing: create a new session and update the old one
                         if ('nextSessionDate' in updatedFields && 'nextPostponementReason' in updatedFields) {
                             const newSessionDate = updatedFields.nextSessionDate;
                             const newPostponementReason = updatedFields.nextPostponementReason;
@@ -315,7 +315,8 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                 if (sessionData.isPostponed && sessionData.nextSessionDate && sessionData.nextPostponementReason) {
                     onUpdateSession(context.item.id, {
                         nextSessionDate: sessionData.nextSessionDate,
-                        nextPostponementReason: sessionData.nextPostponementReason
+                        nextPostponementReason: sessionData.nextPostponementReason,
+                        isPostponed: true
                     });
                 } else { // Regular edit
                      setClients(prev => prev.map(c => c.id === context.client.id ? {

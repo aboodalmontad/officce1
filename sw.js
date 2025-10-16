@@ -1,12 +1,22 @@
-const CACHE_NAME = 'lawyer-app-cache-v4';
-// Only cache essential, local app shell files. Other assets will be cached on demand by the fetch handler.
-// This makes the service worker installation more robust.
+const CACHE_NAME = 'lawyer-app-cache-v5';
+// FIX: The list of URLs to cache has been expanded to include all critical,
+// external dependencies. This ensures the app is fully functional offline
+// immediately after the service worker is installed, preventing failures
+// if the user goes offline before these assets are dynamically cached.
 const urlsToCache = [
   './',
   './index.html',
   './index.tsx',
   './manifest.json',
   './icon.svg',
+  'https://cdn.tailwindcss.com',
+  'https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap',
+  'https://esm.sh/@google/genai@^1.20.0',
+  'https://esm.sh/@supabase/supabase-js@^2.44.4',
+  'https://esm.sh/react@^19.1.1',
+  'https://esm.sh/react-dom@^19.1.1',
+  'https://esm.sh/react-router-dom@^7.9.1',
+  'https://esm.sh/recharts@^2.12.7',
 ];
 
 self.addEventListener('install', event => {

@@ -127,6 +127,7 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
                                                                 assistants={props.assistants}
                                                                 onDecide={(session) => props.onDecide(session, stage)}
                                                                 stage={stage}
+                                                                showSessionDate={true}
                                                             />
                                                         </div>
                                                     </div>
