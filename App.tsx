@@ -1,7 +1,4 @@
 import * as React from 'react';
-// FIX: An error "does not provide an export named 'Redirect'" indicates a version mismatch. The code was using react-router-dom v5 syntax while the project imports v6.
-// This change updates the routing logic to be compatible with react-router-dom v6.
-// FIX: Corrected react-router-dom v6 imports. The previous wildcard import (`import * as ReactRouterDOM`) was causing errors. Switched to named imports (`{ HashRouter, NavLink, ... }`) which is the standard for v6. This resolves all "Property does not exist" errors.
 import { HashRouter, NavLink, Routes, Route, Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import ClientsPage from './pages/ClientsPage';
@@ -84,7 +81,6 @@ const App: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
 [clients]);
 
   const { analysisStatus, lastAnalysis, triggerAnalysis, analysisReport } = useAnalysis();
-  // FIX: Correctly destructure `setIsMenuOpen` from `React.useState` and fix syntax.
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   
   const isLoading = syncStatus === 'loading';
@@ -321,8 +317,6 @@ const App: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
 
 
   return (
-    // FIX: Replaced all `ReactRouterDOM.*` component usages with direct component names
-    // (e.g., `HashRouter`, `NavLink`, `Routes`) to align with the updated named imports.
     <HashRouter>
       <div 
         className="relative min-h-screen bg-gray-100 text-gray-800"

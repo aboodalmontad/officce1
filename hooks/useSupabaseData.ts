@@ -95,7 +95,7 @@ const validateAndHydrate = (data: any): AppData => {
     const validatedAssistants = validateAssistantsList(data.assistants);
     const isValidAssistant = (assignee: any): assignee is string => typeof assignee === 'string' && validatedAssistants.includes(assignee);
     const defaultAssignee = 'بدون تخصيص';
-    const sanitizeString = (str: any): string | undefined => typeof str === 'string' && str.trim() ? str : undefined;
+    const sanitizeString = (str: any): string => (str === null || str === undefined) ? '' : String(str);
 
     const validatedClients: Client[] = safeArray(data.clients, (client: any): Client => ({
         id: client.id || `client-${Date.now()}-${Math.random()}`,
@@ -105,23 +105,23 @@ const validateAndHydrate = (data: any): AppData => {
             id: caseItem.id || `case-${Date.now()}-${Math.random()}`,
             subject: String(caseItem.subject || 'قضية بدون موضوع'),
             clientName: String(caseItem.client_name || client.name || 'موكل غير مسمى'),
-            opponentName: (caseItem.opponent_name && typeof caseItem.opponent_name === 'string') ? caseItem.opponent_name : '',
+            opponentName: sanitizeString(caseItem.opponent_name),
             feeAgreement: String(caseItem.fee_agreement || ''),
             status: ['active', 'closed', 'on_hold'].includes(caseItem.status) ? caseItem.status : 'active',
             stages: safeArray(caseItem.stages, (stage: any): Stage => ({
                 id: stage.id || `stage-${Date.now()}-${Math.random()}`,
                 court: String(stage.court || 'محكمة غير محددة'),
-                caseNumber: String(stage.case_number || '0'),
+                caseNumber: sanitizeString(stage.case_number),
                 firstSessionDate: sanitizeOptionalDate(stage.first_session_date),
                 sessions: safeArray(stage.sessions, (session: any): Session => ({
                     id: session.id || `session-${Date.now()}-${Math.random()}`,
                     court: String(session.court || stage.court || 'محكمة غير محددة'),
-                    caseNumber: String(session.case_number || stage.case_number || '0'),
+                    caseNumber: 'case_number' in session ? sanitizeString(session.case_number) : sanitizeString(stage.case_number),
                     date: session.date && !isNaN(new Date(session.date).getTime()) ? new Date(session.date) : new Date(),
                     clientName: String(session.client_name || caseItem.client_name || client.name || 'موكل غير مسمى'),
-                    opponentName: (session.opponent_name && typeof session.opponent_name === 'string') ? session.opponent_name : ((caseItem.opponent_name && typeof caseItem.opponent_name === 'string') ? caseItem.opponent_name : ''),
+                    opponentName: 'opponent_name' in session ? sanitizeString(session.opponent_name) : sanitizeString(caseItem.opponent_name),
                     isPostponed: typeof session.is_postponed === 'boolean' ? session.is_postponed : false,
-                    postponementReason: sanitizeString(session.postponement_reason),
+                    postponementReason: 'postponement_reason' in session ? sanitizeString(session.postponement_reason) : undefined,
                     nextPostponementReason: sanitizeString(session.next_postponement_reason),
                     nextSessionDate: sanitizeOptionalDate(session.next_session_date),
                     assignee: isValidAssistant(session.assignee) ? session.assignee : defaultAssignee,
@@ -430,16 +430,32 @@ export const useSupabaseData = (offlineMode: boolean) => {
             const NON_EXISTENT_ID = 0;
 
 
-            // Delete all related data first, from child to parent, to respect foreign key constraints.
-            await supabase.from('sessions').delete().neq('id', NON_EXISTENT_UUID);
-            await supabase.from('stages').delete().neq('id', NON_EXISTENT_UUID);
-            await supabase.from('cases').delete().neq('id', NON_EXISTENT_UUID);
-            await supabase.from('clients').delete().neq('id', NON_EXISTENT_UUID);
-            await supabase.from('admin_tasks').delete().neq('id', NON_EXISTENT_UUID);
-            await supabase.from('appointments').delete().neq('id', NON_EXISTENT_UUID);
-            await supabase.from('accounting_entries').delete().neq('id', NON_EXISTENT_UUID);
-            await supabase.from('assistants').delete().neq('name', NON_EXISTENT_NAME);
-            await supabase.from('credentials').delete().neq('id', NON_EXISTENT_ID);
+            const { error: sessionsDelError } = await supabase.from('sessions').delete().neq('id', NON_EXISTENT_UUID);
+            if (sessionsDelError) throw new Error(`Error clearing sessions: ${sessionsDelError.message}`);
+
+            const { error: stagesDelError } = await supabase.from('stages').delete().neq('id', NON_EXISTENT_UUID);
+            if (stagesDelError) throw new Error(`Error clearing stages: ${stagesDelError.message}`);
+
+            const { error: casesDelError } = await supabase.from('cases').delete().neq('id', NON_EXISTENT_UUID);
+            if (casesDelError) throw new Error(`Error clearing cases: ${casesDelError.message}`);
+
+            const { error: clientsDelError } = await supabase.from('clients').delete().neq('id', NON_EXISTENT_UUID);
+            if (clientsDelError) throw new Error(`Error clearing clients: ${clientsDelError.message}`);
+
+            const { error: adminTasksDelError } = await supabase.from('admin_tasks').delete().neq('id', NON_EXISTENT_UUID);
+            if (adminTasksDelError) throw new Error(`Error clearing admin_tasks: ${adminTasksDelError.message}`);
+
+            const { error: appointmentsDelError } = await supabase.from('appointments').delete().neq('id', NON_EXISTENT_UUID);
+            if (appointmentsDelError) throw new Error(`Error clearing appointments: ${appointmentsDelError.message}`);
+
+            const { error: accountingDelError } = await supabase.from('accounting_entries').delete().neq('id', NON_EXISTENT_UUID);
+            if (accountingDelError) throw new Error(`Error clearing accounting_entries: ${accountingDelError.message}`);
+
+            const { error: assistantsDelError } = await supabase.from('assistants').delete().neq('name', NON_EXISTENT_NAME);
+            if (assistantsDelError) throw new Error(`Error clearing assistants: ${assistantsDelError.message}`);
+
+            const { error: credentialsDelError } = await supabase.from('credentials').delete().neq('id', NON_EXISTENT_ID);
+            if (credentialsDelError) throw new Error(`Error clearing credentials: ${credentialsDelError.message}`);
 
             // Upsert data sequentially, from parent to child, throwing on the first error to identify the root cause.
             const { error: clientsError } = await supabase.from('clients').upsert(clientsToUpsert);
@@ -572,7 +588,6 @@ export const useSupabaseData = (offlineMode: boolean) => {
 
     const allSessions = React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(s => s.sessions))), [data.clients]);
 
-    // FIX: A custom hook must return a value. The return statement was missing, causing the hook to implicitly return `undefined` and leading to "property does not exist on type 'void'" errors.
     return {
         clients: data.clients,
         adminTasks: data.adminTasks,

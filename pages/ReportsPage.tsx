@@ -180,9 +180,6 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ clients, accountingEntries })
                 const sessions = c.stages.flatMap((stage: Stage): Session[] => stage.sessions);
                 if (sessions.length < 2) return null;
                 
-                // FIX: To prevent arithmetic errors with invalid dates, explicitly convert all session dates
-                // to numeric timestamps and use a type guard to filter out any resulting NaN values before calculation.
-                // This provides a stronger hint to TypeScript and resolves the type error.
                 const timestamps = sessions
                     .map((session: Session) => new Date(session.date).getTime())
                     .filter((t): t is number => !isNaN(t));
@@ -246,7 +243,6 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ clients, accountingEntries })
                     {(reportType === 'financial' || reportType === 'cases' || reportType === 'clients') &&
                         <div>
                             <label className="block text-sm font-medium text-gray-700">الموكل</label>
-                            {/* FIX: Removed redundant `disabled` prop that causes a TypeScript error. The surrounding conditional already prevents this component from rendering when `reportType` is 'analytics'. */}
                             <select name="clientId" value={filters.clientId} onChange={handleFilterChange} className="w-full p-2 border rounded-md">
                                 <option value="all">جميع الموكلين</option>
                                 {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}

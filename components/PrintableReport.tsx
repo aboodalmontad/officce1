@@ -110,7 +110,6 @@ const PrintableReport: React.FC<PrintableReportProps> = ({ reportData }) => {
                             <section>
                                 <h3 className="text-xl font-bold text-gray-800 bg-gray-100 p-2 rounded-lg mb-4">المهام الإدارية الغير منجزة</h3>
                                 <div className="space-y-6">
-                                    {/* FIX: Cast the 'tasks' variable to AdminTask[] to resolve TypeScript errors where its type was inferred as 'unknown'. This happens because Object.entries can have a weak return type in some TypeScript configurations, causing issues with accessing properties like '.length' and methods like '.map'. The cast ensures the correct type is used. */}
                                     {Object.entries(adminTasks).map(([location, tasks]) => {
                                         const taskList = tasks as AdminTask[];
                                         return (

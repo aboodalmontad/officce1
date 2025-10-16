@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Session, Stage } from '../types';
 import { formatDate, isBeforeToday, isWeekend, getPublicHoliday } from '../utils/dateUtils';
-import { PencilIcon, TrashIcon, ScaleIcon } from './icons';
+import { PencilIcon, TrashIcon, ScaleIcon, GavelIcon } from './icons';
 
 interface SessionsTableProps {
     sessions: Session[];
@@ -176,9 +176,9 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                             </td>
                             <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('postponementReason') && !isStageDecided && handleCellClick(s, 'postponementReason')}>
                                 {isStageDecided ? (
-                                    <span className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-green-700 bg-green-100 rounded-full">
-                                        <ScaleIcon className="w-3 h-3"/>
-                                        الدعوى حسمت
+                                    <span className="inline-flex items-center gap-2 px-4 py-2 text-base font-bold text-white bg-green-600 rounded-lg shadow-lg">
+                                        <GavelIcon className="w-6 h-6"/>
+                                        حُسمت
                                     </span>
                                 ) : (
                                     isEditing('postponementReason') ? <input type="text" value={editValue as string || ''} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : (s.postponementReason || 'لا يوجد')

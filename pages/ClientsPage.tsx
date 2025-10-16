@@ -930,5 +930,4 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
     );
 };
 
-// FIX: Add default export to make the component importable.
 export default ClientsPage;
