@@ -119,7 +119,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                 ...client,
                 cases: client.cases.map(caseItem => ({
                     ...caseItem,
-                    stages: caseItem.stages.map(stage => {
+                    stages: client.cases.map(stage => {
                         const sessionIndex = stage.sessions.findIndex(s => s.id === sessionId);
                         if (sessionIndex === -1) {
                             return stage;
@@ -728,8 +728,11 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                                     <div><label className="block text-sm font-medium">رقم الأساس</label><input type="text" name="caseNumber" value={formData.caseNumber || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
                                     <div><label className="block text-sm font-medium">تاريخ أول جلسة</label><input type="date" name="firstSessionDate" value={formData.firstSessionDate || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
                                     
-                                    {!modal.isEditing && (
-                                        <div><label className="block text-sm font-medium">سبب التأجيل لأول جلسة (إن وجد)</label><input type="text" name="postponementReason" value={formData.postponementReason || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                    {!modal.isEditing && formData.firstSessionDate && (
+                                        <div className="animate-fade-in">
+                                            <label className="block text-sm font-medium">سبب التأجيل لأول جلسة (إن وجد)</label>
+                                            <input type="text" name="postponementReason" value={formData.postponementReason || ''} onChange={handleFormChange} className="w-full p-2 border rounded" />
+                                        </div>
                                     )}
 
                                     {modal.isEditing && (

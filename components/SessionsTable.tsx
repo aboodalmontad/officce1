@@ -176,7 +176,7 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                             </td>
                             <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('postponementReason') && !isStageDecided && handleCellClick(s, 'postponementReason')}>
                                 {isStageDecided ? (
-                                    <span className="inline-flex items-center gap-2 px-4 py-2 text-base font-bold text-white bg-green-600 rounded-lg shadow-lg">
+                                    <span className="inline-flex items-center gap-2 px-4 py-2 text-base font-bold text-white bg-green-700 rounded-lg shadow-lg">
                                         <GavelIcon className="w-6 h-6"/>
                                         حُسمت
                                     </span>

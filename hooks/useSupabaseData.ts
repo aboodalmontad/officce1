@@ -121,7 +121,7 @@ const validateAndHydrate = (data: any): AppData => {
                     clientName: String(session.client_name || caseItem.client_name || client.name || 'موكل غير مسمى'),
                     opponentName: 'opponent_name' in session ? sanitizeString(session.opponent_name) : sanitizeString(caseItem.opponent_name),
                     isPostponed: typeof session.is_postponed === 'boolean' ? session.is_postponed : false,
-                    postponementReason: 'postponement_reason' in session ? sanitizeString(session.postponement_reason) : undefined,
+                    postponementReason: sanitizeString(session.postponement_reason),
                     nextPostponementReason: sanitizeString(session.next_postponement_reason),
                     nextSessionDate: sanitizeOptionalDate(session.next_session_date),
                     assignee: isValidAssistant(session.assignee) ? session.assignee : defaultAssignee,
