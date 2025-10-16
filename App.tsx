@@ -7,8 +7,11 @@ import SettingsPage from './pages/SettingsPage';
 import LoginPage from './pages/LoginPage';
 import SetupWizard from './components/SetupWizard';
 import { useSupabaseData, SyncStatus } from './hooks/useSupabaseData';
-import { HomeIcon, UserIcon, CalculatorIcon, ChartBarIcon, Cog6ToothIcon, ArrowPathIcon, WifiIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, CloudIcon, ExclamationTriangleIcon, ServerIcon, CloudArrowDownIcon, CloudArrowUpIcon } from './components/icons';
+import { HomeIcon, UserIcon, CalculatorIcon, ChartBarIcon, Cog6ToothIcon, ArrowPathIcon, WifiIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, CloudIcon, ExclamationTriangleIcon, ServerIcon, CloudArrowDownIcon, CloudArrowUpIcon, BuildingLibraryIcon } from './components/icons';
 import { useAnalysis } from './hooks/useSync';
+import ContextMenu, { MenuItem } from './components/ContextMenu';
+import AdminTaskModal from './components/AdminTaskModal';
+import { AdminTask } from './types';
 
 type Page = 'home' | 'clients' | 'accounting' | 'reports' | 'settings';
 
@@ -138,12 +141,66 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     // FIX: React hooks must be called unconditionally. The call to useAnalysis was moved outside the conditional rendering logic to comply with the Rules of Hooks, preventing runtime errors.
     const { analysisStatus, lastAnalysis, triggerAnalysis, analysisReport } = useAnalysis();
 
+    // --- State Management for Global Components ---
+    const [adminTaskModalState, setAdminTaskModalState] = React.useState<{ isOpen: boolean; initialData?: any }>({ isOpen: false });
+    const [contextMenuState, setContextMenuState] = React.useState<{ isOpen: boolean; position: { x: number; y: number }; menuItems: MenuItem[] }>({
+        isOpen: false,
+        position: { x: 0, y: 0 },
+        menuItems: [],
+    });
+    
+    const toInputDateString = (date: Date) => {
+        const y = date.getFullYear();
+        const m = date.getMonth() + 1;
+        const d = date.getDate();
+        return `${y}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
+    }
+
+    const handleOpenAdminTaskModal = (initialData: any = {}) => {
+        const isEditing = !!initialData.id;
+        const preparedData = isEditing 
+            ? { ...initialData, dueDate: toInputDateString(initialData.dueDate) } 
+            : { dueDate: toInputDateString(new Date()), ...initialData };
+        setAdminTaskModalState({ isOpen: true, initialData: preparedData });
+    };
+
+    const handleCloseAdminTaskModal = () => {
+        setAdminTaskModalState({ isOpen: false, initialData: undefined });
+    };
+
+    const handleTaskSubmit = (taskData: Omit<AdminTask, 'id' | 'completed'> & { id?: string }) => {
+        if (taskData.id) { // Editing
+            setAdminTasks(prev => prev.map(t => t.id === taskData.id ? { ...t, ...taskData, completed: t.completed } as AdminTask : t));
+        } else { // Adding
+            setAdminTasks(prev => [...prev, { ...taskData, id: `task-${Date.now()}`, completed: false } as AdminTask]);
+        }
+        handleCloseAdminTaskModal();
+    };
+
+    const showContextMenu = (event: React.MouseEvent, menuItems: MenuItem[]) => {
+        event.preventDefault();
+        setContextMenuState({
+            isOpen: true,
+            position: { x: event.clientX, y: event.clientY },
+            menuItems,
+        });
+    };
+
+    const handleCloseContextMenu = () => {
+        setContextMenuState(prev => ({ ...prev, isOpen: false }));
+    };
+
+
     const renderPage = () => {
+        const commonProps = {
+            showContextMenu,
+            onOpenAdminTaskModal: handleOpenAdminTaskModal
+        };
         switch (currentPage) {
             case 'home':
-                return <HomePage appointments={appointments} clients={clients} setClients={setClients} allSessions={allSessions} setAppointments={setAppointments} adminTasks={adminTasks} setAdminTasks={setAdminTasks} assistants={assistants} />;
+                return <HomePage appointments={appointments} clients={clients} setClients={setClients} allSessions={allSessions} setAppointments={setAppointments} adminTasks={adminTasks} setAdminTasks={setAdminTasks} assistants={assistants} {...commonProps} />;
             case 'clients':
-                return <ClientsPage clients={clients} setClients={setClients} accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} assistants={assistants} />;
+                return <ClientsPage clients={clients} setClients={setClients} accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} assistants={assistants} {...commonProps} />;
             case 'accounting':
                 return <AccountingPage accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} clients={clients} />;
             case 'reports':
@@ -151,7 +208,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
             case 'settings':
                 return <SettingsPage setFullData={setFullData} analysisStatus={analysisStatus} lastAnalysis={lastAnalysis} triggerAnalysis={triggerAnalysis} assistants={assistants} setAssistants={setAssistants} analysisReport={analysisReport} offlineMode={offlineMode} setOfflineMode={setOfflineMode} onLogout={() => setIsLoggedIn(false)} credentials={credentials} setCredentials={setCredentials} />;
             default:
-                return <HomePage appointments={appointments} clients={clients} setClients={setClients} allSessions={allSessions} setAppointments={setAppointments} adminTasks={adminTasks} setAdminTasks={setAdminTasks} assistants={assistants} />;
+                return <HomePage appointments={appointments} clients={clients} setClients={setClients} allSessions={allSessions} setAppointments={setAppointments} adminTasks={adminTasks} setAdminTasks={setAdminTasks} assistants={assistants} {...commonProps} />;
         }
     };
     
@@ -182,6 +239,20 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     {renderPage()}
                 </main>
             </div>
+
+            <AdminTaskModal 
+                isOpen={adminTaskModalState.isOpen}
+                onClose={handleCloseAdminTaskModal}
+                onSubmit={handleTaskSubmit}
+                initialData={adminTaskModalState.initialData}
+                assistants={assistants}
+            />
+            <ContextMenu 
+                isOpen={contextMenuState.isOpen}
+                onClose={handleCloseContextMenu}
+                position={contextMenuState.position}
+                menuItems={contextMenuState.menuItems}
+            />
         </div>
     );
 };

@@ -1,9 +1,10 @@
 import * as React from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
-import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon, GavelIcon } from './icons';
+import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon, GavelIcon, BuildingLibraryIcon } from './icons';
 import SessionsTable from './SessionsTable';
 import CaseAccounting from './CaseAccounting';
 import { formatDate } from '../utils/dateUtils';
+import { MenuItem } from './ContextMenu';
 
 interface ClientsListViewProps {
     clients: Client[];
@@ -26,6 +27,8 @@ interface ClientsListViewProps {
     assistants: string[];
     onUpdateSession: (sessionId: string, updatedFields: Partial<Session>) => void;
     onDecide: (session: Session, stage: Stage) => void;
+    showContextMenu: (event: React.MouseEvent, menuItems: MenuItem[]) => void;
+    onOpenAdminTaskModal: (initialData?: any) => void;
 }
 
 const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expanded: boolean; onToggle: () => void; }> = ({ client, props, expanded, onToggle }) => {
@@ -38,12 +41,66 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
             cases: c.cases.map(cs => cs.id === caseId ? {...cs, feeAgreement: newFee} : cs)
         } : c));
     };
+    
+    // --- Context Menu Handlers ---
+    const handleClientContextMenu = (event: React.MouseEvent) => {
+        const menuItems: MenuItem[] = [{
+            label: 'إرسال إلى المهام الإدارية',
+            icon: <BuildingLibraryIcon className="w-4 h-4" />,
+            onClick: () => {
+                const description = `متابعة ملف الموكل: ${client.name}.\nمعلومات الاتصال: ${client.contactInfo || 'لا يوجد'}.`;
+                props.onOpenAdminTaskModal({ task: description });
+            }
+        }];
+        props.showContextMenu(event, menuItems);
+    };
+
+    const handleCaseContextMenu = (event: React.MouseEvent, caseItem: Case) => {
+        const statusMap = { active: 'نشطة', closed: 'مغلقة', on_hold: 'معلقة'};
+        const menuItems: MenuItem[] = [{
+            label: 'إرسال إلى المهام الإدارية',
+            icon: <BuildingLibraryIcon className="w-4 h-4" />,
+            onClick: () => {
+                 const description = `متابعة قضية "${caseItem.subject}" (الموكل: ${client.name} ضد ${caseItem.opponentName}).\nالحالة: ${statusMap[caseItem.status]}.\nالاتفاق المالي: ${caseItem.feeAgreement || 'لم يحدد'}.`;
+                props.onOpenAdminTaskModal({ task: description });
+            }
+        }];
+        props.showContextMenu(event, menuItems);
+    };
+
+    const handleStageContextMenu = (event: React.MouseEvent, stage: Stage, caseItem: Case) => {
+        const menuItems: MenuItem[] = [{
+            label: 'إرسال إلى المهام الإدارية',
+            icon: <BuildingLibraryIcon className="w-4 h-4" />,
+            onClick: () => {
+                const description = `متابعة مرحلة قضية "${caseItem.subject}" في محكمة ${stage.court} (أساس: ${stage.caseNumber}).`;
+                props.onOpenAdminTaskModal({ task: description });
+            }
+        }];
+        props.showContextMenu(event, menuItems);
+    };
+
+    const handleSessionContextMenu = (event: React.MouseEvent, session: Session, caseItem: Case) => {
+        const menuItems: MenuItem[] = [{
+            label: 'إرسال إلى المهام الإدارية',
+            icon: <BuildingLibraryIcon className="w-4 h-4" />,
+            onClick: () => {
+                const description = `متابعة جلسة قضية (${session.clientName} ضد ${session.opponentName}) يوم ${formatDate(session.date)} في محكمة ${session.court} (أساس: ${session.caseNumber}).\nسبب التأجيل السابق: ${session.postponementReason || 'لا يوجد'}.\nالمكلف بالحضور: ${session.assignee}.`;
+                props.onOpenAdminTaskModal({ 
+                    task: description,
+                    assignee: session.assignee,
+                });
+            }
+        }];
+        props.showContextMenu(event, menuItems);
+    };
 
     return (
         <div className="bg-sky-50 border rounded-lg shadow-sm">
             <header
                 className="flex justify-between items-center p-4 cursor-pointer bg-sky-100 hover:bg-sky-200 transition-colors"
                 onClick={onToggle}
+                onContextMenu={handleClientContextMenu}
             >
                 <div className="flex items-center gap-3">
                     <UserIcon className="w-6 h-6 text-sky-700" />
@@ -77,7 +134,11 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
                     {client.cases.length > 0 ? (
                         client.cases.map(caseItem => (
                             <div key={caseItem.id} className="border rounded-md bg-indigo-50 overflow-hidden">
-                                <div className="flex justify-between items-center p-3 bg-indigo-100 cursor-pointer hover:bg-indigo-200" onClick={() => setExpandedCaseId(expandedCaseId === caseItem.id ? null : caseItem.id)}>
+                                <div 
+                                    className="flex justify-between items-center p-3 bg-indigo-100 cursor-pointer hover:bg-indigo-200" 
+                                    onClick={() => setExpandedCaseId(expandedCaseId === caseItem.id ? null : caseItem.id)}
+                                    onContextMenu={(e) => handleCaseContextMenu(e, caseItem)}
+                                >
                                     <div className="flex items-center gap-2 text-indigo-800 font-semibold">
                                         <FolderIcon className="w-5 h-5 text-indigo-600" />
                                         <span>{caseItem.subject}</span>
@@ -103,7 +164,10 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
                                                 </button>
                                                 {caseItem.stages.map(stage => (
                                                     <div key={stage.id} className="mt-2 border rounded bg-yellow-50 overflow-hidden">
-                                                        <div className="p-3 bg-yellow-100 flex justify-between items-center">
+                                                        <div 
+                                                            className="p-3 bg-yellow-100 flex justify-between items-center"
+                                                            onContextMenu={(e) => handleStageContextMenu(e, stage, caseItem)}
+                                                        >
                                                             <div className="flex items-center flex-wrap gap-x-3 gap-y-1">
                                                                 <p className="font-semibold text-sm text-yellow-800 flex items-center gap-2">
                                                                     <ClipboardDocumentIcon className="w-4 h-4 text-yellow-600" />
@@ -160,6 +224,7 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
                                                                 onDecide={(session) => props.onDecide(session, stage)}
                                                                 stage={stage}
                                                                 showSessionDate={true}
+                                                                onContextMenu={(e, session) => handleSessionContextMenu(e, session, caseItem)}
                                                             />
                                                         </div>
                                                     </div>

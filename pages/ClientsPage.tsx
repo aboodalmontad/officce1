@@ -6,6 +6,7 @@ import { Client, Case, Stage, Session, AccountingEntry } from '../types';
 import { formatDate } from '../utils/dateUtils';
 import PrintableClientReport from '../components/PrintableClientReport';
 import { printElement } from '../utils/printUtils';
+import { MenuItem } from '../components/ContextMenu';
 
 interface ClientsPageProps {
     clients: Client[];
@@ -13,6 +14,8 @@ interface ClientsPageProps {
     accountingEntries: AccountingEntry[];
     setAccountingEntries: (updater: (prev: AccountingEntry[]) => AccountingEntry[]) => void;
     assistants: string[];
+    onOpenAdminTaskModal: (initialData?: any) => void;
+    showContextMenu: (event: React.MouseEvent, menuItems: MenuItem[]) => void;
 }
 
 const toInputDateString = (date?: Date) => {
@@ -25,7 +28,7 @@ const toInputDateString = (date?: Date) => {
 };
 
 
-const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accountingEntries, setAccountingEntries, assistants }) => {
+const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accountingEntries, setAccountingEntries, assistants, showContextMenu, onOpenAdminTaskModal }) => {
     const [modal, setModal] = React.useState<{ type: 'client' | 'case' | 'stage' | 'session' | null, context?: any, isEditing: boolean }>({ type: null, isEditing: false });
     const [formData, setFormData] = React.useState<any>({});
     const [searchQuery, setSearchQuery] = React.useState('');
@@ -595,6 +598,31 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
             case 'session': return `${action} جلسة`;
         }
     };
+
+    const commonViewProps = {
+        clients: filteredClients,
+        setClients,
+        accountingEntries,
+        setAccountingEntries,
+        onAddCase: (clientId: string) => handleOpenModal('case', false, { clientId }),
+        onEditCase: (caseItem: Case, client: Client) => handleOpenModal('case', true, { item: caseItem, client }),
+        onDeleteCase: handleDeleteCase,
+        onAddStage: (clientId: string, caseId: string) => handleOpenModal('stage', false, { clientId, caseId }),
+        onEditStage: (stage: Stage, caseItem: Case, client: Client) => handleOpenModal('stage', true, { item: stage, case: caseItem, client }),
+        onDeleteStage: handleDeleteStage,
+        onAddSession: (clientId: string, caseId: string, stageId: string) => handleOpenModal('session', false, { clientId, caseId, stageId }),
+        onEditSession: (session: Session, stage: Stage, caseItem: Case, client: Client) => handleOpenModal('session', true, { item: session, stage, case: caseItem, client }),
+        onDeleteSession: handleDeleteSession,
+        onPostponeSession: (sessionId: string, newDate: Date, reason: string) => onUpdateSession(sessionId, { nextSessionDate: newDate, nextPostponementReason: reason, isPostponed: true }),
+        onEditClient: (client: Client) => handleOpenModal('client', true, { item: client }),
+        onDeleteClient: (clientId: string) => handleDeleteClient(clients.find(c => c.id === clientId)!),
+        onPrintClientStatement: (clientId: string) => handleOpenPrintChoice(clients.find(c => c.id === clientId)!),
+        assistants,
+        onUpdateSession,
+        onDecide: handleOpenDecideModal,
+        showContextMenu,
+        onOpenAdminTaskModal,
+    };
     
     return (
         <div className="space-y-6">
@@ -638,51 +666,9 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
 
             <div className="bg-white rounded-lg shadow overflow-hidden">
                 {viewMode === 'tree' ? (
-                     <ClientsTreeView 
-                        clients={filteredClients} 
-                        setClients={setClients}
-                        accountingEntries={accountingEntries}
-                        setAccountingEntries={setAccountingEntries}
-                        onAddCase={(clientId) => handleOpenModal('case', false, { clientId })}
-                        onEditCase={(caseItem, client) => handleOpenModal('case', true, { item: caseItem, client })}
-                        onDeleteCase={handleDeleteCase}
-                        onAddStage={(clientId, caseId) => handleOpenModal('stage', false, { clientId, caseId })}
-                        onEditStage={(stage, caseItem, client) => handleOpenModal('stage', true, { item: stage, case: caseItem, client })}
-                        onDeleteStage={handleDeleteStage}
-                        onAddSession={(clientId, caseId, stageId) => handleOpenModal('session', false, { clientId, caseId, stageId })}
-                        onEditSession={(session, stage, caseItem, client) => handleOpenModal('session', true, { item: session, stage, case: caseItem, client })}
-                        onDeleteSession={handleDeleteSession}
-                        onPostponeSession={(sessionId, newDate, reason) => onUpdateSession(sessionId, { nextSessionDate: newDate, nextPostponementReason: reason, isPostponed: true })}
-                        onEditClient={(client) => handleOpenModal('client', true, { item: client })}
-                        onDeleteClient={(clientId) => handleDeleteClient(clients.find(c => c.id === clientId)!)}
-                        onPrintClientStatement={(clientId) => handleOpenPrintChoice(clients.find(c => c.id === clientId)!)}
-                        assistants={assistants}
-                        onUpdateSession={onUpdateSession}
-                        onDecide={(session, stage) => handleOpenDecideModal(session, stage)}
-                    />
+                     <ClientsTreeView {...commonViewProps} />
                 ) : (
-                    <ClientsListView 
-                        clients={filteredClients}
-                        setClients={setClients}
-                        accountingEntries={accountingEntries}
-                        setAccountingEntries={setAccountingEntries}
-                        onAddCase={(clientId) => handleOpenModal('case', false, { clientId })}
-                        onEditCase={(caseItem, client) => handleOpenModal('case', true, { item: caseItem, client })}
-                        onDeleteCase={handleDeleteCase}
-                        onAddStage={(clientId, caseId) => handleOpenModal('stage', false, { clientId, caseId })}
-                        onEditStage={(stage, caseItem, client) => handleOpenModal('stage', true, { item: stage, case: caseItem, client })}
-                        onDeleteStage={handleDeleteStage}
-                        onAddSession={(clientId, caseId, stageId) => handleOpenModal('session', false, { clientId, caseId, stageId })}
-                        onEditSession={(session, stage, caseItem, client) => handleOpenModal('session', true, { item: session, stage, case: caseItem, client })}
-                        onDeleteSession={handleDeleteSession}
-                        onPostponeSession={(sessionId, newDate, reason) => onUpdateSession(sessionId, { nextSessionDate: newDate, nextPostponementReason: reason, isPostponed: true })}
-                        onEditClient={(client) => handleOpenModal('client', true, { item: client })}
-                        onDeleteClient={(clientId) => handleDeleteClient(clients.find(c => c.id === clientId)!)}
-                        onPrintClientStatement={(clientId) => handleOpenPrintChoice(clients.find(c => c.id === clientId)!)}
-                        assistants={assistants}
-                        onUpdateSession={onUpdateSession}
-                        onDecide={(session, stage) => handleOpenDecideModal(session, stage)}
-                    />
+                    <ClientsListView {...commonViewProps} />
                 )}
             </div>
 

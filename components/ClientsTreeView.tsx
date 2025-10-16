@@ -1,9 +1,10 @@
 import * as React from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
-import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon, GavelIcon } from './icons';
+import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon, GavelIcon, BuildingLibraryIcon } from './icons';
 import SessionsTable from './SessionsTable';
 import CaseAccounting from './CaseAccounting';
 import { formatDate } from '../utils/dateUtils';
+import { MenuItem } from './ContextMenu';
 
 type ExpandedState = { [key: string]: boolean };
 
@@ -28,12 +29,46 @@ interface ClientsTreeViewProps {
     assistants: string[];
     onUpdateSession: (sessionId: string, updatedFields: Partial<Session>) => void;
     onDecide: (session: Session, stage: Stage) => void;
+    showContextMenu: (event: React.MouseEvent, menuItems: MenuItem[]) => void;
+    onOpenAdminTaskModal: (initialData?: any) => void;
 }
 
 const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props: ClientsTreeViewProps; expanded: boolean; onToggle: () => void }> = ({ stage, caseItem, client, props, expanded, onToggle }) => {
+    
+    const handleContextMenu = (event: React.MouseEvent) => {
+        const menuItems: MenuItem[] = [{
+            label: 'إرسال إلى المهام الإدارية',
+            icon: <BuildingLibraryIcon className="w-4 h-4" />,
+            onClick: () => {
+                const description = `متابعة مرحلة قضية "${caseItem.subject}" في محكمة ${stage.court} (أساس: ${stage.caseNumber}).`;
+                props.onOpenAdminTaskModal({ task: description });
+            }
+        }];
+        props.showContextMenu(event, menuItems);
+    };
+
+    const handleSessionContextMenu = (event: React.MouseEvent, session: Session) => {
+        const menuItems: MenuItem[] = [{
+            label: 'إرسال إلى المهام الإدارية',
+            icon: <BuildingLibraryIcon className="w-4 h-4" />,
+            onClick: () => {
+                 const description = `متابعة جلسة قضية (${session.clientName} ضد ${session.opponentName}) يوم ${formatDate(session.date)} في محكمة ${session.court} (أساس: ${session.caseNumber}).\nسبب التأجيل السابق: ${session.postponementReason || 'لا يوجد'}.\nالمكلف بالحضور: ${session.assignee}.`;
+                props.onOpenAdminTaskModal({ 
+                    task: description,
+                    assignee: session.assignee,
+                });
+            }
+        }];
+        props.showContextMenu(event, menuItems);
+    };
+    
     return (
         <div className="border rounded-lg mb-2 overflow-hidden bg-yellow-50">
-            <div className="flex justify-between items-start p-3 hover:bg-yellow-100 cursor-pointer" onClick={onToggle}>
+            <div 
+                className="flex justify-between items-start p-3 hover:bg-yellow-100 cursor-pointer" 
+                onClick={onToggle}
+                onContextMenu={handleContextMenu}
+            >
                 <div className="flex-grow">
                     <div className="flex items-center flex-wrap gap-x-3 gap-y-1 font-semibold text-yellow-800">
                         <div className="flex items-center gap-3">
@@ -96,6 +131,7 @@ const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props:
                         onDecide={(session) => props.onDecide(session, stage)}
                         stage={stage}
                         showSessionDate={true}
+                        onContextMenu={handleSessionContextMenu}
                     />
                 </div>
             )}
@@ -114,9 +150,26 @@ const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeVie
         } : c));
     };
 
+    const handleContextMenu = (event: React.MouseEvent) => {
+        const statusMap = { active: 'نشطة', closed: 'مغلقة', on_hold: 'معلقة'};
+        const menuItems: MenuItem[] = [{
+            label: 'إرسال إلى المهام الإدارية',
+            icon: <BuildingLibraryIcon className="w-4 h-4" />,
+            onClick: () => {
+                const description = `متابعة قضية "${caseItem.subject}" (الموكل: ${client.name} ضد ${caseItem.opponentName}).\nالحالة: ${statusMap[caseItem.status]}.\nالاتفاق المالي: ${caseItem.feeAgreement || 'لم يحدد'}.`;
+                props.onOpenAdminTaskModal({ task: description });
+            }
+        }];
+        props.showContextMenu(event, menuItems);
+    };
+
     return (
         <div className="border rounded-lg mb-2 bg-indigo-50 overflow-hidden">
-            <div className="flex justify-between items-center p-3 hover:bg-indigo-100 cursor-pointer" onClick={onToggle}>
+            <div 
+                className="flex justify-between items-center p-3 hover:bg-indigo-100 cursor-pointer" 
+                onClick={onToggle}
+                onContextMenu={handleContextMenu}
+            >
                 <div className="flex items-center gap-3 font-semibold text-indigo-800">
                     <FolderIcon className="w-5 h-5 text-indigo-600" />
                     <span>{caseItem.subject}</span>
@@ -168,33 +221,52 @@ const CaseItemContainer: React.FC<{ caseItem: Case; client: Client; props: Clien
     return <CaseItem caseItem={caseItem} client={client} props={props} expanded={isExpanded} onToggle={() => setIsExpanded(!isExpanded)} />
 }
 
-const ClientItem: React.FC<{ client: Client; props: ClientsTreeViewProps; expanded: boolean; onToggle: () => void; }> = ({ client, props, expanded, onToggle }) => (
-    <div className="border rounded-lg mb-4 bg-sky-50 shadow-sm overflow-hidden">
-        <header className="flex justify-between items-center p-4 bg-sky-100 cursor-pointer hover:bg-sky-200 transition-colors" onClick={onToggle}>
-            <div className="flex items-center gap-3">
-                 <UserIcon className="w-6 h-6 text-sky-700" />
-                <h2 className="text-xl font-bold text-sky-900">{client.name}</h2>
-                <span className="text-gray-500 text-sm">{client.contactInfo}</span>
-            </div>
-            <div className="flex items-center gap-2">
-                <button onClick={(e) => { e.stopPropagation(); props.onAddCase(client.id); }} className="p-2 text-gray-600 hover:text-blue-700"><PlusIcon className="w-5 h-5" /></button>
-                <button onClick={(e) => { e.stopPropagation(); props.onEditClient(client); }} className="p-2 text-gray-600 hover:text-blue-700"><PencilIcon className="w-5 h-5" /></button>
-                <button onClick={(e) => { e.stopPropagation(); props.onDeleteClient(client.id); }} className="p-2 text-gray-600 hover:text-red-700"><TrashIcon className="w-5 h-5" /></button>
-                <button onClick={(e) => { e.stopPropagation(); props.onPrintClientStatement(client.id); }} className="p-2 text-gray-600 hover:text-green-700"><PrintIcon className="w-5 h-5" /></button>
-                 <ChevronLeftIcon className={`w-6 h-6 transition-transform text-gray-500 ${expanded ? '-rotate-90' : ''}`} />
-            </div>
-        </header>
-        {expanded && (
-            <div className="p-4 bg-white">
-                {client.cases.length > 0 ? (
-                    client.cases.map(caseItem => <CaseItemContainer key={caseItem.id} caseItem={caseItem} client={client} props={props} />)
-                ) : (
-                    <p className="text-center text-gray-500 py-4">لا توجد قضايا لهذا الموكل.</p>
-                )}
-            </div>
-        )}
-    </div>
-);
+const ClientItem: React.FC<{ client: Client; props: ClientsTreeViewProps; expanded: boolean; onToggle: () => void; }> = ({ client, props, expanded, onToggle }) => {
+    
+    const handleContextMenu = (event: React.MouseEvent) => {
+        const menuItems: MenuItem[] = [{
+            label: 'إرسال إلى المهام الإدارية',
+            icon: <BuildingLibraryIcon className="w-4 h-4" />,
+            onClick: () => {
+                const description = `متابعة ملف الموكل: ${client.name}.\nمعلومات الاتصال: ${client.contactInfo || 'لا يوجد'}.`;
+                props.onOpenAdminTaskModal({ task: description });
+            }
+        }];
+        props.showContextMenu(event, menuItems);
+    };
+    
+    return (
+        <div className="border rounded-lg mb-4 bg-sky-50 shadow-sm overflow-hidden">
+            <header 
+                className="flex justify-between items-center p-4 bg-sky-100 cursor-pointer hover:bg-sky-200 transition-colors" 
+                onClick={onToggle}
+                onContextMenu={handleContextMenu}
+            >
+                <div className="flex items-center gap-3">
+                     <UserIcon className="w-6 h-6 text-sky-700" />
+                    <h2 className="text-xl font-bold text-sky-900">{client.name}</h2>
+                    <span className="text-gray-500 text-sm">{client.contactInfo}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button onClick={(e) => { e.stopPropagation(); props.onAddCase(client.id); }} className="p-2 text-gray-600 hover:text-blue-700"><PlusIcon className="w-5 h-5" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); props.onEditClient(client); }} className="p-2 text-gray-600 hover:text-blue-700"><PencilIcon className="w-5 h-5" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); props.onDeleteClient(client.id); }} className="p-2 text-gray-600 hover:text-red-700"><TrashIcon className="w-5 h-5" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); props.onPrintClientStatement(client.id); }} className="p-2 text-gray-600 hover:text-green-700"><PrintIcon className="w-5 h-5" /></button>
+                     <ChevronLeftIcon className={`w-6 h-6 transition-transform text-gray-500 ${expanded ? '-rotate-90' : ''}`} />
+                </div>
+            </header>
+            {expanded && (
+                <div className="p-4 bg-white">
+                    {client.cases.length > 0 ? (
+                        client.cases.map(caseItem => <CaseItemContainer key={caseItem.id} caseItem={caseItem} client={client} props={props} />)
+                    ) : (
+                        <p className="text-center text-gray-500 py-4">لا توجد قضايا لهذا الموكل.</p>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
 
 const ClientsTreeView: React.FC<ClientsTreeViewProps> = (props) => {
     const [expandedClientId, setExpandedClientId] = React.useState<string | null>(null);

@@ -14,9 +14,10 @@ interface SessionsTableProps {
     assistants?: string[];
     allowPostponingPastSessions?: boolean;
     stage?: Stage;
+    onContextMenu?: (event: React.MouseEvent, session: Session) => void;
 }
 
-const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onEdit, onDelete, onDecide, showSessionDate = false, onUpdate, assistants, allowPostponingPastSessions = false, stage }) => {
+const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onEdit, onDelete, onDecide, showSessionDate = false, onUpdate, assistants, allowPostponingPastSessions = false, stage, onContextMenu }) => {
     const [postponeData, setPostponeData] = React.useState<Record<string, { date: string; reason: string }>>({});
     const [errors, setErrors] = React.useState<Record<string, string>>({});
     const [editingCell, setEditingCell] = React.useState<{ sessionId: string; field: keyof Session } | null>(null);
@@ -157,7 +158,11 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                         const nextReasonCellClasses = (onUpdate && s.isPostponed) ? "cursor-pointer hover:bg-blue-50 transition-colors duration-150" : "";
 
                         return (
-                        <tr key={s.id} className={`bg-white border-b hover:bg-gray-50 ${editingCell?.sessionId === s.id ? 'bg-blue-50' : ''}`}>
+                        <tr 
+                            key={s.id} 
+                            onContextMenu={(e) => onContextMenu && onContextMenu(e, s)}
+                            className={`bg-white border-b hover:bg-gray-50 ${editingCell?.sessionId === s.id ? 'bg-blue-50' : ''}`}
+                        >
                             <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('court') && handleCellClick(s, 'court')}>
                                 {isEditing('court') ? <input type="text" value={editValue as string} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : s.court}
                             </td>

@@ -2,10 +2,11 @@ import * as React from 'react';
 import Calendar from '../components/Calendar';
 import { Session, AdminTask, Appointment, Stage, Client } from '../types';
 import { formatDate, isSameDay, isBeforeToday } from '../utils/dateUtils';
-import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, CalendarIcon, ChevronLeftIcon, ScaleIcon } from '../components/icons';
+import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, CalendarIcon, ChevronLeftIcon, ScaleIcon, BuildingLibraryIcon } from '../components/icons';
 import SessionsTable from '../components/SessionsTable';
 import PrintableReport from '../components/PrintableReport';
 import { printElement } from '../utils/printUtils';
+import { MenuItem } from '../components/ContextMenu';
 
 const importanceMap: { [key: string]: { text: string, className: string } } = {
     normal: { text: 'عادي', className: 'bg-gray-100 text-gray-800' },
@@ -30,7 +31,7 @@ const formatTime = (time: string) => {
     return `${finalHours}:${minutes} ${ampm}`;
 };
 
-const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointment: () => void, onEdit: (appointment: Appointment) => void, onDelete: (appointment: Appointment) => void }> = ({ appointments, onAddAppointment, onEdit, onDelete }) => (
+const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointment: () => void, onEdit: (appointment: Appointment) => void, onDelete: (appointment: Appointment) => void, onContextMenu: (event: React.MouseEvent, appointment: Appointment) => void }> = ({ appointments, onAddAppointment, onEdit, onDelete, onContextMenu }) => (
     <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="flex justify-between items-center p-4 bg-gray-50 border-b">
             <h3 className="text-lg font-bold">سجل المواعيد</h3>
@@ -53,7 +54,7 @@ const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointmen
                     </thead>
                     <tbody>
                         {appointments.map(a => (
-                            <tr key={a.id} className="bg-white border-b hover:bg-gray-50">
+                            <tr key={a.id} onContextMenu={(e) => onContextMenu(e, a)} className="bg-white border-b hover:bg-gray-50">
                                 <td className="px-6 py-4">{a.title}</td>
                                 <td className="px-6 py-4">{formatTime(a.time)}</td>
                                 <td className="px-6 py-4">{a.assignee}</td>
@@ -84,9 +85,11 @@ interface HomePageProps {
     adminTasks: AdminTask[];
     setAdminTasks: (updater: (prevTasks: AdminTask[]) => AdminTask[]) => void;
     assistants: string[];
+    onOpenAdminTaskModal: (initialData?: any) => void;
+    showContextMenu: (event: React.MouseEvent, menuItems: MenuItem[]) => void;
 }
 
-const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, allSessions, setAppointments, adminTasks, setAdminTasks, assistants }) => {
+const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, allSessions, setAppointments, adminTasks, setAdminTasks, assistants, onOpenAdminTaskModal, showContextMenu }) => {
     const [selectedDate, setSelectedDate] = React.useState(new Date());
     const [calendarViewDate, setCalendarViewDate] = React.useState(new Date());
     type ViewMode = 'daily' | 'unpostponed' | 'upcoming';
@@ -96,16 +99,6 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, 
     const [newAppointment, setNewAppointment] = React.useState<{ title: string; date: string; time: string; importance: 'normal' | 'important' | 'urgent'; reminderTimeInMinutes: number; assignee: string; }>({ title: '', date: '', time: '', importance: 'normal', reminderTimeInMinutes: 15, assignee: 'بدون تخصيص' });
 
     const [activeTaskTab, setActiveTaskTab] = React.useState<'pending' | 'completed'>('pending');
-    const [isTaskModalOpen, setIsTaskModalOpen] = React.useState(false);
-    const [editingTask, setEditingTask] = React.useState<AdminTask | null>(null);
-    const [taskFormData, setTaskFormData] = React.useState<Omit<AdminTask, 'id' | 'dueDate'> & { dueDate: string }>({
-        task: '',
-        dueDate: '',
-        importance: 'normal',
-        assignee: 'بدون تخصيص',
-        completed: false,
-        location: '',
-    });
     const [adminTaskSearch, setAdminTaskSearch] = React.useState('');
     const [isDeleteAppointmentModalOpen, setIsDeleteAppointmentModalOpen] = React.useState(false);
     const [appointmentToDelete, setAppointmentToDelete] = React.useState<Appointment | null>(null);
@@ -221,61 +214,6 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, 
     };
 
     // Admin Task Handlers
-    const handleOpenTaskModal = (task: AdminTask | null = null) => {
-        setEditingTask(task);
-        if (task) {
-            setTaskFormData({
-                ...task,
-                dueDate: toInputDateString(task.dueDate),
-                location: task.location || '',
-            });
-        } else {
-            setTaskFormData({
-                task: '',
-                dueDate: toInputDateString(new Date()),
-                importance: 'normal',
-                assignee: 'بدون تخصيص',
-                completed: false,
-                location: ''
-            });
-        }
-        setIsTaskModalOpen(true);
-    };
-
-    const handleCloseTaskModal = () => {
-        setIsTaskModalOpen(false);
-        setEditingTask(null);
-    };
-    
-    const handleTaskFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        setTaskFormData(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleTaskSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!taskFormData.task || !taskFormData.dueDate) return;
-
-        const [year, month, day] = taskFormData.dueDate.split('-').map(Number);
-        const taskDate = new Date(year, month - 1, day);
-
-        const taskData: Omit<AdminTask, 'id'> = {
-            task: taskFormData.task,
-            dueDate: taskDate,
-            importance: taskFormData.importance,
-            assignee: taskFormData.assignee,
-            completed: taskFormData.completed,
-            location: taskFormData.location || 'غير محدد',
-        };
-
-        if (editingTask) {
-            setAdminTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...taskData } : t));
-        } else {
-            setAdminTasks(prev => [...prev, { ...taskData, id: `task-${Date.now()}`, completed: false }]);
-        }
-        handleCloseTaskModal();
-    };
-    
     const openDeleteTaskModal = (task: AdminTask) => {
         setTaskToDelete(task);
         setIsDeleteTaskModalOpen(true);
@@ -681,9 +619,42 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, 
         }
     };
     
-    const DropIndicator: React.FC = () => (
-        <tr><td colSpan={6} className="p-0 h-2 bg-blue-300 animate-pulse"></td></tr>
-    );
+    // --- Context Menu Handlers ---
+    const handleAppointmentContextMenu = (event: React.MouseEvent, appointment: Appointment) => {
+        const menuItems: MenuItem[] = [
+            {
+                label: 'إرسال إلى المهام الإدارية',
+                icon: <BuildingLibraryIcon className="w-4 h-4" />,
+                onClick: () => {
+                    const description = `متابعة موعد "${appointment.title}" يوم ${formatDate(appointment.date)} الساعة ${formatTime(appointment.time)}.\nالمكلف: ${appointment.assignee || 'غير محدد'}.\nالأهمية: ${importanceMap[appointment.importance]?.text}.`;
+                    onOpenAdminTaskModal({
+                        task: description,
+                        assignee: appointment.assignee,
+                        importance: appointment.importance,
+                    });
+                }
+            }
+        ];
+        showContextMenu(event, menuItems);
+    }
+
+    const handleSessionContextMenu = (event: React.MouseEvent, session: Session) => {
+         const menuItems: MenuItem[] = [
+            {
+                label: 'إرسال إلى المهام الإدارية',
+                icon: <BuildingLibraryIcon className="w-4 h-4" />,
+                onClick: () => {
+                    const description = `متابعة جلسة قضية (${session.clientName} ضد ${session.opponentName}) يوم ${formatDate(session.date)} في محكمة ${session.court} (أساس: ${session.caseNumber}).\nسبب التأجيل السابق: ${session.postponementReason || 'لا يوجد'}.\nالمكلف بالحضور: ${session.assignee}.`;
+                    onOpenAdminTaskModal({
+                        task: description,
+                        assignee: session.assignee,
+                    });
+                }
+            }
+        ];
+        showContextMenu(event, menuItems);
+    }
+
 
     return (
         <div className="space-y-6">
@@ -747,19 +718,19 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, 
                                 <>
                                     <div className="bg-white rounded-lg shadow overflow-hidden">
                                         <h3 className="text-lg font-bold p-4 bg-gray-50 border-b">جدول الجلسات</h3>
-                                        <SessionsTable sessions={dailyData.dailySessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} allowPostponingPastSessions={true} />
+                                        <SessionsTable sessions={dailyData.dailySessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} allowPostponingPastSessions={true} onContextMenu={handleSessionContextMenu} />
                                     </div>
-                                    <AppointmentsTable appointments={dailyData.dailyAppointments} onAddAppointment={handleOpenAddAppointmentModal} onEdit={handleOpenEditAppointmentModal} onDelete={openDeleteAppointmentModal} />
+                                    <AppointmentsTable appointments={dailyData.dailyAppointments} onAddAppointment={handleOpenAddAppointmentModal} onEdit={handleOpenEditAppointmentModal} onDelete={openDeleteAppointmentModal} onContextMenu={handleAppointmentContextMenu}/>
                                 </>
                             )}
                             {viewMode === 'unpostponed' && (
                                 <div className="bg-white rounded-lg shadow overflow-hidden">
-                                    <SessionsTable sessions={unpostponedSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} allowPostponingPastSessions={true} showSessionDate={true} />
+                                    <SessionsTable sessions={unpostponedSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} allowPostponingPastSessions={true} showSessionDate={true} onContextMenu={handleSessionContextMenu} />
                                 </div>
                             )}
                             {viewMode === 'upcoming' && (
                                 <div className="bg-white rounded-lg shadow overflow-hidden">
-                                    <SessionsTable sessions={upcomingSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} showSessionDate={true} />
+                                    <SessionsTable sessions={upcomingSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} showSessionDate={true} onContextMenu={handleSessionContextMenu} />
                                 </div>
                             )}
                         </div>
@@ -783,7 +754,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, 
                                 <SearchIcon className="w-4 h-4 text-gray-500" />
                             </div>
                         </div>
-                        <button onClick={() => handleOpenTaskModal()} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                        <button onClick={() => onOpenAdminTaskModal()} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">
                             <PlusIcon className="w-5 h-5" />
                             <span>مهمة جديدة</span>
                         </button>
@@ -895,7 +866,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, 
                                                                 </span>
                                                             </td>
                                                             <td className="px-6 py-4 flex items-center gap-2">
-                                                                <button onClick={() => handleOpenTaskModal(task)} className="p-2 text-gray-500 hover:text-blue-600"><PencilIcon className="w-4 h-4" /></button>
+                                                                <button onClick={() => onOpenAdminTaskModal(task)} className="p-2 text-gray-500 hover:text-blue-600"><PencilIcon className="w-4 h-4" /></button>
                                                                 <button onClick={() => openDeleteTaskModal(task)} className="p-2 text-gray-500 hover:text-red-600"><TrashIcon className="w-4 h-4" /></button>
                                                             </td>
                                                         </tr>
@@ -960,63 +931,6 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, 
                             <div className="mt-6 flex justify-end gap-4">
                                 <button type="button" onClick={handleCloseAppointmentModal} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">إلغاء</button>
                                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">{editingAppointment ? 'حفظ التعديلات' : 'إضافة'}</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {isTaskModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={handleCloseTaskModal}>
-                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                        <h2 className="text-xl font-bold mb-4">{editingTask ? 'تعديل مهمة' : 'إضافة مهمة جديدة'}</h2>
-                        <form onSubmit={handleTaskSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">المهمة</label>
-                                <input type="text" name="task" value={taskFormData.task} onChange={handleTaskFormChange} className="w-full p-2 border rounded" required />
-                            </div>
-                             <div>
-                                <label className="block text-sm font-medium text-gray-700">المكان</label>
-                                <input 
-                                    type="text" 
-                                    name="location" 
-                                    list="locations"
-                                    value={taskFormData.location || ''} 
-                                    onChange={handleTaskFormChange} 
-                                    className="w-full p-2 border rounded" 
-                                    placeholder="مثال: القصر العدلي"
-                                />
-                                <datalist id="locations">
-                                    <option value="القصر العدلي" />
-                                    <option value="المكتب" />
-                                    <option value="السجل العقاري" />
-                                    <option value="السجل المدني" />
-                                    <option value="المالية" />
-                                </datalist>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">تاريخ الاستحقاق</label>
-                                    <input type="date" name="dueDate" value={taskFormData.dueDate} onChange={handleTaskFormChange} className="w-full p-2 border rounded" placeholder="DD/MM/YYYY" required />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">الأهمية</label>
-                                    <select name="importance" value={taskFormData.importance} onChange={handleTaskFormChange} className="w-full p-2 border rounded" required>
-                                        <option value="normal">عادي</option>
-                                        <option value="important">مهم</option>
-                                        <option value="urgent">عاجل</option>
-                                    </select>
-                                </div>
-                            </div>
-                             <div>
-                                <label className="block text-sm font-medium text-gray-700">تخصيص لـ</label>
-                                <select name="assignee" value={taskFormData.assignee} onChange={handleTaskFormChange} className="w-full p-2 border rounded">
-                                    {assistants.map(name => <option key={name} value={name}>{name}</option>)}
-                                </select>
-                            </div>
-                            <div className="mt-6 flex justify-end gap-4">
-                                <button type="button" onClick={handleCloseTaskModal} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">إلغاء</button>
-                                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">حفظ</button>
                             </div>
                         </form>
                     </div>
