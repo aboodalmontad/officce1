@@ -141,7 +141,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const renderPage = () => {
         switch (currentPage) {
             case 'home':
-                return <HomePage appointments={appointments} setClients={setClients} allSessions={allSessions} setAppointments={setAppointments} adminTasks={adminTasks} setAdminTasks={setAdminTasks} assistants={assistants} />;
+                return <HomePage appointments={appointments} clients={clients} setClients={setClients} allSessions={allSessions} setAppointments={setAppointments} adminTasks={adminTasks} setAdminTasks={setAdminTasks} assistants={assistants} />;
             case 'clients':
                 return <ClientsPage clients={clients} setClients={setClients} accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} assistants={assistants} />;
             case 'accounting':
@@ -151,7 +151,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
             case 'settings':
                 return <SettingsPage setFullData={setFullData} analysisStatus={analysisStatus} lastAnalysis={lastAnalysis} triggerAnalysis={triggerAnalysis} assistants={assistants} setAssistants={setAssistants} analysisReport={analysisReport} offlineMode={offlineMode} setOfflineMode={setOfflineMode} onLogout={() => setIsLoggedIn(false)} credentials={credentials} setCredentials={setCredentials} />;
             default:
-                return <HomePage appointments={appointments} setClients={setClients} allSessions={allSessions} setAppointments={setAppointments} adminTasks={adminTasks} setAdminTasks={setAdminTasks} assistants={assistants} />;
+                return <HomePage appointments={appointments} clients={clients} setClients={setClients} allSessions={allSessions} setAppointments={setAppointments} adminTasks={adminTasks} setAdminTasks={setAdminTasks} assistants={assistants} />;
         }
     };
     

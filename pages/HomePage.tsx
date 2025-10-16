@@ -77,6 +77,7 @@ const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointmen
 
 interface HomePageProps {
     appointments: Appointment[];
+    clients: Client[];
     setClients: (updater: (prevClients: Client[]) => Client[]) => void;
     allSessions: Session[];
     setAppointments: (updater: (prevAppointments: Appointment[]) => Appointment[]) => void;
@@ -85,7 +86,7 @@ interface HomePageProps {
     assistants: string[];
 }
 
-const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessions, setAppointments, adminTasks, setAdminTasks, assistants }) => {
+const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, allSessions, setAppointments, adminTasks, setAdminTasks, assistants }) => {
     const [selectedDate, setSelectedDate] = React.useState(new Date());
     const [calendarViewDate, setCalendarViewDate] = React.useState(new Date());
     type ViewMode = 'daily' | 'unpostponed' | 'upcoming';
@@ -126,7 +127,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     const [editingAssigneeTaskId, setEditingAssigneeTaskId] = React.useState<string | null>(null);
     
     // State for Decide Session Modal
-    const [decideModal, setDecideModal] = React.useState<{ isOpen: boolean; session?: Session }>({ isOpen: false });
+    const [decideModal, setDecideModal] = React.useState<{ isOpen: boolean; session?: Session, stage?: Stage }>({ isOpen: false });
     const [decideFormData, setDecideFormData] = React.useState({ decisionNumber: '', decisionSummary: '', decisionNotes: '' });
 
 
@@ -527,9 +528,32 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     };
 
     const handleOpenDecideModal = (session: Session) => {
+        if (!session.stageId) {
+            console.error("Cannot decide session: stageId is missing.", session);
+            return;
+        }
+
+        let foundStage: Stage | null = null;
+        for (const client of clients) {
+            for (const caseItem of client.cases) {
+                const stage = caseItem.stages.find(st => st.id === session.stageId);
+                if (stage) {
+                    foundStage = stage;
+                    break;
+                }
+            }
+            if (foundStage) break;
+        }
+
+        if (!foundStage) {
+            console.error("Cannot decide session: Corresponding stage not found for stageId:", session.stageId);
+            return;
+        }
+
         setDecideFormData({ decisionNumber: '', decisionSummary: '', decisionNotes: '' });
-        setDecideModal({ isOpen: true, session });
+        setDecideModal({ isOpen: true, session, stage: foundStage });
     };
+
 
     const handleCloseDecideModal = () => {
         setDecideModal({ isOpen: false });
@@ -537,15 +561,15 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, setClients, allSessio
     
     const handleDecideSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const session = decideModal.session;
-        if (!session || !session.stageId) return;
+        const { session, stage } = decideModal;
+        if (!session || !stage) return;
 
         setClients(currentClients => currentClients.map(client => ({
             ...client,
             cases: client.cases.map(c => ({
                 ...c,
                 stages: c.stages.map(st => {
-                    if (st.id === session.stageId) {
+                    if (st.id === stage.id) {
                         return {
                             ...st,
                             decisionDate: session.date,

@@ -1,8 +1,9 @@
 import * as React from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
-import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon } from './icons';
+import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon, GavelIcon } from './icons';
 import SessionsTable from './SessionsTable';
 import CaseAccounting from './CaseAccounting';
+import { formatDate } from '../utils/dateUtils';
 
 type ExpandedState = { [key: string]: boolean };
 
@@ -32,13 +33,48 @@ interface ClientsTreeViewProps {
 const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props: ClientsTreeViewProps; expanded: boolean; onToggle: () => void }> = ({ stage, caseItem, client, props, expanded, onToggle }) => {
     return (
         <div className="border rounded-lg mb-2 overflow-hidden bg-yellow-50">
-            <div className="flex justify-between items-center p-3 hover:bg-yellow-100 cursor-pointer" onClick={onToggle}>
-                <div className="flex items-center gap-3 font-semibold text-yellow-800">
-                    <ClipboardDocumentIcon className="w-5 h-5 text-yellow-600" />
-                    <span>{stage.court}</span>
-                    <span className="text-gray-600 font-normal">({stage.caseNumber})</span>
+            <div className="flex justify-between items-start p-3 hover:bg-yellow-100 cursor-pointer" onClick={onToggle}>
+                <div className="flex-grow">
+                    <div className="flex items-center flex-wrap gap-x-3 gap-y-1 font-semibold text-yellow-800">
+                        <div className="flex items-center gap-3">
+                            <ClipboardDocumentIcon className="w-5 h-5 text-yellow-600" />
+                            <span>{stage.court}</span>
+                            <span className="text-gray-600 font-normal">({stage.caseNumber})</span>
+                        </div>
+                    </div>
+                     {stage.decisionDate && (
+                        <div className="mt-3 ps-8 animate-fade-in text-sm font-normal text-gray-700">
+                            <div className="p-3 bg-green-100 border border-green-200 rounded-lg">
+                                <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+                                    <div className="flex items-center">
+                                        <GavelIcon className="w-4 h-4 text-green-700 me-2 flex-shrink-0" />
+                                        <strong className="font-semibold">تاريخ الحسم:</strong>
+                                        <span className="ms-1">{formatDate(new Date(stage.decisionDate))}</span>
+                                    </div>
+                                    {stage.decisionNumber && (
+                                        <div className="flex items-center">
+                                            <strong className="font-semibold">رقم القرار:</strong>
+                                            <span className="ms-1">{stage.decisionNumber}</span>
+                                        </div>
+                                    )}
+                                    {stage.decisionSummary && (
+                                        <div className="flex items-baseline">
+                                            <strong className="font-semibold flex-shrink-0">ملخص القرار:</strong>
+                                            <span className="ms-1 whitespace-pre-wrap">{stage.decisionSummary}</span>
+                                        </div>
+                                    )}
+                                    {stage.decisionNotes && (
+                                        <div className="flex items-baseline">
+                                            <strong className="font-semibold flex-shrink-0">ملاحظات:</strong>
+                                            <span className="ms-1 whitespace-pre-wrap">{stage.decisionNotes}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex-shrink-0 flex items-center gap-2 ms-4">
                     <button onClick={(e) => { e.stopPropagation(); props.onAddSession(client.id, caseItem.id, stage.id); }} className="p-1 text-gray-500 hover:text-blue-600"><PlusIcon className="w-4 h-4" /></button>
                     <button onClick={(e) => { e.stopPropagation(); props.onEditStage(stage, caseItem, client); }} className="p-1 text-gray-500 hover:text-blue-600"><PencilIcon className="w-4 h-4" /></button>
                     <button onClick={(e) => { e.stopPropagation(); props.onDeleteStage(stage.id, caseItem.id, client.id); }} className="p-1 text-gray-500 hover:text-red-600"><TrashIcon className="w-4 h-4" /></button>

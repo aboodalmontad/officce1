@@ -602,7 +602,19 @@ export const useSupabaseData = (offlineMode: boolean) => {
         setIsDirty(true);
     };
 
-    const allSessions = React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(s => s.sessions))), [data.clients]);
+    const allSessions = React.useMemo(() => {
+        return data.clients.flatMap(client =>
+            client.cases.flatMap(caseItem =>
+                caseItem.stages.flatMap(stage =>
+                    stage.sessions.map(session => ({
+                        ...session,
+                        stageId: stage.id,
+                        stageDecisionDate: stage.decisionDate,
+                    }))
+                )
+            )
+        );
+    }, [data.clients]);
 
     return {
         clients: data.clients,

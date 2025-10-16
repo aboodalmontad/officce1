@@ -1,8 +1,9 @@
 import * as React from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
-import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon } from './icons';
+import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon, GavelIcon } from './icons';
 import SessionsTable from './SessionsTable';
 import CaseAccounting from './CaseAccounting';
+import { formatDate } from '../utils/dateUtils';
 
 interface ClientsListViewProps {
     clients: Client[];
@@ -101,18 +102,49 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
                                                     إضافة مرحلة
                                                 </button>
                                                 {caseItem.stages.map(stage => (
-                                                    <div key={stage.id} className="mt-2 border rounded bg-yellow-50">
-                                                         <div className="p-2 bg-yellow-100 flex justify-between items-center">
-                                                            <p className="font-semibold text-sm text-yellow-800 flex items-center gap-2">
-                                                                <ClipboardDocumentIcon className="w-4 h-4 text-yellow-600" />
-                                                                {stage.court} - {stage.caseNumber}
-                                                            </p>
+                                                    <div key={stage.id} className="mt-2 border rounded bg-yellow-50 overflow-hidden">
+                                                        <div className="p-3 bg-yellow-100 flex justify-between items-center">
+                                                            <div className="flex items-center flex-wrap gap-x-3 gap-y-1">
+                                                                <p className="font-semibold text-sm text-yellow-800 flex items-center gap-2">
+                                                                    <ClipboardDocumentIcon className="w-4 h-4 text-yellow-600" />
+                                                                    {stage.court} - {stage.caseNumber}
+                                                                </p>
+                                                            </div>
                                                             <div>
                                                                 <button onClick={(e) => { e.stopPropagation(); props.onAddSession(client.id, caseItem.id, stage.id); }} className="p-1 text-gray-500 hover:text-blue-600"><PlusIcon className="w-4 h-4" /></button>
                                                                 <button onClick={(e) => { e.stopPropagation(); props.onEditStage(stage, caseItem, client); }} className="p-1 text-gray-500 hover:text-blue-600"><PencilIcon className="w-4 h-4" /></button>
                                                                 <button onClick={(e) => { e.stopPropagation(); props.onDeleteStage(stage.id, caseItem.id, client.id); }} className="p-1 text-gray-500 hover:text-red-600"><TrashIcon className="w-4 h-4" /></button>
                                                             </div>
                                                         </div>
+                                                        {stage.decisionDate && (
+                                                            <div className="p-3 bg-green-100 border-t border-green-200 animate-fade-in text-sm text-gray-700">
+                                                                <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+                                                                    <div className="flex items-center">
+                                                                        <GavelIcon className="w-4 h-4 text-green-700 me-2 flex-shrink-0" />
+                                                                        <strong className="font-semibold">تاريخ الحسم:</strong>
+                                                                        <span className="ms-1">{formatDate(new Date(stage.decisionDate))}</span>
+                                                                    </div>
+                                                                    {stage.decisionNumber && (
+                                                                        <div className="flex items-center">
+                                                                            <strong className="font-semibold">رقم القرار:</strong>
+                                                                            <span className="ms-1">{stage.decisionNumber}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {stage.decisionSummary && (
+                                                                        <div className="flex items-baseline">
+                                                                            <strong className="font-semibold flex-shrink-0">ملخص القرار:</strong>
+                                                                            <span className="ms-1 whitespace-pre-wrap">{stage.decisionSummary}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {stage.decisionNotes && (
+                                                                        <div className="flex items-baseline">
+                                                                            <strong className="font-semibold flex-shrink-0">ملاحظات:</strong>
+                                                                            <span className="ms-1 whitespace-pre-wrap">{stage.decisionNotes}</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                          <div className="p-2 bg-green-50 border-t border-green-200">
                                                             <h5 className="flex items-center gap-2 text-sm font-semibold text-gray-600 mb-2">
                                                                 <CalendarDaysIcon className="w-4 h-4 text-gray-400"/>

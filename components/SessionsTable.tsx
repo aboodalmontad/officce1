@@ -174,14 +174,11 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                             <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('assignee') && handleCellClick(s, 'assignee')}>
                                 {isEditing('assignee') ? <select value={editValue as string} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus>{assistants?.map(a => <option key={a} value={a}>{a}</option>)}</select> : (s.assignee || '-')}
                             </td>
-                            <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('postponementReason') && !isStageDecided && handleCellClick(s, 'postponementReason')}>
-                                {isStageDecided ? (
-                                    <span className="inline-flex items-center gap-2 px-4 py-2 text-base font-bold text-white bg-green-700 rounded-lg shadow-lg">
-                                        <GavelIcon className="w-6 h-6"/>
-                                        حُسمت
-                                    </span>
+                            <td className={`px-2 sm:px-6 py-4 ${isStageDecided ? '' : cellClasses}`} onClick={() => !isEditing('postponementReason') && !isStageDecided && handleCellClick(s, 'postponementReason')}>
+                                {isEditing('postponementReason') && !isStageDecided ? (
+                                    <input type="text" value={editValue as string || ''} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus />
                                 ) : (
-                                    isEditing('postponementReason') ? <input type="text" value={editValue as string || ''} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : (s.postponementReason || 'لا يوجد')
+                                    s.postponementReason || 'لا يوجد'
                                 )}
                             </td>
                             
