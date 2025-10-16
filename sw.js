@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lawyer-app-cache-v5';
+const CACHE_NAME = 'lawyer-app-cache-v6';
 // FIX: The list of URLs to cache has been expanded to include all critical,
 // external dependencies. This ensures the app is fully functional offline
 // immediately after the service worker is installed, preventing failures
@@ -11,20 +11,23 @@ const urlsToCache = [
   './icon.svg',
   'https://cdn.tailwindcss.com',
   'https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap',
-  'https://esm.sh/@google/genai@^1.20.0',
-  'https://esm.sh/@supabase/supabase-js@^2.44.4',
-  'https://esm.sh/react@^19.1.1',
-  'https://esm.sh/react-dom@^19.1.1',
-  'https://esm.sh/react-router-dom@^7.9.1',
-  'https://esm.sh/recharts@^2.12.7',
+  // Pinning specific versions from esm.sh for better cache stability
+  'https://esm.sh/v135/@google/genai@1.20.0/es2022/genai.mjs',
+  'https://esm.sh/v135/@supabase/supabase-js@2.44.4/es2022/supabase-js.mjs',
+  'https://esm.sh/v135/react@19.1.1/es2022/react.mjs',
+  'https://esm.sh/v135/react-dom@19.1.1/es2022/client.mjs',
+  'https://esm.sh/v135/react-router-dom@7.9.1/es2022/react-router-dom.mjs',
+  'https://esm.sh/v135/recharts@2.12.7/es2022/recharts.mjs'
 ];
 
 self.addEventListener('install', event => {
   // Perform install steps
+  // Force the waiting service worker to become the active service worker.
+  self.skipWaiting(); 
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Opened cache');
+        console.log('Opened cache and caching URLs');
         return cache.addAll(urlsToCache);
       })
   );
@@ -52,15 +55,8 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // For navigation requests, use a network-first strategy to ensure users get the latest HTML.
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request).catch(() => caches.match('./index.html'))
-    );
-    return;
-  }
-  
-  // For all other requests (JS, CSS, fonts, images), use a cache-first strategy.
+  // Use a cache-first strategy for all requests.
+  // This is suitable for an offline-first application.
   event.respondWith(
     caches.match(event.request)
       .then(response => {
@@ -85,14 +81,20 @@ self.addEventListener('fetch', event => {
 
             caches.open(CACHE_NAME)
               .then(cache => {
-                cache.put(event.request, responseToCache);
+                // We don't cache Supabase API calls, only static assets
+                if (!event.request.url.includes('supabase.co')) {
+                    cache.put(event.request, responseToCache);
+                }
               });
 
             return networkResponse;
           }
         ).catch(error => {
             console.error('Fetching failed:', error);
-            // You could return a fallback asset here if needed
+            // For navigation requests, return the cached index.html as a fallback.
+            if (event.request.mode === 'navigate') {
+              return caches.match('./index.html');
+            }
         });
       })
   );

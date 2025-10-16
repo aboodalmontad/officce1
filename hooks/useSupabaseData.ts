@@ -100,36 +100,40 @@ const validateAndHydrate = (data: any): AppData => {
     const validatedClients: Client[] = safeArray(data.clients, (client: any): Client => ({
         id: client.id || `client-${Date.now()}-${Math.random()}`,
         name: String(client.name || 'موكل غير مسمى'),
-        contactInfo: String(client.contact_info || ''),
+        // FIX: Added parentheses to resolve mixed '??' and '||' operator precedence.
+        contactInfo: String((client.contact_info ?? client.contactInfo) || ''),
         cases: safeArray(client.cases, (caseItem: any): Case => ({
             id: caseItem.id || `case-${Date.now()}-${Math.random()}`,
             subject: String(caseItem.subject || 'قضية بدون موضوع'),
-            clientName: String(caseItem.client_name || client.name || 'موكل غير مسمى'),
-            opponentName: sanitizeString(caseItem.opponent_name),
-            feeAgreement: String(caseItem.fee_agreement || ''),
+            // FIX: Added parentheses to resolve mixed '??' and '||' operator precedence.
+            clientName: String((caseItem.client_name ?? caseItem.clientName) || client.name || 'موكل غير مسمى'),
+            opponentName: sanitizeString(caseItem.opponent_name ?? caseItem.opponentName),
+            // FIX: Added parentheses to resolve mixed '??' and '||' operator precedence.
+            feeAgreement: String((caseItem.fee_agreement ?? caseItem.feeAgreement) || ''),
             status: ['active', 'closed', 'on_hold'].includes(caseItem.status) ? caseItem.status : 'active',
             stages: safeArray(caseItem.stages, (stage: any): Stage => ({
                 id: stage.id || `stage-${Date.now()}-${Math.random()}`,
                 court: String(stage.court || 'محكمة غير محددة'),
-                caseNumber: sanitizeString(stage.case_number),
-                firstSessionDate: sanitizeOptionalDate(stage.first_session_date),
+                caseNumber: sanitizeString(stage.case_number ?? stage.caseNumber),
+                firstSessionDate: sanitizeOptionalDate(stage.first_session_date ?? stage.firstSessionDate),
                 sessions: safeArray(stage.sessions, (session: any): Session => ({
                     id: session.id || `session-${Date.now()}-${Math.random()}`,
                     court: String(session.court || stage.court || 'محكمة غير محددة'),
-                    caseNumber: 'case_number' in session ? sanitizeString(session.case_number) : sanitizeString(stage.case_number),
+                    caseNumber: ('case_number' in session || 'caseNumber' in session) ? sanitizeString(session.case_number ?? session.caseNumber) : sanitizeString(stage.case_number ?? stage.caseNumber),
                     date: session.date && !isNaN(new Date(session.date).getTime()) ? new Date(session.date) : new Date(),
-                    clientName: String(session.client_name || caseItem.client_name || client.name || 'موكل غير مسمى'),
-                    opponentName: 'opponent_name' in session ? sanitizeString(session.opponent_name) : sanitizeString(caseItem.opponent_name),
-                    isPostponed: typeof session.is_postponed === 'boolean' ? session.is_postponed : false,
-                    postponementReason: sanitizeString(session.postponement_reason),
-                    nextPostponementReason: sanitizeString(session.next_postponement_reason),
-                    nextSessionDate: sanitizeOptionalDate(session.next_session_date),
+                    // FIX: Added parentheses to resolve mixed '??' and '||' operator precedence.
+                    clientName: String((session.client_name ?? session.clientName) || (caseItem.client_name ?? caseItem.clientName) || client.name || 'موكل غير مسمى'),
+                    opponentName: ('opponent_name' in session || 'opponentName' in session) ? sanitizeString(session.opponent_name ?? session.opponentName) : sanitizeString(caseItem.opponent_name ?? caseItem.opponentName),
+                    isPostponed: typeof (session.is_postponed ?? session.isPostponed) === 'boolean' ? (session.is_postponed ?? session.isPostponed) : false,
+                    postponementReason: sanitizeString(session.postponement_reason ?? session.postponementReason),
+                    nextPostponementReason: sanitizeString(session.next_postponement_reason ?? session.nextPostponementReason),
+                    nextSessionDate: sanitizeOptionalDate(session.next_session_date ?? session.nextSessionDate),
                     assignee: isValidAssistant(session.assignee) ? session.assignee : defaultAssignee,
                 })),
-                decisionDate: sanitizeOptionalDate(stage.decision_date),
-                decisionNumber: sanitizeString(stage.decision_number),
-                decisionSummary: sanitizeString(stage.decision_summary),
-                decisionNotes: sanitizeString(stage.decision_notes),
+                decisionDate: sanitizeOptionalDate(stage.decision_date ?? stage.decisionDate),
+                decisionNumber: sanitizeString(stage.decision_number ?? stage.decisionNumber),
+                decisionSummary: sanitizeString(stage.decision_summary ?? stage.decisionSummary),
+                decisionNotes: sanitizeString(stage.decision_notes ?? stage.decisionNotes),
             })),
         })),
     }));
@@ -137,7 +141,7 @@ const validateAndHydrate = (data: any): AppData => {
     const validatedAdminTasks: AdminTask[] = safeArray(data.adminTasks, (task: any): AdminTask => ({
         id: task.id || `task-${Date.now()}-${Math.random()}`,
         task: String(task.task || 'مهمة بدون عنوان'),
-        dueDate: task.due_date && !isNaN(new Date(task.due_date).getTime()) ? new Date(task.due_date) : new Date(),
+        dueDate: (task.due_date ?? task.dueDate) && !isNaN(new Date(task.due_date ?? task.dueDate).getTime()) ? new Date(task.due_date ?? task.dueDate) : new Date(),
         completed: typeof task.completed === 'boolean' ? task.completed : false,
         importance: ['normal', 'important', 'urgent'].includes(task.importance) ? task.importance : 'normal',
         assignee: isValidAssistant(task.assignee) ? task.assignee : defaultAssignee,
@@ -151,7 +155,7 @@ const validateAndHydrate = (data: any): AppData => {
         date: apt.date && !isNaN(new Date(apt.date).getTime()) ? new Date(apt.date) : new Date(),
         importance: ['normal', 'important', 'urgent'].includes(apt.importance) ? apt.importance : 'normal',
         notified: typeof apt.notified === 'boolean' ? apt.notified : false,
-        reminderTimeInMinutes: typeof apt.reminder_time_in_minutes === 'number' ? apt.reminder_time_in_minutes : undefined,
+        reminderTimeInMinutes: typeof (apt.reminder_time_in_minutes ?? apt.reminderTimeInMinutes) === 'number' ? (apt.reminder_time_in_minutes ?? apt.reminderTimeInMinutes) : undefined,
         assignee: isValidAssistant(apt.assignee) ? apt.assignee : defaultAssignee,
     }));
     
@@ -161,9 +165,12 @@ const validateAndHydrate = (data: any): AppData => {
         amount: typeof entry.amount === 'number' ? entry.amount : 0,
         date: entry.date && !isNaN(new Date(entry.date).getTime()) ? new Date(entry.date) : new Date(),
         description: String(entry.description || ''),
-        clientId: String(entry.client_id || ''),
-        caseId: String(entry.case_id || ''),
-        clientName: String(entry.client_name || ''),
+        // FIX: Added parentheses to resolve mixed '??' and '||' operator precedence.
+        clientId: String((entry.client_id ?? entry.clientId) || ''),
+        // FIX: Added parentheses to resolve mixed '??' and '||' operator precedence.
+        caseId: String((entry.case_id ?? entry.caseId) || ''),
+        // FIX: Added parentheses to resolve mixed '??' and '||' operator precedence.
+        clientName: String((entry.client_name ?? entry.clientName) || ''),
     }));
 
     const validatedCredentials = (creds: any): Credentials => {
@@ -342,7 +349,7 @@ export const useSupabaseData = (offlineMode: boolean) => {
         setSyncStatus('syncing');
         setLastSyncError(null);
 
-        // --- Date Sanitization Helpers ---
+        // --- Data Sanitization Helpers ---
         const toISOStringOrNull = (date: any): string | null => {
             if (date === null || date === undefined || date === '') return null;
             const d = new Date(date);
@@ -353,31 +360,38 @@ export const useSupabaseData = (offlineMode: boolean) => {
             const d = new Date(date);
             return !isNaN(d.getTime()) ? d.toISOString() : new Date().toISOString();
         };
+        // FIX: Explicitly convert empty strings to null for text fields before upload.
+        // This ensures the database correctly interprets a cleared field as NULL,
+        // preventing sync issues where old data might reappear.
+        const textToNull = (val: any): string | null => {
+            return (val === undefined || val === null || String(val).trim() === '') ? null : String(val);
+        };
+
 
         try {
             // Map application's camelCase to database's snake_case before upserting.
             const clientsToUpsert = currentData.clients.map(({ cases, contactInfo, ...client }) => ({
                 ...client,
-                contact_info: contactInfo,
+                contact_info: textToNull(contactInfo),
             }));
 
             const casesToUpsert = currentData.clients.flatMap(c => c.cases.map(({ stages, clientName, opponentName, feeAgreement, ...caseItem }) => ({
                 ...caseItem,
                 client_id: c.id,
                 client_name: clientName,
-                opponent_name: opponentName,
-                fee_agreement: feeAgreement,
+                opponent_name: textToNull(opponentName),
+                fee_agreement: textToNull(feeAgreement),
             })));
 
             const stagesToUpsert = currentData.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.map(({ sessions, caseNumber, firstSessionDate, decisionDate, decisionNumber, decisionSummary, decisionNotes, ...stage }) => ({
                 ...stage,
                 case_id: cs.id,
-                case_number: caseNumber,
+                case_number: textToNull(caseNumber),
                 first_session_date: toISOStringOrNull(firstSessionDate),
                 decision_date: toISOStringOrNull(decisionDate),
-                decision_number: decisionNumber,
-                decision_summary: decisionSummary,
-                decision_notes: decisionNotes,
+                decision_number: textToNull(decisionNumber),
+                decision_summary: textToNull(decisionSummary),
+                decision_notes: textToNull(decisionNotes),
             }))));
 
             const sessionsToUpsert = currentData.clients.flatMap(c =>
@@ -388,22 +402,23 @@ export const useSupabaseData = (offlineMode: boolean) => {
                         }) => ({
                             ...session,
                             stage_id: st.id,
-                            case_number: caseNumber,
+                            case_number: textToNull(caseNumber),
                             client_name: clientName,
-                            opponent_name: opponentName,
-                            postponement_reason: postponementReason,
+                            opponent_name: textToNull(opponentName),
+                            postponement_reason: textToNull(postponementReason),
                             is_postponed: isPostponed,
                             date: toISOStringOrNow(date),
                             next_session_date: toISOStringOrNull(nextSessionDate),
-                            next_postponement_reason: nextPostponementReason,
+                            next_postponement_reason: textToNull(nextPostponementReason),
                         }))
                     )
                 )
             );
             
-            const adminTasksToUpsert = currentData.adminTasks.map(({ dueDate, ...task }) => ({
+            const adminTasksToUpsert = currentData.adminTasks.map(({ dueDate, location, ...task }) => ({
                 ...task,
-                due_date: toISOStringOrNow(dueDate)
+                due_date: toISOStringOrNow(dueDate),
+                location: textToNull(location),
             }));
             
             const appointmentsToUpsert = currentData.appointments.map(({ reminderTimeInMinutes, date, ...apt }) => ({
@@ -412,11 +427,12 @@ export const useSupabaseData = (offlineMode: boolean) => {
                 reminder_time_in_minutes: reminderTimeInMinutes
             }));
             
-            const accountingEntriesToUpsert = currentData.accountingEntries.map(({ clientId, caseId, clientName, date, ...entry }) => ({
+            const accountingEntriesToUpsert = currentData.accountingEntries.map(({ clientId, caseId, clientName, date, description, ...entry }) => ({
                 ...entry,
                 date: toISOStringOrNow(date),
-                client_id: clientId,
-                case_id: caseId,
+                description: textToNull(description),
+                client_id: textToNull(clientId),
+                case_id: textToNull(caseId),
                 client_name: clientName,
             }));
 
