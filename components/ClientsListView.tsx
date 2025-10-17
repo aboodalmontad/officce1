@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
-import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon, GavelIcon, BuildingLibraryIcon } from './icons';
+import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon, GavelIcon, BuildingLibraryIcon, ShareIcon } from './icons';
 import SessionsTable from './SessionsTable';
 import CaseAccounting from './CaseAccounting';
 import { formatDate } from '../utils/dateUtils';
@@ -51,6 +51,20 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
                 const description = `متابعة ملف الموكل: ${client.name}.\nمعلومات الاتصال: ${client.contactInfo || 'لا يوجد'}.`;
                 props.onOpenAdminTaskModal({ task: description });
             }
+        },
+        {
+            label: 'مشاركة عبر واتساب',
+            icon: <ShareIcon className="w-4 h-4" />,
+            onClick: () => {
+                const message = [
+                    `*ملف موكل:*`,
+                    `*الاسم:* ${client.name}`,
+                    `*معلومات الاتصال:* ${client.contactInfo || 'لا يوجد'}`,
+                    `*عدد القضايا:* ${client.cases.length}`
+                ].join('\n');
+                const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+                window.open(whatsappUrl, '_blank');
+            }
         }];
         props.showContextMenu(event, menuItems);
     };
@@ -64,6 +78,22 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
                  const description = `متابعة قضية "${caseItem.subject}" (الموكل: ${client.name} ضد ${caseItem.opponentName}).\nالحالة: ${statusMap[caseItem.status]}.\nالاتفاق المالي: ${caseItem.feeAgreement || 'لم يحدد'}.`;
                 props.onOpenAdminTaskModal({ task: description });
             }
+        },
+        {
+            label: 'مشاركة عبر واتساب',
+            icon: <ShareIcon className="w-4 h-4" />,
+            onClick: () => {
+                const message = [
+                    `*ملف قضية:*`,
+                    `*الموضوع:* ${caseItem.subject}`,
+                    `*الموكل:* ${client.name}`,
+                    `*الخصم:* ${caseItem.opponentName}`,
+                    `*الحالة:* ${statusMap[caseItem.status]}`,
+                    `*الاتفاق المالي:* ${caseItem.feeAgreement || 'لم يحدد'}`
+                ].join('\n');
+                const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+                window.open(whatsappUrl, '_blank');
+            }
         }];
         props.showContextMenu(event, menuItems);
     };
@@ -75,6 +105,20 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
             onClick: () => {
                 const description = `متابعة مرحلة قضية "${caseItem.subject}" في محكمة ${stage.court} (أساس: ${stage.caseNumber}).`;
                 props.onOpenAdminTaskModal({ task: description });
+            }
+        },
+        {
+            label: 'مشاركة عبر واتساب',
+            icon: <ShareIcon className="w-4 h-4" />,
+            onClick: () => {
+                const message = [
+                    `*مرحلة قضائية:*`,
+                    `*القضية:* ${caseItem.subject}`,
+                    `*المحكمة:* ${stage.court}`,
+                    `*رقم الأساس:* ${stage.caseNumber}`
+                ].join('\n');
+                const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+                window.open(whatsappUrl, '_blank');
             }
         }];
         props.showContextMenu(event, menuItems);
@@ -90,6 +134,22 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
                     task: description,
                     assignee: session.assignee,
                 });
+            }
+        },
+        {
+            label: 'مشاركة عبر واتساب',
+            icon: <ShareIcon className="w-4 h-4" />,
+            onClick: () => {
+                const message = [
+                    `*جلسة قضائية:*`,
+                    `*القضية:* ${session.clientName} ضد ${session.opponentName}`,
+                    `*المحكمة:* ${session.court} (أساس: ${session.caseNumber})`,
+                    `*التاريخ:* ${formatDate(session.date)}`,
+                    `*المسؤول:* ${session.assignee || 'غير محدد'}`,
+                    `*سبب التأجيل السابق:* ${session.postponementReason || 'لا يوجد'}`
+                ].join('\n');
+                const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+                window.open(whatsappUrl, '_blank');
             }
         }];
         props.showContextMenu(event, menuItems);

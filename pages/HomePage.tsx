@@ -2,7 +2,7 @@ import * as React from 'react';
 import Calendar from '../components/Calendar';
 import { Session, AdminTask, Appointment, Stage, Client } from '../types';
 import { formatDate, isSameDay, isBeforeToday } from '../utils/dateUtils';
-import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, CalendarIcon, ChevronLeftIcon, ScaleIcon, BuildingLibraryIcon } from '../components/icons';
+import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, CalendarIcon, ChevronLeftIcon, ScaleIcon, BuildingLibraryIcon, ShareIcon } from '../components/icons';
 import SessionsTable from '../components/SessionsTable';
 import PrintableReport from '../components/PrintableReport';
 import { printElement } from '../utils/printUtils';
@@ -242,6 +242,20 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, 
             )
         );
         setEditingAssigneeTaskId(null); // Exit edit mode
+    };
+
+    const handleShareTask = (task: AdminTask) => {
+        const message = [
+            `*مهمة إدارية:*`,
+            `*المهمة:* ${task.task}`,
+            `*المكان:* ${task.location || 'غير محدد'}`,
+            `*تاريخ الاستحقاق:* ${formatDate(task.dueDate)}`,
+            `*الأهمية:* ${importanceMapAdminTasks[task.importance]?.text}`,
+            `*المسؤول:* ${task.assignee || 'غير محدد'}`
+        ].join('\n');
+
+        const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+        window.open(whatsappUrl, '_blank');
     };
 
     // --- Drag and Drop Handlers ---
@@ -633,6 +647,21 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, 
                         importance: appointment.importance,
                     });
                 }
+            },
+            {
+                label: 'مشاركة عبر واتساب',
+                icon: <ShareIcon className="w-4 h-4" />,
+                onClick: () => {
+                    const message = [
+                        `*موعد:* ${appointment.title}`,
+                        `*التاريخ:* ${formatDate(appointment.date)}`,
+                        `*الوقت:* ${formatTime(appointment.time)}`,
+                        `*المسؤول:* ${appointment.assignee || 'غير محدد'}`,
+                        `*الأهمية:* ${importanceMap[appointment.importance]?.text}`
+                    ].join('\n');
+                    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+                    window.open(whatsappUrl, '_blank');
+                }
             }
         ];
         showContextMenu(event, menuItems);
@@ -649,6 +678,22 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, 
                         task: description,
                         assignee: session.assignee,
                     });
+                }
+            },
+            {
+                label: 'مشاركة عبر واتساب',
+                icon: <ShareIcon className="w-4 h-4" />,
+                onClick: () => {
+                    const message = [
+                        `*جلسة قضائية:*`,
+                        `*القضية:* ${session.clientName} ضد ${session.opponentName}`,
+                        `*المحكمة:* ${session.court} (أساس: ${session.caseNumber})`,
+                        `*التاريخ:* ${formatDate(session.date)}`,
+                        `*المسؤول:* ${session.assignee || 'غير محدد'}`,
+                        `*سبب التأجيل السابق:* ${session.postponementReason || 'لا يوجد'}`
+                    ].join('\n');
+                    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+                    window.open(whatsappUrl, '_blank');
                 }
             }
         ];
@@ -866,6 +911,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, 
                                                                 </span>
                                                             </td>
                                                             <td className="px-6 py-4 flex items-center gap-2">
+                                                                <button onClick={() => handleShareTask(task)} className="p-2 text-gray-500 hover:text-green-600" title="مشاركة عبر واتساب"><ShareIcon className="w-4 h-4" /></button>
                                                                 <button onClick={() => onOpenAdminTaskModal(task)} className="p-2 text-gray-500 hover:text-blue-600"><PencilIcon className="w-4 h-4" /></button>
                                                                 <button onClick={() => openDeleteTaskModal(task)} className="p-2 text-gray-500 hover:text-red-600"><TrashIcon className="w-4 h-4" /></button>
                                                             </td>
