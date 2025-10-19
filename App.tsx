@@ -220,6 +220,17 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const [forceShowSetup, setForceShowSetup] = React.useState(false);
     const [initialInvoiceData, setInitialInvoiceData] = React.useState<{ clientId: string; caseId?: string } | undefined>();
     const isOnline = useOnlineStatus();
+
+    React.useEffect(() => {
+        if ('serviceWorker' in navigator) {
+            const swUrl = `${location.origin}/sw.js`;
+            navigator.serviceWorker.register(swUrl).then(registration => {
+                console.log('SW registered from React: ', registration);
+            }).catch(registrationError => {
+                console.log('SW registration failed from React: ', registrationError);
+            });
+        }
+    }, []);
     
     React.useEffect(() => {
         const supabase = getSupabaseClient();
