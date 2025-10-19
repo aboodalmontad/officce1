@@ -8,7 +8,6 @@ const AccountingPage = React.lazy(() => import('./pages/AccountingPage'));
 const InvoicesPage = React.lazy(() => import('./pages/InvoicesPage'));
 const ReportsPage = React.lazy(() => import('./pages/ReportsPage'));
 const SettingsPage = React.lazy(() => import('./pages/SettingsPage'));
-const ImageProcessorPage = React.lazy(() => import('./pages/ImageProcessorPage'));
 const AuthPage = React.lazy(() => import('./pages/AuthPage'));
 const AdminDashboard = React.lazy(() => import('./pages/AdminDashboard'));
 const PendingApprovalPage = React.lazy(() => import('./pages/PendingApprovalPage'));
@@ -16,7 +15,7 @@ const SubscriptionExpiredPage = React.lazy(() => import('./pages/SubscriptionExp
 
 import SetupWizard from './components/SetupWizard';
 import { useSupabaseData, SyncStatus, APP_DATA_KEY } from './hooks/useSupabaseData';
-import { HomeIcon, UserIcon, CalculatorIcon, ChartBarIcon, Cog6ToothIcon, ArrowPathIcon, WifiIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, CloudIcon, ExclamationTriangleIcon, ServerIcon, CloudArrowDownIcon, CloudArrowUpIcon, DocumentTextIcon, PowerIcon, ChevronLeftIcon, PhotoIcon } from './components/icons';
+import { HomeIcon, UserIcon, CalculatorIcon, ChartBarIcon, Cog6ToothIcon, ArrowPathIcon, WifiIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, CloudIcon, ExclamationTriangleIcon, ServerIcon, CloudArrowDownIcon, CloudArrowUpIcon, DocumentTextIcon, PowerIcon, ChevronLeftIcon } from './components/icons';
 import { useAnalysis } from './hooks/useSync';
 import ContextMenu, { MenuItem } from './components/ContextMenu';
 import AdminTaskModal from './components/AdminTaskModal';
@@ -25,7 +24,7 @@ import { getSupabaseClient } from './supabaseClient';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 
 
-type Page = 'home' | 'clients' | 'accounting' | 'invoices' | 'reports' | 'settings' | 'imageProcessor';
+type Page = 'home' | 'clients' | 'accounting' | 'invoices' | 'reports' | 'settings';
 
 interface AppProps {
     onRefresh: () => void;
@@ -101,7 +100,6 @@ const Navbar: React.FC<{ currentPage: Page, setCurrentPage: (page: Page) => void
     const navItems = [
         { id: 'home', label: 'الرئيسية', icon: <HomeIcon className="w-5 h-5" /> },
         { id: 'clients', label: 'الموكلين', icon: <UserIcon className="w-5 h-5" /> },
-        { id: 'imageProcessor', label: 'معالج الصور', icon: <PhotoIcon className="w-5 h-5" /> },
         { 
             id: 'accounting-group', 
             label: 'المحاسبة', 
@@ -392,7 +390,6 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
             case 'accounting': pageComponent = <AccountingPage accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} clients={clients} />; break;
             case 'invoices': pageComponent = <InvoicesPage invoices={invoices} setInvoices={setInvoices} clients={clients} initialInvoiceData={initialInvoiceData} clearInitialInvoiceData={clearInitialInvoiceData} />; break;
             case 'reports': pageComponent = <ReportsPage clients={clients} accountingEntries={accountingEntries} />; break;
-            case 'imageProcessor': pageComponent = <ImageProcessorPage />; break;
             case 'settings': pageComponent = <SettingsPage setFullData={setFullData} analysisStatus={analysisStatus} lastAnalysis={lastAnalysis} triggerAnalysis={triggerAnalysis} assistants={assistants} setAssistants={setAssistants} analysisReport={analysisReport} offlineMode={offlineMode} setOfflineMode={setOfflineMode} />; break;
             default: pageComponent = <HomePage appointments={appointments} clients={clients} setClients={setClients} allSessions={allSessions} setAppointments={setAppointments} adminTasks={adminTasks} setAdminTasks={setAdminTasks} assistants={assistants} {...commonProps} />;
         }
