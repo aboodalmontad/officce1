@@ -7,6 +7,7 @@ import { formatDate } from '../utils/dateUtils';
 import PrintableClientReport from '../components/PrintableClientReport';
 import { printElement } from '../utils/printUtils';
 import { MenuItem } from '../components/ContextMenu';
+import { useDebounce } from '../hooks/useDebounce';
 
 interface ClientsPageProps {
     clients: Client[];
@@ -33,6 +34,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
     const [modal, setModal] = React.useState<{ type: 'client' | 'case' | 'stage' | 'session' | null, context?: any, isEditing: boolean }>({ type: null, isEditing: false });
     const [formData, setFormData] = React.useState<any>({});
     const [searchQuery, setSearchQuery] = React.useState('');
+    const debouncedSearchQuery = useDebounce(searchQuery, 300);
     const [viewMode, setViewMode] = React.useState<'tree' | 'list'>('tree');
     const [isDeleteSessionModalOpen, setIsDeleteSessionModalOpen] = React.useState(false);
     const [sessionToDelete, setSessionToDelete] = React.useState<{ sessionId: string, stageId: string, caseId: string, clientId: string, message: string } | null>(null);
@@ -56,8 +58,8 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
 
 
     const filteredClients = React.useMemo(() => {
-        if (!searchQuery) return clients;
-        const lowercasedQuery = searchQuery.toLowerCase();
+        if (!debouncedSearchQuery) return clients;
+        const lowercasedQuery = debouncedSearchQuery.toLowerCase();
 
         return clients.filter(client => {
             // Search client info
@@ -80,7 +82,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
                 )
             );
         });
-    }, [clients, searchQuery]);
+    }, [clients, debouncedSearchQuery]);
 
 
     const handleOpenModal = (type: 'client' | 'case' | 'stage' | 'session', isEditing = false, context: any = {}) => {

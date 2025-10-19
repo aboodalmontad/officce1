@@ -360,4 +360,4 @@ const ClientsTreeView: React.FC<ClientsTreeViewProps> = (props) => {
     );
 };
 
-export default ClientsTreeView;
+export default React.memo(ClientsTreeView);

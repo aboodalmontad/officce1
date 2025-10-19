@@ -114,4 +114,4 @@ const Calendar: React.FC<CalendarProps> = ({ onDateSelect, selectedDate, session
     );
 };
 
-export default Calendar;
+export default React.memo(Calendar);

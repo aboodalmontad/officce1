@@ -7,6 +7,7 @@ import SessionsTable from '../components/SessionsTable';
 import PrintableReport from '../components/PrintableReport';
 import { printElement } from '../utils/printUtils';
 import { MenuItem } from '../components/ContextMenu';
+import { useDebounce } from '../hooks/useDebounce';
 
 const importanceMap: { [key: string]: { text: string, className: string } } = {
     normal: { text: 'عادي', className: 'bg-gray-100 text-gray-800' },
@@ -31,7 +32,7 @@ const formatTime = (time: string) => {
     return `${finalHours}:${minutes} ${ampm}`;
 };
 
-const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointment: () => void, onEdit: (appointment: Appointment) => void, onDelete: (appointment: Appointment) => void, onContextMenu: (event: React.MouseEvent, appointment: Appointment) => void }> = ({ appointments, onAddAppointment, onEdit, onDelete, onContextMenu }) => (
+const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointment: () => void, onEdit: (appointment: Appointment) => void, onDelete: (appointment: Appointment) => void, onContextMenu: (event: React.MouseEvent, appointment: Appointment) => void }> = React.memo(({ appointments, onAddAppointment, onEdit, onDelete, onContextMenu }) => (
     <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="flex justify-between items-center p-4 bg-gray-50 border-b">
             <h3 className="text-lg font-bold">سجل المواعيد</h3>
@@ -74,7 +75,7 @@ const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointmen
             </div>
         ) : <p className="p-4 text-gray-500">لا توجد مواعيد لهذا اليوم.</p>}
     </div>
-);
+));
 
 interface HomePageProps {
     appointments: Appointment[];
@@ -100,6 +101,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, 
 
     const [activeTaskTab, setActiveTaskTab] = React.useState<'pending' | 'completed'>('pending');
     const [adminTaskSearch, setAdminTaskSearch] = React.useState('');
+    const debouncedAdminTaskSearch = useDebounce(adminTaskSearch, 300);
     const [isDeleteAppointmentModalOpen, setIsDeleteAppointmentModalOpen] = React.useState(false);
     const [appointmentToDelete, setAppointmentToDelete] = React.useState<Appointment | null>(null);
     const [isDeleteTaskModalOpen, setIsDeleteTaskModalOpen] = React.useState(false);
@@ -562,7 +564,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, 
     const groupedTasks: Record<string, AdminTask[]> = React.useMemo(() => {
         const isCompleted = activeTaskTab === 'completed';
         const filtered = adminTasks.filter(task => {
-            const searchLower = adminTaskSearch.toLowerCase();
+            const searchLower = debouncedAdminTaskSearch.toLowerCase();
             const matchesSearch = searchLower === '' ||
                 task.task.toLowerCase().includes(searchLower) ||
                 (task.assignee && task.assignee.toLowerCase().includes(searchLower)) ||
@@ -595,7 +597,7 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, 
             return acc;
         }, {} as Record<string, AdminTask[]>);
     
-    }, [adminTasks, activeTaskTab, adminTaskSearch]);
+    }, [adminTasks, activeTaskTab, debouncedAdminTaskSearch]);
     
     React.useEffect(() => {
         const newLocations = Object.keys(groupedTasks);

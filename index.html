@@ -40,6 +40,39 @@
         .animate-shake {
             animation: shake 0.5s ease-in-out;
         }
+        /* Loader styles */
+        #app-loader {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #f9fafb; /* bg-gray-50 */
+            color: #4b5563; /* text-gray-600 */
+        }
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 5px solid #d1d5db; /* border-gray-300 */
+            border-bottom-color: #3b82f6; /* border-blue-500 */
+            border-radius: 50%;
+            display: inline-block;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+        }
+        #app-loader p {
+            margin-top: 16px;
+            font-size: 1.125rem; /* text-lg */
+            font-weight: 500; /* font-medium */
+        }
+        @keyframes rotation {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
     </style>
     <!-- Import Map -->
     <script type="importmap">
@@ -58,7 +91,12 @@
   </head>
   <body class="bg-gray-100">
     <!-- The root element for React -->
-    <div id="root"></div>
+    <div id="root">
+        <div id="app-loader">
+            <div class="spinner"></div>
+            <p>جاري تحميل التطبيق...</p>
+        </div>
+    </div>
     <!-- The main script for the application -->
     <script type="module" src="./index.tsx"></script>
     <!-- Service Worker Registration -->

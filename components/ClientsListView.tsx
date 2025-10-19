@@ -345,4 +345,4 @@ const ClientsListView: React.FC<ClientsListViewProps> = (props) => {
     );
 };
 
-export default ClientsListView;
+export default React.memo(ClientsListView);

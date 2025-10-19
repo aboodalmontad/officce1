@@ -1,14 +1,17 @@
 import * as React from 'react';
-import HomePage from './pages/HomePage';
-import ClientsPage from './pages/ClientsPage';
-import AccountingPage from './pages/AccountingPage';
-import InvoicesPage from './pages/InvoicesPage';
-import ReportsPage from './pages/ReportsPage';
-import SettingsPage from './pages/SettingsPage';
-import AuthPage from './pages/AuthPage';
-import AdminDashboard from './pages/AdminDashboard';
-import PendingApprovalPage from './pages/PendingApprovalPage';
-import SubscriptionExpiredPage from './pages/SubscriptionExpiredPage';
+import { Session } from '@supabase/supabase-js';
+
+// Lazy load page components for code splitting and faster initial load
+const HomePage = React.lazy(() => import('./pages/HomePage'));
+const ClientsPage = React.lazy(() => import('./pages/ClientsPage'));
+const AccountingPage = React.lazy(() => import('./pages/AccountingPage'));
+const InvoicesPage = React.lazy(() => import('./pages/InvoicesPage'));
+const ReportsPage = React.lazy(() => import('./pages/ReportsPage'));
+const SettingsPage = React.lazy(() => import('./pages/SettingsPage'));
+const AuthPage = React.lazy(() => import('./pages/AuthPage'));
+const AdminDashboard = React.lazy(() => import('./pages/AdminDashboard'));
+const PendingApprovalPage = React.lazy(() => import('./pages/PendingApprovalPage'));
+const SubscriptionExpiredPage = React.lazy(() => import('./pages/SubscriptionExpiredPage'));
 
 import SetupWizard from './components/SetupWizard';
 import { useSupabaseData, SyncStatus, APP_DATA_KEY } from './hooks/useSupabaseData';
@@ -18,7 +21,6 @@ import ContextMenu, { MenuItem } from './components/ContextMenu';
 import AdminTaskModal from './components/AdminTaskModal';
 import { AdminTask, Profile } from './types';
 import { getSupabaseClient } from './supabaseClient';
-import { Session } from '@supabase/supabase-js';
 
 
 type Page = 'home' | 'clients' | 'accounting' | 'invoices' | 'reports' | 'settings';
@@ -27,9 +29,9 @@ interface AppProps {
     onRefresh: () => void;
 }
 
-const SyncStatusIndicator: React.FC<{ status: SyncStatus, lastError: string | null, onSync: () => void, isDirty: boolean }> = ({ status, lastError, onSync, isDirty }) => {
+const SyncStatusIndicator: React.FC<{ status: SyncStatus, lastError: string | null, isDirty: boolean }> = ({ status, lastError, isDirty }) => {
     
-    let displayStatus: { icon: React.ReactNode; text: string; color: string; error?: string; showSyncButton?: boolean } = {
+    let displayStatus: { icon: React.ReactNode; text: string; color: string; error?: string; } = {
         icon: <WifiIcon className="w-5 h-5" />, text: 'متصل', color: 'text-gray-500'
     };
 
@@ -51,13 +53,14 @@ const SyncStatusIndicator: React.FC<{ status: SyncStatus, lastError: string | nu
         }
     } else if (status === 'synced') {
         if (isDirty) {
-            displayStatus = { icon: <CloudArrowUpIcon className="w-5 h-5 text-yellow-600" />, text: 'توجد تغييرات غير متزامنة', color: 'text-yellow-800', showSyncButton: true };
+            // When dirty, auto-sync will trigger. Show syncing state immediately for better UX.
+            displayStatus = { icon: <ArrowPathIcon className="w-5 h-5 animate-spin" />, text: 'جاري المزامنة...', color: 'text-blue-500' };
         } else {
             displayStatus = { icon: <CheckCircleIcon className="w-5 h-5" />, text: 'تمت المزامنة', color: 'text-green-500' };
         }
     }
 
-    const { icon, text, color, error, showSyncButton } = displayStatus;
+    const { icon, text, color, error } = displayStatus;
 
     return (
          <div className="flex items-center gap-4 text-sm">
@@ -65,21 +68,11 @@ const SyncStatusIndicator: React.FC<{ status: SyncStatus, lastError: string | nu
                 {icon}
                 <span className="hidden sm:inline">{text}</span>
             </div>
-            {showSyncButton && (
-                <button
-                    onClick={onSync}
-                    className="flex animate-fade-in items-center gap-1 px-3 py-1 bg-yellow-100 text-yellow-800 text-xs font-semibold rounded-lg hover:bg-yellow-200 transition-colors"
-                    title="اضغط لمزامنة التغييرات المحلية مع السحابة."
-                >
-                    <CloudIcon className="w-4 h-4" />
-                    <span>مزامنة الآن</span>
-                </button>
-            )}
         </div>
     );
 };
 
-const Navbar: React.FC<{ currentPage: Page, setCurrentPage: (page: Page) => void, syncStatus: SyncStatus, lastSyncError: string | null, onSync: () => void, isDirty: boolean, onLogout: () => void, profile: Profile | null }> = ({ currentPage, setCurrentPage, syncStatus, lastSyncError, onSync, isDirty, onLogout, profile }) => {
+const Navbar: React.FC<{ currentPage: Page, setCurrentPage: (page: Page) => void, syncStatus: SyncStatus, lastSyncError: string | null, isDirty: boolean, onLogout: () => void, profile: Profile | null }> = ({ currentPage, setCurrentPage, syncStatus, lastSyncError, isDirty, onLogout, profile }) => {
     const [openDropdown, setOpenDropdown] = React.useState<string | null>(null);
     const navRef = React.useRef<HTMLElement>(null);
 
@@ -179,7 +172,7 @@ const Navbar: React.FC<{ currentPage: Page, setCurrentPage: (page: Page) => void
                 </nav>
 
                 <div className="flex-shrink-0 flex items-center gap-4">
-                    <SyncStatusIndicator status={syncStatus} lastError={lastSyncError} onSync={onSync} isDirty={isDirty} />
+                    <SyncStatusIndicator status={syncStatus} lastError={lastSyncError} isDirty={isDirty} />
                     <button
                         onClick={onLogout}
                         className="p-2 text-gray-500 rounded-full hover:bg-gray-200 hover:text-gray-800 transition-colors"
@@ -201,6 +194,13 @@ const Navbar: React.FC<{ currentPage: Page, setCurrentPage: (page: Page) => void
     );
 };
 
+const MemoizedNavbar = React.memo(Navbar);
+
+const PageLoader: React.FC = () => (
+    <div className="flex justify-center items-center h-96">
+        <div className="spinner"></div>
+    </div>
+);
 
 const App: React.FC<AppProps> = ({ onRefresh }) => {
     const [currentPage, setCurrentPage] = React.useState<Page>('home');
@@ -280,6 +280,13 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         allSessions, setFullData, syncStatus, forceSync, manualSync, lastSyncError, isDirty
     } = useSupabaseData(offlineMode, session?.user ?? null);
     
+    // Automatically sync when changes are detected and the app is in a synced state.
+    React.useEffect(() => {
+        if (isDirty && syncStatus === 'synced') {
+            manualSync();
+        }
+    }, [isDirty, syncStatus, manualSync]);
+
     const { analysisStatus, lastAnalysis, triggerAnalysis, analysisReport } = useAnalysis();
 
     const [adminTaskModalState, setAdminTaskModalState] = React.useState<{ isOpen: boolean; initialData?: any }>({ isOpen: false });
@@ -375,19 +382,20 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
 
         return (
             <div dir="rtl">
-                <Navbar 
+                <MemoizedNavbar 
                     currentPage={currentPage} 
                     setCurrentPage={setCurrentPage}
                     syncStatus={syncStatus}
                     lastSyncError={lastSyncError}
-                    onSync={manualSync}
                     isDirty={isDirty}
                     onLogout={handleLogout}
                     profile={profile}
                 />
                 <div className="p-4 pt-32 md:pt-20">
                     <main>
-                        {pageComponent}
+                         <React.Suspense fallback={<PageLoader />}>
+                            {pageComponent}
+                        </React.Suspense>
                     </main>
                 </div>
 
@@ -409,7 +417,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     };
     
     if (isAuthLoading) {
-        return <div className="flex items-center justify-center min-h-screen">جاري تحميل التطبيق...</div>;
+        return null;
     }
     
     if (forceShowSetup || syncStatus === 'unconfigured' || syncStatus === 'uninitialized') {
@@ -417,17 +425,17 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     }
     
     if (!session) {
-        return <AuthPage onForceSetup={() => setForceShowSetup(true)} />;
+        return <React.Suspense fallback={<PageLoader />}><AuthPage onForceSetup={() => setForceShowSetup(true)} /></React.Suspense>;
     }
     
     // Role-based routing
     if (profile?.role === 'admin') {
-        return <AdminDashboard onLogout={handleLogout} />;
+        return <React.Suspense fallback={<PageLoader />}><AdminDashboard onLogout={handleLogout} /></React.Suspense>;
     }
     
     // User-specific flow
     if (profile && !profile.is_approved) {
-        return <PendingApprovalPage onLogout={handleLogout} />;
+        return <React.Suspense fallback={<PageLoader />}><PendingApprovalPage onLogout={handleLogout} /></React.Suspense>;
     }
     
     if (profile) {
@@ -446,7 +454,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         // 2. The subscription hasn't started yet.
         // 3. The subscription has already ended.
         if (!subStartDate || !subEndDate || today < subStartDate || today > subEndDate) {
-            return <SubscriptionExpiredPage onLogout={handleLogout} />;
+            return <React.Suspense fallback={<PageLoader />}><SubscriptionExpiredPage onLogout={handleLogout} /></React.Suspense>;
         }
     }
 
