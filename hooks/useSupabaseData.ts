@@ -336,13 +336,8 @@ export const useSupabaseData = (offlineMode: boolean, user: User | null) => {
     }, [userId, isOnline, offlineMode]);
 
     React.useEffect(() => {
-        // To prevent data loss, we only automatically fetch data from the server
-        // if there are no unsynced local changes. If data is "dirty", the user
-        // must use the "Sync Now" button to upload their changes first.
-        if (!isDirty) {
-            performCheckAndFetch();
-        }
-    }, [performCheckAndFetch, isDirty]);
+        performCheckAndFetch();
+    }, [performCheckAndFetch]);
 
 
     const uploadData = React.useCallback(async (currentData: AppData) => {

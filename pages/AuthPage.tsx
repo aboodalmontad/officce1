@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { getSupabaseClient } from '../supabaseClient';
-import { ExclamationCircleIcon, EyeIcon, EyeSlashIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, ExclamationTriangleIcon } from '../components/icons';
+import { ExclamationCircleIcon, EyeIcon, EyeSlashIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon } from '../components/icons';
 
 /*
  * =============================================================================
@@ -52,8 +52,6 @@ const AuthPage: React.FC<AuthPageProps> = ({ onForceSetup }) => {
     const [info, setInfo] = React.useState<string | null>(null);
     const [authFailed, setAuthFailed] = React.useState(false); // For highlighting fields on auth failure
     const [showPassword, setShowPassword] = React.useState(false);
-    const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = React.useState(false);
-
 
     const [form, setForm] = React.useState({
         fullName: '',
@@ -82,31 +80,10 @@ const AuthPage: React.FC<AuthPageProps> = ({ onForceSetup }) => {
         if (info) setInfo(null);
     };
 
-    const validateForm = (): boolean => {
-         const normalizedMobile = normalizeMobile(form.mobile);
-
-        // Add validation for the normalized number
-        if (!/^(09)\d{8}$/.test(normalizedMobile)) {
-            setError('رقم الجوال غير صالح. يجب أن يكون رقماً سورياً صحيحاً (مثال: 0912345678).');
-            return false;
-        }
-        
-        // Add validation for password length
-        if (form.password.length < 6) {
-            setError('يجب أن تكون كلمة المرور 6 أحرف على الأقل.');
-            return false;
-        }
-        return true;
-    }
-
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!supabase) {
             setError("Supabase client is not available.");
-            return;
-        }
-
-        if (!validateForm()) {
             return;
         }
 
@@ -117,6 +94,20 @@ const AuthPage: React.FC<AuthPageProps> = ({ onForceSetup }) => {
         setAuthFailed(false); // Reset on every new attempt
 
         const normalizedMobile = normalizeMobile(form.mobile);
+
+        // Add validation for the normalized number
+        if (!/^(09)\d{8}$/.test(normalizedMobile)) {
+            setError('رقم الجوال غير صالح. يجب أن يكون رقماً سورياً صحيحاً (مثال: 0912345678).');
+            setLoading(false);
+            return;
+        }
+        
+        // Add validation for password length
+        if (form.password.length < 6) {
+            setError('يجب أن تكون كلمة المرور 6 أحرف على الأقل.');
+            setLoading(false);
+            return;
+        }
 
         // This format `sy{mobile_number}@mail.com` uses a generic, known email provider domain ('mail.com')
         // and a simple prefix to maximize the chances of passing validation checks.
@@ -151,26 +142,10 @@ const AuthPage: React.FC<AuthPageProps> = ({ onForceSetup }) => {
             if (error && error.message) {
                 const lowerMsg = String(error.message).toLowerCase();
 
+                // Special handling for "User already registered" to provide a better UX flow.
                 if (lowerMsg.includes('user already registered')) {
-                    setError(
-                        <>
-                            <span>هذا الرقم مسجل بالفعل.</span>
-                            <a
-                                href="#"
-                                onClick={(e) => {
-                                    e.preventDefault();
-                                    setIsLoginView(true);
-                                    setError(null);
-                                    setMessage(null);
-                                    setInfo(null);
-                                    setAuthFailed(false);
-                                }}
-                                className="font-semibold underline hover:text-red-800 ms-2"
-                            >
-                                اضغط هنا لتسجيل الدخول
-                            </a>
-                        </>
-                    );
+                    setIsLoginView(true);
+                    setInfo('هذا الرقم مسجل بالفعل. تم تحويلك إلى شاشة تسجيل الدخول.');
                     setLoading(false);
                     return; // Exit early
                 }
@@ -218,210 +193,95 @@ const AuthPage: React.FC<AuthPageProps> = ({ onForceSetup }) => {
             setLoading(false);
         }
     };
-    
-    const handleDeleteAccount = async () => {
-        if (!supabase) return;
-        if (!validateForm()) {
-            setIsDeleteConfirmOpen(false);
-            return;
-        }
-    
-        setLoading(true);
-        setError(null);
-        setMessage(null);
-    
-        const normalizedMobile = normalizeMobile(form.mobile);
-        const email = `sy${normalizedMobile}@mail.com`;
-    
-        try {
-            // 1. Sign in to get a session and prove ownership
-            const { error: signInError } = await supabase.auth.signInWithPassword({
-                email: email,
-                password: form.password,
-            });
-            if (signInError) throw signInError;
-            // The user is now signed in.
 
-            // 2. Call the RPC to delete the account
-            const { error: rpcError } = await supabase.rpc('delete_user_account');
-            if (rpcError) {
-                // Manually sign out if RPC fails to avoid being stuck logged in
-                await supabase.auth.signOut();
-                throw rpcError;
-            }
-            
-            // The RPC will delete the user, which automatically signs them out.
-            setMessage('تم حذف حسابك وجميع بياناتك بنجاح. يمكنك الآن التسجيل من جديد بنفس الرقم.');
-            setIsDeleteConfirmOpen(false);
-            setForm({ fullName: '', mobile: '', password: '' });
-
-        } catch (error: any) {
-            console.error('Delete account error:', error);
-            if (String(error.message).toLowerCase().includes('invalid login credentials')) {
-                 setError('فشلت المصادقة. لا يمكن حذف الحساب. يرجى التحقق من رقم الجوال وكلمة المرور.');
-            } else {
-                 setError(`حدث خطأ أثناء حذف الحساب: ${error.message}`);
-            }
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const inputClasses = (isError: boolean) =>
-        `w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 transition-all ${
-        isError ? 'border-red-500 ring-red-300 animate-shake' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-300'
-        }`;
+    const DatabaseIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+        </svg>
+    );
 
     return (
-        <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-            <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-lg space-y-6 animate-fade-in">
+        <div className="flex items-center justify-center min-h-screen bg-gray-100">
+            <div className={`w-full max-w-sm p-8 space-y-6 bg-white rounded-lg shadow-md ${authFailed ? 'animate-shake' : ''}`}>
                 <div className="text-center">
-                    <h1 className="text-3xl font-bold text-gray-800">
-                        {isLoginView ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}
-                    </h1>
-                    <p className="text-gray-600 mt-2">
-                        {isLoginView ? 'مرحباً بعودتك!' : 'انضم إلينا لإدارة مكتبك بكفاءة.'}
+                    <h1 className="text-3xl font-bold text-gray-800">مكتب المحامي</h1>
+                    <p className="mt-2 text-gray-600">
+                        {isLoginView ? 'سجل الدخول للمتابعة' : 'إنشاء حساب جديد'}
                     </p>
                 </div>
-
-                {error && (
-                    <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md flex items-start gap-3">
-                        <ExclamationCircleIcon className="w-6 h-6 flex-shrink-0" />
-                        <div className="flex-grow text-sm">{error}</div>
-                    </div>
-                )}
-                {message && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded-md">{message}</div>}
-                {info && <div className="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded-md">{info}</div>}
-
-                <form onSubmit={handleAuth} className="space-y-4">
+                
+                <form className="space-y-6" onSubmit={handleAuth}>
                     {!isLoginView && (
-                        <div>
-                            <label className="text-sm font-medium text-gray-700">الاسم الكامل</label>
-                            <input
-                                type="text"
-                                name="fullName"
-                                value={form.fullName}
-                                onChange={handleInputChange}
-                                className={inputClasses(false)}
-                                placeholder="الاسم الكامل"
-                                required
-                            />
+                         <div>
+                            <label className="block text-sm font-medium text-gray-700">الاسم الكامل</label>
+                            <input name="fullName" type="text" value={form.fullName} onChange={handleInputChange} required className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md" />
                         </div>
                     )}
                     <div>
-                        <label className="text-sm font-medium text-gray-700">رقم الجوال</label>
-                        <input
-                            type="tel"
-                            name="mobile"
-                            value={form.mobile}
-                            onChange={handleInputChange}
-                            className={inputClasses(authFailed)}
-                            placeholder="09..."
-                            required
-                        />
+                        <label className="block text-sm font-medium text-gray-700">رقم الجوال</label>
+                        <input name="mobile" type="tel" value={form.mobile} onChange={handleInputChange} required className={`w-full px-3 py-2 mt-1 border rounded-md transition-colors ${authFailed ? 'border-red-500' : 'border-gray-300'}`} placeholder="09xxxxxxxx"/>
                     </div>
                     <div>
-                        <label className="text-sm font-medium text-gray-700">كلمة المرور</label>
-                        <div className="relative">
+                        <label className="block text-sm font-medium text-gray-700">كلمة المرور</label>
+                        <div className="relative mt-1">
                             <input
-                                type={showPassword ? 'text' : 'password'}
                                 name="password"
+                                type={showPassword ? 'text' : 'password'}
                                 value={form.password}
                                 onChange={handleInputChange}
-                                className={inputClasses(authFailed)}
-                                placeholder="••••••••"
                                 required
+                                className={`w-full ps-3 pe-10 py-2 border rounded-md transition-colors ${authFailed ? 'border-red-500' : 'border-gray-300'}`}
                             />
                             <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute inset-y-0 left-0 px-3 flex items-center text-gray-500"
+                                className="absolute inset-y-0 end-0 flex items-center pe-3 text-gray-500"
+                                aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
                             >
-                                {showPassword ? <EyeSlashIcon className="w-5 h-5"/> : <EyeIcon className="w-5 h-5"/>}
+                                {showPassword ? <EyeSlashIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
                             </button>
                         </div>
                     </div>
-
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-colors disabled:bg-blue-400"
-                    >
-                        {loading ? 'جاري التحميل...' : (isLoginView ? 'تسجيل الدخول' : 'إنشاء حساب')}
-                    </button>
-                </form>
-
-                <div className="text-center">
-                    <button
-                        onClick={() => {
-                            setIsLoginView(!isLoginView);
-                            setError(null);
-                            setMessage(null);
-                            setInfo(null);
-                            setAuthFailed(false);
-                        }}
-                        className="text-sm text-blue-600 hover:underline"
-                    >
-                        {isLoginView ? 'لا تملك حساباً؟ أنشئ واحداً' : 'لديك حساب بالفعل؟ سجل الدخول'}
-                    </button>
-                </div>
-
-                {isLoginView && (
-                    <div className="text-center pt-4 border-t">
-                         <button
-                            onClick={() => setIsDeleteConfirmOpen(true)}
-                            className="text-sm text-red-600 hover:underline"
-                        >
-                            حذف الحساب نهائياً
+                    
+                    {error && (
+                        <div className="flex items-start gap-3 p-3 text-sm text-red-700 bg-red-100 rounded-md">
+                            <ExclamationCircleIcon className="w-5 h-5 flex-shrink-0 mt-0.5"/>
+                            <div className="flex-1">
+                                {typeof error === 'string' ? <span className="whitespace-pre-wrap">{error}</span> : error}
+                            </div>
+                        </div>
+                    )}
+                     {message && (
+                        <div className="p-3 text-sm text-green-700 bg-green-100 rounded-md">
+                            {message}
+                        </div>
+                    )}
+                    {info && (
+                        <div className="p-3 text-sm text-blue-700 bg-blue-100 rounded-md">
+                            {info}
+                        </div>
+                    )}
+                    
+                    <div>
+                        <button type="submit" disabled={loading} className="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-blue-300">
+                            {loading ? 'جاري...' : (isLoginView ? 'تسجيل الدخول' : 'إنشاء حساب')}
                         </button>
                     </div>
-                )}
-            </div>
-
-            {isDeleteConfirmOpen && (
-                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={() => setIsDeleteConfirmOpen(false)}>
-                    <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-                        <div className="text-center">
-                            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
-                                <ExclamationTriangleIcon className="h-8 w-8 text-red-600" aria-hidden="true" />
-                            </div>
-                            <h3 className="text-2xl font-bold text-gray-900">
-                                تأكيد حذف الحساب
-                            </h3>
-                            <p className="text-gray-600 my-4">
-                                هل أنت متأكد من حذف حسابك نهائياً؟ <br />
-                                سيتم حذف جميع بياناتك السحابية (الموكلين، القضايا، إلخ). <br />
-                                <strong className="font-semibold">هذا الإجراء لا يمكن التراجع عنه.</strong>
-                                <br/><br/>
-                                للمتابعة، يرجى إعادة إدخال بيانات الدخول الخاصة بالحساب المراد حذفه.
-                            </p>
-                        </div>
-                        {error && (
-                            <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-3 my-4 rounded-md text-sm">
-                                {error}
-                            </div>
-                        )}
-                        <form onSubmit={(e) => { e.preventDefault(); handleDeleteAccount(); }} className="space-y-4">
-                             <div>
-                                <label className="text-sm font-medium text-gray-700">رقم الجوال</label>
-                                <input type="tel" name="mobile" value={form.mobile} onChange={handleInputChange} className={inputClasses(false)} placeholder="09..." required/>
-                            </div>
-                            <div>
-                                <label className="text-sm font-medium text-gray-700">كلمة المرور</label>
-                                <input type="password" name="password" value={form.password} onChange={handleInputChange} className={inputClasses(false)} placeholder="••••••••" required/>
-                            </div>
-                            <div className="mt-6 flex justify-center gap-4">
-                                <button type="button" className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300" onClick={() => setIsDeleteConfirmOpen(false)} disabled={loading}>
-                                    إلغاء
-                                </button>
-                                <button type="submit" className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700" disabled={loading}>
-                                    {loading ? 'جاري الحذف...' : 'نعم، قم بالحذف'}
-                                </button>
-                            </div>
-                        </form>
+                    
+                    <div className="text-sm text-center">
+                        <a href="#" onClick={(e) => { e.preventDefault(); setIsLoginView(!isLoginView); setError(null); setMessage(null); setInfo(null); setAuthFailed(false); }} className="font-medium text-blue-600 hover:text-blue-500">
+                            {isLoginView ? 'ليس لديك حساب؟ قم بإنشاء واحد' : 'لديك حساب بالفعل؟ سجل الدخول'}
+                        </a>
                     </div>
-                </div>
-            )}
+                </form>
+            </div>
+            <button
+                onClick={onForceSetup}
+                title="إظهار معالج تهيئة قاعدة البيانات"
+                className="fixed bottom-4 left-4 bg-yellow-500 text-white p-3 rounded-full shadow-lg hover:bg-yellow-600 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-yellow-400 z-50"
+            >
+                <DatabaseIcon />
+            </button>
         </div>
     );
 };

@@ -85,12 +85,7 @@ const ImageProcessorPage: React.FC = () => {
                 contents: { parts: [imagePart, textPart] },
             });
             
-            const resultText = response.text?.trim();
-            if (resultText) {
-                setExtractedText(resultText);
-            } else {
-                setError('لم يتم العثور على نص في الصورة، أو أن النص غير واضح.');
-            }
+            setExtractedText(response.text.trim());
 
         } catch (err) {
             console.error(err);
