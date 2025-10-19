@@ -182,7 +182,6 @@ export const useSupabaseData = (offlineMode: boolean, user: User | null) => {
     const [isDirty, setIsDirty] = React.useState(false);
     const isOnline = useOnlineStatus();
     const isSavingRef = React.useRef(false);
-    const saveTimeoutRef = React.useRef<number | null>(null);
 
     React.useEffect(() => {
         if (!userId) {
@@ -469,17 +468,21 @@ export const useSupabaseData = (offlineMode: boolean, user: User | null) => {
     }, [data, uploadData, performCheckAndFetch, isOnline, offlineMode]);
     
     React.useEffect(() => {
+        // This effect ensures data is immediately persisted to localStorage whenever it changes.
         if (!userId) return;
-        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = window.setTimeout(() => {
+        try {
             localStorage.setItem(getLocalStorageKey(), JSON.stringify(data));
-            if(isDirty) localStorage.setItem(`lawyerAppIsDirty_${userId}`, 'true');
-        }, 1500);
-
-        return () => {
-            if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-        };
-    }, [data, userId, isDirty]);
+            // Also persist the dirty status.
+            if (isDirty) {
+                localStorage.setItem(`lawyerAppIsDirty_${userId}`, 'true');
+            } else {
+                // Ensure the dirty flag is removed when the state is no longer dirty (e.g., after a sync).
+                localStorage.removeItem(`lawyerAppIsDirty_${userId}`);
+            }
+        } catch (e) {
+            console.error("Failed to save data to localStorage:", e);
+        }
+    }, [data, userId, isDirty]); // Re-run whenever data, user, or dirty state changes.
 
     const forceSync = React.useCallback(performCheckAndFetch, [performCheckAndFetch]);
 

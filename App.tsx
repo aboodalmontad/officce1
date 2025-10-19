@@ -21,6 +21,7 @@ import ContextMenu, { MenuItem } from './components/ContextMenu';
 import AdminTaskModal from './components/AdminTaskModal';
 import { AdminTask, Profile } from './types';
 import { getSupabaseClient } from './supabaseClient';
+import { useOnlineStatus } from './hooks/useOnlineStatus';
 
 
 type Page = 'home' | 'clients' | 'accounting' | 'invoices' | 'reports' | 'settings';
@@ -29,11 +30,9 @@ interface AppProps {
     onRefresh: () => void;
 }
 
-const SyncStatusIndicator: React.FC<{ status: SyncStatus, lastError: string | null, isDirty: boolean }> = ({ status, lastError, isDirty }) => {
+const SyncStatusIndicator: React.FC<{ status: SyncStatus, lastError: string | null, isDirty: boolean, onSync: () => void, isOnline: boolean }> = ({ status, lastError, isDirty, onSync, isOnline }) => {
     
-    let displayStatus: { icon: React.ReactNode; text: string; color: string; error?: string; } = {
-        icon: <WifiIcon className="w-5 h-5" />, text: 'متصل', color: 'text-gray-500'
-    };
+    let displayStatus: { icon: React.ReactNode; text: string; color: string; error?: string; };
 
     if (status === 'loading') {
         displayStatus = { icon: <ArrowPathIcon className="w-5 h-5 animate-spin" />, text: 'جاري التحميل...', color: 'text-gray-500' };
@@ -45,22 +44,23 @@ const SyncStatusIndicator: React.FC<{ status: SyncStatus, lastError: string | nu
         displayStatus = { icon: <ExclamationTriangleIcon className="w-5 h-5" />, text: 'فشل الإعداد', color: 'text-yellow-600' };
     } else if (status === 'uninitialized') {
         displayStatus = { icon: <ServerIcon className="w-5 h-5" />, text: 'البيانات غير مهيأة', color: 'text-yellow-600' };
-    } else if (status === 'offline') {
+    } else if (!isOnline) {
         if (isDirty) {
             displayStatus = { icon: <CloudArrowDownIcon className="w-5 h-5" />, text: 'التغييرات محفوظة محلياً', color: 'text-gray-700' };
         } else {
             displayStatus = { icon: <NoSymbolIcon className="w-5 h-5" />, text: 'أنت غير متصل', color: 'text-gray-500' };
         }
-    } else if (status === 'synced') {
+    } else { // isOnline
         if (isDirty) {
-            // When dirty, auto-sync will trigger. Show syncing state immediately for better UX.
-            displayStatus = { icon: <ArrowPathIcon className="w-5 h-5 animate-spin" />, text: 'جاري المزامنة...', color: 'text-blue-500' };
+            displayStatus = { icon: <CloudArrowUpIcon className="w-5 h-5" />, text: 'تغييرات غير متزامنة', color: 'text-yellow-600' };
         } else {
-            displayStatus = { icon: <CheckCircleIcon className="w-5 h-5" />, text: 'تمت المزامنة', color: 'text-green-500' };
+             displayStatus = { icon: <CheckCircleIcon className="w-5 h-5" />, text: 'تمت المزامنة', color: 'text-green-500' };
         }
     }
 
     const { icon, text, color, error } = displayStatus;
+
+    const showSyncButton = isOnline && isDirty && status !== 'syncing' && status !== 'loading';
 
     return (
          <div className="flex items-center gap-4 text-sm">
@@ -68,11 +68,20 @@ const SyncStatusIndicator: React.FC<{ status: SyncStatus, lastError: string | nu
                 {icon}
                 <span className="hidden sm:inline">{text}</span>
             </div>
+            {showSyncButton && (
+                <button
+                    onClick={onSync}
+                    className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5 animate-fade-in"
+                >
+                    <ArrowPathIcon className="w-4 h-4" />
+                    مزامنة الآن
+                </button>
+            )}
         </div>
     );
 };
 
-const Navbar: React.FC<{ currentPage: Page, setCurrentPage: (page: Page) => void, syncStatus: SyncStatus, lastSyncError: string | null, isDirty: boolean, onLogout: () => void, profile: Profile | null }> = ({ currentPage, setCurrentPage, syncStatus, lastSyncError, isDirty, onLogout, profile }) => {
+const Navbar: React.FC<{ currentPage: Page, setCurrentPage: (page: Page) => void, syncStatus: SyncStatus, lastSyncError: string | null, isDirty: boolean, onLogout: () => void, profile: Profile | null, onSync: () => void, isOnline: boolean }> = ({ currentPage, setCurrentPage, syncStatus, lastSyncError, isDirty, onLogout, profile, onSync, isOnline }) => {
     const [openDropdown, setOpenDropdown] = React.useState<string | null>(null);
     const navRef = React.useRef<HTMLElement>(null);
 
@@ -172,7 +181,7 @@ const Navbar: React.FC<{ currentPage: Page, setCurrentPage: (page: Page) => void
                 </nav>
 
                 <div className="flex-shrink-0 flex items-center gap-4">
-                    <SyncStatusIndicator status={syncStatus} lastError={lastSyncError} isDirty={isDirty} />
+                    <SyncStatusIndicator status={syncStatus} lastError={lastSyncError} isDirty={isDirty} onSync={onSync} isOnline={isOnline} />
                     <button
                         onClick={onLogout}
                         className="p-2 text-gray-500 rounded-full hover:bg-gray-200 hover:text-gray-800 transition-colors"
@@ -210,6 +219,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const [offlineMode, setOfflineMode] = React.useState(false);
     const [forceShowSetup, setForceShowSetup] = React.useState(false);
     const [initialInvoiceData, setInitialInvoiceData] = React.useState<{ clientId: string; caseId?: string } | undefined>();
+    const isOnline = useOnlineStatus();
     
     React.useEffect(() => {
         const supabase = getSupabaseClient();
@@ -279,13 +289,6 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         setClients, setAdminTasks, setAppointments, setAccountingEntries, setAssistants, setInvoices,
         allSessions, setFullData, syncStatus, forceSync, manualSync, lastSyncError, isDirty
     } = useSupabaseData(offlineMode, session?.user ?? null);
-    
-    // Automatically sync when changes are detected and the app is in a synced state.
-    React.useEffect(() => {
-        if (isDirty && syncStatus === 'synced') {
-            manualSync();
-        }
-    }, [isDirty, syncStatus, manualSync]);
 
     const { analysisStatus, lastAnalysis, triggerAnalysis, analysisReport } = useAnalysis();
 
@@ -390,6 +393,8 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     isDirty={isDirty}
                     onLogout={handleLogout}
                     profile={profile}
+                    onSync={manualSync}
+                    isOnline={isOnline}
                 />
                 <div className="p-4 pt-32 md:pt-20">
                     <main>
