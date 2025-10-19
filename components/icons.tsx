@@ -5,6 +5,26 @@ interface IconProps extends React.SVGProps<SVGSVGElement> {
     className?: string;
 }
 
+export const EyeIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className} {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639l4.43-4.43a1.012 1.012 0 011.431 0l4.43 4.43a1.012 1.012 0 010 .639l-4.43 4.43a1.012 1.012 0 01-1.431 0l-4.43-4.43z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+);
+
+export const EyeSlashIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className} {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.243 4.243l-4.243-4.243" />
+    </svg>
+);
+
+
+export const DocumentTextIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className} {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+    </svg>
+);
+
 export const FolderOpenIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props }) => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...props}>
       <path d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-19.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05l.857-6a2.25 2.25 0 00-2.227-1.932H2.25z" />
@@ -134,10 +154,10 @@ export const ArrowUpTrayIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ..
     </svg>
 );
 
-export const ArrowRightOnRectangleIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className} {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
-    </svg>
+export const PowerIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className} {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M5.636 5.636a9 9 0 1 0 12.728 0M12 3v9" />
+  </svg>
 );
 
 export const ShieldCheckIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props }) => (
@@ -237,7 +257,7 @@ export const ChartBarIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...pr
 
 export const Cog6ToothIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props }) => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...props}>
-      <path fillRule="evenodd" d="M11.078 2.25c-.917 0-1.699.663-1.85 1.567L9.05 5.85c-.09.55-.273 1.08-.523 1.574l-1.932-1.148a1.875 1.875 0 00-2.692.704l-1.932 3.348a1.875 1.875 0 00.704 2.692l1.148 1.932c.494.25.924.432 1.574.523l2.033.179a1.875 1.875 0 001.567 1.85l2.033.179c.55.09 1.08.273 1.574.523l1.932 1.148a1.875 1.875 0 002.692-.704l1.932-3.348a1.875 1.875 0 00-.704-2.692l-1.148-1.932c-.494-.25-.924-.432-1.574-.523l-2.033-.179a1.875 1.875 0 00-1.567-1.85l-2.033-.179c-.55-.09-1.08-.273-1.574-.523l-1.932-1.148a1.875 1.875 0 00-2.692.704l-1.932 3.348a1.875 1.875 0 00.704 2.692l1.148 1.932c.494.25.924.432 1.574.523l2.033.179a1.875 1.875 0 001.567 1.85l2.033.179c.55.09 1.08.273 1.574.523l1.932 1.148a1.875 1.875 0 002.692-.704l1.932-3.348a1.875 1.875 0 00-.704-2.692l-1.148-1.932c-.494-.25-.924-.432-1.574-.523l-2.033-.179a1.875 1.875 0 00-1.567-1.85l-2.033-.179a1.875 1.875 0 00-1.85-1.567h-.008zM12 15.75a3.75 3.75 0 100-7.5 3.75 3.75 0 000 7.5z" clipRule="evenodd" />
+      <path fillRule="evenodd" d="M11.078 2.25c-.917 0-1.699.663-1.85 1.567L9.05 5.85c-.09.55-.273 1.08-.523 1.574l-1.932-1.148a1.875 1.875 0 00-2.692.704l-1.932 3.348a1.875 1.875 0 00.704 2.692l1.148 1.932c.494.25.924.432 1.574.523l2.033.179a1.875 1.875 0 001.567 1.85l2.033.179c.55.09 1.08.273 1.574.523l1.932 1.148a1.875 1.875 0 002.692-.704l1.932-3.348a1.875 1.875 0 00-.704-2.692l-1.148-1.932c-.494-.25-.924-.432-1.574-.523l-2.033-.179a1.875 1.875 0 00-1.567-1.85l-2.033-.179a1.875 1.875 0 00-1.85-1.567h-.008zM12 15.75a3.75 3.75 0 100-7.5 3.75 3.75 0 000 7.5z" clipRule="evenodd" />
     </svg>
 );
 
@@ -250,5 +270,11 @@ export const HomeIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props 
 export const ShareIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props }) => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...props}>
       <path fillRule="evenodd" d="M15.75 4.5a3 3 0 11.825 2.066l-8.421 4.679a3.002 3.002 0 010 1.51l8.421 4.679a3 3 0 11-.729 1.31l-8.421-4.678a3 3 0 110-4.132l8.421-4.679a3 3 0 01-.096-.755z" clipRule="evenodd" />
+    </svg>
+);
+
+export const UserGroupIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className} {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m-7.5-2.962c.57-1.036 1.363-2.23 2.378-3.482M15 12a3 3 0 11-6 0 3 3 0 016 0zM21 12c0-4.418-4.03-8-9-8S3 7.582 3 12m18 0v6.488A2.25 2.25 0 0118.75 21H5.25A2.25 2.25 0 013 18.488V12m18 0c0-4.418-4.03-8-9-8S3 7.582 3 12m15 6.488V12" />
     </svg>
 );

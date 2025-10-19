@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lawyer-app-cache-v6';
+const CACHE_NAME = 'lawyer-app-cache-v8';
 // FIX: The list of URLs to cache has been expanded to include all critical,
 // external dependencies. This ensures the app is fully functional offline
 // immediately after the service worker is installed, preventing failures
@@ -14,8 +14,8 @@ const urlsToCache = [
   // Pinning specific versions from esm.sh for better cache stability
   'https://esm.sh/v135/@google/genai@1.20.0/es2022/genai.mjs',
   'https://esm.sh/v135/@supabase/supabase-js@2.44.4/es2022/supabase-js.mjs',
-  'https://esm.sh/v135/react@19.1.1/es2022/react.mjs',
-  'https://esm.sh/v135/react-dom@19.1.1/es2022/client.mjs',
+  'https://esm.sh/v135/react@18.2.0/es2022/react.mjs',
+  'https://esm.sh/v135/react-dom@18.2.0/es2022/client.mjs',
   'https://esm.sh/v135/react-router-dom@7.9.1/es2022/react-router-dom.mjs',
   'https://esm.sh/v135/recharts@2.12.7/es2022/recharts.mjs'
 ];

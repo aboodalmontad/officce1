@@ -1,6 +1,6 @@
 import * as React from 'react';
-import { TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, PlusIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ArrowRightOnRectangleIcon, ShieldCheckIcon } from '../components/icons';
-import { Client, AdminTask, Appointment, AccountingEntry, Credentials } from '../types';
+import { TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, PlusIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ShieldCheckIcon } from '../components/icons';
+import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
 import { AnalysisStatus } from '../hooks/useSync';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 // FIX: The APP_DATA_KEY constant was being imported from an empty file. It is now imported from useSupabaseData.ts where it is correctly defined and exported.
@@ -12,7 +12,6 @@ type AppData = {
     appointments: Appointment[];
     accountingEntries: AccountingEntry[];
     assistants: string[];
-    credentials: Credentials;
 };
 
 interface SettingsPageProps {
@@ -25,12 +24,9 @@ interface SettingsPageProps {
     analysisReport: string | null;
     offlineMode: boolean;
     setOfflineMode: (value: boolean) => void;
-    onLogout: () => void;
-    credentials?: Credentials;
-    setCredentials: (credentials: Credentials) => void;
 }
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus, lastAnalysis, triggerAnalysis, assistants, setAssistants, analysisReport, offlineMode, setOfflineMode, onLogout, credentials, setCredentials }) => {
+const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus, lastAnalysis, triggerAnalysis, assistants, setAssistants, analysisReport, offlineMode, setOfflineMode }) => {
     const [feedback, setFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = React.useState(false);
     const [isDeleteAssistantModalOpen, setIsDeleteAssistantModalOpen] = React.useState(false);
@@ -38,20 +34,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
     const isOnline = useOnlineStatus();
     const [newAssistant, setNewAssistant] = React.useState('');
     
-    // State for security settings form
-    const [securityForm, setSecurityForm] = React.useState({
-        username: '',
-        password: '',
-        confirmPassword: ''
-    });
-    const [securityFeedback, setSecurityFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
-    
-    React.useEffect(() => {
-        if (credentials) {
-            setSecurityForm(prev => ({ ...prev, username: credentials.username }));
-        }
-    }, [credentials]);
-
 
     const showFeedback = (message: string, type: 'success' | 'error') => {
         setFeedback({ message, type });
@@ -66,7 +48,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
                 appointments: [],
                 accountingEntries: [],
                 assistants: ['بدون تخصيص'],
-                credentials: { id: 1, username: 'admin', password: 'admin' }
             };
             setFullData(emptyData);
             showFeedback('تم مسح جميع البيانات بنجاح.', 'success');
@@ -168,41 +149,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
         }
     };
 
-    const handleSecurityFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value } = e.target;
-        setSecurityForm(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleSaveSecuritySettings = (e: React.FormEvent) => {
-        e.preventDefault();
-        setSecurityFeedback(null);
-        const { username, password, confirmPassword } = securityForm;
-
-        if (!username || !password || !confirmPassword) {
-            setSecurityFeedback({ message: 'يرجى ملء جميع الحقول.', type: 'error' });
-            return;
-        }
-
-        if (password !== confirmPassword) {
-            setSecurityFeedback({ message: 'كلمتا المرور غير متطابقتين.', type: 'error' });
-            return;
-        }
-
-        try {
-            setCredentials({
-                id: 1, // Static ID for the single credentials row
-                username: username.trim(),
-                password: password,
-            });
-            setSecurityFeedback({ message: 'تم تحديث بيانات الدخول بنجاح. ستتم مزامنتها مع السحابة قريباً.', type: 'success' });
-            setSecurityForm(prev => ({ ...prev, password: '', confirmPassword: '' }));
-        } catch (error) {
-            setSecurityFeedback({ message: 'فشل حفظ البيانات.', type: 'error' });
-            console.error('Failed to save credentials to state:', error);
-        }
-    };
-
-
     const AnalysisReportDisplay: React.FC<{ report: string; status: AnalysisStatus }> = ({ report, status }) => {
         const isError = status === 'error';
         const renderContent = (content: string) => content.split('\n').map((line, i) => {
@@ -237,71 +183,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
                     <span>{feedback.message}</span>
                 </div>
             )}
-
-            <div className="bg-white p-6 rounded-lg shadow space-y-4">
-                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">الحساب</h2>
-                 <div className="flex items-center justify-between">
-                    <p className="text-gray-700 font-medium">
-                        أنت مسجل الدخول حاليًا.
-                    </p>
-                    <button onClick={onLogout} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors">
-                        <ArrowRightOnRectangleIcon className="w-5 h-5" />
-                        <span>تسجيل الخروج</span>
-                    </button>
-                </div>
-            </div>
-
-             <div className="bg-white p-6 rounded-lg shadow space-y-4">
-                <div className="flex items-center gap-3 border-b pb-3">
-                    <ShieldCheckIcon className="w-6 h-6 text-gray-700" />
-                    <h2 className="text-xl font-bold text-gray-800">إعدادات الأمان</h2>
-                </div>
-                <form onSubmit={handleSaveSecuritySettings} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">اسم المستخدم</label>
-                        <input 
-                            type="text" 
-                            name="username"
-                            value={securityForm.username}
-                            onChange={handleSecurityFormChange}
-                            className="mt-1 w-full p-2 border rounded-md"
-                            required
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">كلمة المرور الجديدة</label>
-                         <input 
-                            type="password" 
-                            name="password"
-                            value={securityForm.password}
-                            onChange={handleSecurityFormChange}
-                            className="mt-1 w-full p-2 border rounded-md"
-                            required
-                        />
-                    </div>
-                     <div>
-                        <label className="block text-sm font-medium text-gray-700">تأكيد كلمة المرور</label>
-                         <input 
-                            type="password" 
-                            name="confirmPassword"
-                            value={securityForm.confirmPassword}
-                            onChange={handleSecurityFormChange}
-                            className="mt-1 w-full p-2 border rounded-md"
-                            required
-                        />
-                    </div>
-                     {securityFeedback && (
-                        <div className={`p-3 rounded-md text-sm ${securityFeedback.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                            {securityFeedback.message}
-                        </div>
-                    )}
-                    <div className="flex justify-end">
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">
-                            حفظ التغييرات
-                        </button>
-                    </div>
-                </form>
-            </div>
 
             <div className="bg-white p-6 rounded-lg shadow space-y-4">
                 <h2 className="text-xl font-bold text-gray-800 border-b pb-3">وضع عدم الاتصال</h2>

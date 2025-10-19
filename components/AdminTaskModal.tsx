@@ -5,7 +5,8 @@ interface AdminTaskModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSubmit: (taskData: Omit<AdminTask, 'id' | 'completed'> & { id?: string }) => void;
-    initialData?: Partial<Omit<AdminTask, 'id' | 'dueDate'> & { dueDate: string; task: string }>;
+    // FIX: Corrected the type to allow 'id' to be present on initialData for editing.
+    initialData?: Partial<Omit<AdminTask, 'dueDate'>> & { dueDate?: string; };
     assistants: string[];
 }
 
@@ -53,8 +54,9 @@ const AdminTaskModal: React.FC<AdminTaskModalProps> = ({ isOpen, onClose, onSubm
         const [year, month, day] = taskFormData.dueDate.split('-').map(Number);
         const taskDate = new Date(year, month - 1, day);
 
+        // FIX: Explicitly construct the payload for onSubmit to ensure type safety and prevent spreading unwanted properties.
         onSubmit({
-            ...(initialData as any), // pass id if editing
+            id: initialData?.id,
             task: taskFormData.task,
             dueDate: taskDate,
             importance: taskFormData.importance,

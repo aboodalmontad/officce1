@@ -16,6 +16,7 @@ interface ClientsPageProps {
     assistants: string[];
     onOpenAdminTaskModal: (initialData?: any) => void;
     showContextMenu: (event: React.MouseEvent, menuItems: MenuItem[]) => void;
+    onCreateInvoice: (clientId: string, caseId?: string) => void;
 }
 
 const toInputDateString = (date?: Date) => {
@@ -28,7 +29,7 @@ const toInputDateString = (date?: Date) => {
 };
 
 
-const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accountingEntries, setAccountingEntries, assistants, showContextMenu, onOpenAdminTaskModal }) => {
+const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accountingEntries, setAccountingEntries, assistants, showContextMenu, onOpenAdminTaskModal, onCreateInvoice }) => {
     const [modal, setModal] = React.useState<{ type: 'client' | 'case' | 'stage' | 'session' | null, context?: any, isEditing: boolean }>({ type: null, isEditing: false });
     const [formData, setFormData] = React.useState<any>({});
     const [searchQuery, setSearchQuery] = React.useState('');
@@ -622,6 +623,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
         onDecide: handleOpenDecideModal,
         showContextMenu,
         onOpenAdminTaskModal,
+        onCreateInvoice,
     };
     
     return (

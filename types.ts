@@ -1,5 +1,20 @@
 
 
+
+
+
+export interface Profile {
+  id: string; // uuid
+  full_name: string;
+  mobile_number: string;
+  is_approved: boolean;
+  is_active: boolean;
+  subscription_start_date: string | null; // ISO string
+  subscription_end_date: string | null; // ISO string
+  role: 'user' | 'admin';
+}
+
+
 export interface Session {
   id: string;
   court: string;
@@ -78,8 +93,33 @@ export interface AccountingEntry {
     clientName: string;
 }
 
-export interface Credentials {
-    id: number; // Using a static ID like 1 for the single row
-    username: string;
-    password: string;
+export interface InvoiceItem {
+  id: string;
+  description: string;
+  amount: number;
+}
+
+export interface Invoice {
+  id: string; // e.g., INV-2024-001
+  clientId: string;
+  clientName: string;
+  caseId?: string;
+  caseSubject?: string;
+  issueDate: Date;
+  dueDate: Date;
+  items: InvoiceItem[];
+  taxRate: number; // Percentage, e.g., 14 for 14%
+  discount: number; // Fixed amount
+  status: 'draft' | 'sent' | 'paid' | 'overdue';
+  notes?: string;
+}
+
+export interface SiteFinancialEntry {
+    id: number;
+    user_id: string | null;
+    profile_full_name?: string; // Optional: Joined from profiles table
+    payment_date: string; // ISO string
+    amount: number;
+    description: string;
+    payment_method: string;
 }

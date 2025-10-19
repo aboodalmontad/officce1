@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
-import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon, GavelIcon, BuildingLibraryIcon, ShareIcon } from './icons';
+import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon, GavelIcon, BuildingLibraryIcon, ShareIcon, DocumentTextIcon } from './icons';
 import SessionsTable from './SessionsTable';
 import CaseAccounting from './CaseAccounting';
 import { formatDate } from '../utils/dateUtils';
@@ -29,6 +29,7 @@ interface ClientsListViewProps {
     onDecide: (session: Session, stage: Stage) => void;
     showContextMenu: (event: React.MouseEvent, menuItems: MenuItem[]) => void;
     onOpenAdminTaskModal: (initialData?: any) => void;
+    onCreateInvoice: (clientId: string, caseId?: string) => void;
 }
 
 const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expanded: boolean; onToggle: () => void; }> = ({ client, props, expanded, onToggle }) => {
@@ -72,6 +73,10 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
     const handleCaseContextMenu = (event: React.MouseEvent, caseItem: Case) => {
         const statusMap = { active: 'نشطة', closed: 'مغلقة', on_hold: 'معلقة'};
         const menuItems: MenuItem[] = [{
+            label: 'إنشاء فاتورة لهذه القضية',
+            icon: <DocumentTextIcon className="w-4 h-4" />,
+            onClick: () => props.onCreateInvoice(client.id, caseItem.id),
+        },{
             label: 'إرسال إلى المهام الإدارية',
             icon: <BuildingLibraryIcon className="w-4 h-4" />,
             onClick: () => {
@@ -205,6 +210,7 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
                                         <span className="text-xs text-gray-500 font-normal">(ضد: {caseItem.opponentName})</span>
                                     </div>
                                     <div className="flex items-center gap-1">
+                                        <button onClick={(e) => { e.stopPropagation(); props.onCreateInvoice(client.id, caseItem.id); }} className="p-1 text-gray-500 hover:text-green-600" title="إنشاء فاتورة"><DocumentTextIcon className="w-4 h-4" /></button>
                                         <button onClick={(e) => { e.stopPropagation(); props.onEditCase(caseItem, client); }} className="p-1 text-gray-500 hover:text-blue-600"><PencilIcon className="w-4 h-4" /></button>
                                         <button onClick={(e) => { e.stopPropagation(); props.onDeleteCase(caseItem.id, client.id); }} className="p-1 text-gray-500 hover:text-red-600"><TrashIcon className="w-4 h-4" /></button>
                                         <ChevronLeftIcon className={`w-4 h-4 transition-transform ${expandedCaseId === caseItem.id ? '-rotate-90' : ''}`} />

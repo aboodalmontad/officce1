@@ -2,18 +2,26 @@ import * as React from 'react';
 import HomePage from './pages/HomePage';
 import ClientsPage from './pages/ClientsPage';
 import AccountingPage from './pages/AccountingPage';
+import InvoicesPage from './pages/InvoicesPage';
 import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
-import LoginPage from './pages/LoginPage';
+import AuthPage from './pages/AuthPage';
+import AdminDashboard from './pages/AdminDashboard';
+import PendingApprovalPage from './pages/PendingApprovalPage';
+import SubscriptionExpiredPage from './pages/SubscriptionExpiredPage';
+
 import SetupWizard from './components/SetupWizard';
-import { useSupabaseData, SyncStatus } from './hooks/useSupabaseData';
-import { HomeIcon, UserIcon, CalculatorIcon, ChartBarIcon, Cog6ToothIcon, ArrowPathIcon, WifiIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, CloudIcon, ExclamationTriangleIcon, ServerIcon, CloudArrowDownIcon, CloudArrowUpIcon, BuildingLibraryIcon } from './components/icons';
+import { useSupabaseData, SyncStatus, APP_DATA_KEY } from './hooks/useSupabaseData';
+import { HomeIcon, UserIcon, CalculatorIcon, ChartBarIcon, Cog6ToothIcon, ArrowPathIcon, WifiIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, CloudIcon, ExclamationTriangleIcon, ServerIcon, CloudArrowDownIcon, CloudArrowUpIcon, DocumentTextIcon, PowerIcon, ChevronLeftIcon } from './components/icons';
 import { useAnalysis } from './hooks/useSync';
 import ContextMenu, { MenuItem } from './components/ContextMenu';
 import AdminTaskModal from './components/AdminTaskModal';
-import { AdminTask } from './types';
+import { AdminTask, Profile } from './types';
+import { getSupabaseClient } from './supabaseClient';
+import { Session } from '@supabase/supabase-js';
 
-type Page = 'home' | 'clients' | 'accounting' | 'reports' | 'settings';
+
+type Page = 'home' | 'clients' | 'accounting' | 'invoices' | 'reports' | 'settings';
 
 interface AppProps {
     onRefresh: () => void;
@@ -71,53 +79,120 @@ const SyncStatusIndicator: React.FC<{ status: SyncStatus, lastError: string | nu
     );
 };
 
+const Navbar: React.FC<{ currentPage: Page, setCurrentPage: (page: Page) => void, syncStatus: SyncStatus, lastSyncError: string | null, onSync: () => void, isDirty: boolean, onLogout: () => void, profile: Profile | null }> = ({ currentPage, setCurrentPage, syncStatus, lastSyncError, onSync, isDirty, onLogout, profile }) => {
+    const [openDropdown, setOpenDropdown] = React.useState<string | null>(null);
+    const navRef = React.useRef<HTMLElement>(null);
 
-// This component replaces the old `Sidebar`
-const Navbar: React.FC<{ currentPage: Page, setCurrentPage: (page: Page) => void, syncStatus: SyncStatus, lastSyncError: string | null, onSync: () => void, isDirty: boolean }> = ({ currentPage, setCurrentPage, syncStatus, lastSyncError, onSync, isDirty }) => {
+    React.useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (navRef.current && !navRef.current.contains(event.target as Node)) {
+                setOpenDropdown(null);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
+
     const navItems = [
         { id: 'home', label: 'الرئيسية', icon: <HomeIcon className="w-5 h-5" /> },
         { id: 'clients', label: 'الموكلين', icon: <UserIcon className="w-5 h-5" /> },
-        { id: 'accounting', label: 'المحاسبة', icon: <CalculatorIcon className="w-5 h-5" /> },
-        { id: 'reports', label: 'التقارير', icon: <ChartBarIcon className="w-5 h-5" /> },
+        { 
+            id: 'accounting-group', 
+            label: 'المحاسبة', 
+            icon: <CalculatorIcon className="w-5 h-5" />,
+            children: [
+                { id: 'accounting', label: 'المحاسبة', icon: <CalculatorIcon className="w-5 h-5" /> },
+                { id: 'invoices', label: 'الفواتير', icon: <DocumentTextIcon className="w-5 h-5" /> },
+                { id: 'reports', label: 'التقارير', icon: <ChartBarIcon className="w-5 h-5" /> },
+            ] 
+        },
         { id: 'settings', label: 'الإعدادات', icon: <Cog6ToothIcon className="w-5 h-5" /> },
     ];
 
-    const NavLink: React.FC<{ page: Page, label: string, icon: React.ReactNode }> = ({ page, label, icon }) => (
+    const NavLink: React.FC<{ page: Page, label: string, icon: React.ReactElement<any> }> = ({ page, label, icon }) => (
         <a
             href="#"
             onClick={(e) => { e.preventDefault(); setCurrentPage(page); }}
             className={`flex-shrink-0 flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${currentPage === page ? 'bg-gray-200 text-gray-900' : 'text-gray-600 hover:bg-gray-200'}`}
         >
-            {React.cloneElement(icon as React.ReactElement, { className: "w-5 h-5 text-gray-500"})}
+            {React.cloneElement(icon, { className: "w-5 h-5 text-gray-500"})}
             <span className="ms-2">{label}</span>
         </a>
     );
 
+    const fullName = profile?.full_name?.trim();
+
     return (
         <header className="fixed top-0 right-0 left-0 z-40 bg-gray-50 border-b shadow-sm">
             <div className="flex items-center justify-between h-16 px-4">
-                {/* Logo */}
-                <a href="#" className="flex-shrink-0 flex items-center" onClick={(e) => { e.preventDefault(); setCurrentPage('home'); }}>
-                    <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
-                </a>
+                <div className="flex items-center gap-4">
+                    <a href="#" className="flex-shrink-0 flex items-center" onClick={(e) => { e.preventDefault(); setCurrentPage('home'); }}>
+                        <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
+                    </a>
+                    {fullName && (
+                        <span className="text-xs sm:text-sm font-medium text-gray-600 animate-fade-in whitespace-nowrap">
+                            مرحباً، {fullName}
+                        </span>
+                    )}
+                </div>
 
-                {/* Desktop Nav */}
-                <nav className="hidden md:flex items-center gap-x-2">
-                    {navItems.map(item => (
-                        <NavLink key={item.id} page={item.id as Page} label={item.label} icon={item.icon} />
-                    ))}
+                <nav className="hidden md:flex items-center gap-x-2" ref={navRef}>
+                    {navItems.map(item => {
+                        if (item.children) {
+                            const isGroupActive = item.children.some(child => child.id === currentPage);
+                            return (
+                                <div key={item.id} className="relative">
+                                    <button
+                                        onClick={() => setOpenDropdown(openDropdown === item.id ? null : item.id)}
+                                        className={`flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${isGroupActive ? 'bg-gray-200 text-gray-900' : 'text-gray-600 hover:bg-gray-200'}`}
+                                    >
+                                        {React.cloneElement(item.icon, { className: "w-5 h-5 text-gray-500"})}
+                                        <span className="ms-2">{item.label}</span>
+                                        <ChevronLeftIcon className={`w-4 h-4 ms-1 transition-transform ${openDropdown === item.id ? '-rotate-90' : 'rotate-0'}`} />
+                                    </button>
+                                    {openDropdown === item.id && (
+                                        <div className="absolute start-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
+                                            {item.children.map(child => (
+                                                <a
+                                                    key={child.id}
+                                                    href="#"
+                                                    onClick={(e) => { 
+                                                        e.preventDefault(); 
+                                                        setCurrentPage(child.id as Page); 
+                                                        setOpenDropdown(null); 
+                                                    }}
+                                                    className={`w-full flex items-center px-4 py-2 text-sm ${currentPage === child.id ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100'}`}
+                                                >
+                                                    {React.cloneElement(child.icon, { className: "w-5 h-5 text-gray-400"})}
+                                                    <span className="ms-3">{child.label}</span>
+                                                </a>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        }
+                        return <NavLink key={item.id} page={item.id as Page} label={item.label} icon={item.icon} />;
+                    })}
                 </nav>
 
-                {/* Sync Status */}
-                <div className="flex-shrink-0">
+                <div className="flex-shrink-0 flex items-center gap-4">
                     <SyncStatusIndicator status={syncStatus} lastError={lastSyncError} onSync={onSync} isDirty={isDirty} />
+                    <button
+                        onClick={onLogout}
+                        className="p-2 text-gray-500 rounded-full hover:bg-gray-200 hover:text-gray-800 transition-colors"
+                        title="تسجيل الخروج"
+                    >
+                        <PowerIcon className="w-6 h-6" />
+                    </button>
                 </div>
             </div>
 
-             {/* Mobile Nav - Horizontally scrollable */}
             <div className="md:hidden border-t">
                 <nav className="flex items-center gap-x-2 p-2 overflow-x-auto">
-                     {navItems.map(item => (
+                     {navItems.flatMap(item => item.children ?? [item]).map(item => (
                         <NavLink key={item.id} page={item.id as Page} label={item.label} icon={item.icon} />
                     ))}
                 </nav>
@@ -129,19 +204,84 @@ const Navbar: React.FC<{ currentPage: Page, setCurrentPage: (page: Page) => void
 
 const App: React.FC<AppProps> = ({ onRefresh }) => {
     const [currentPage, setCurrentPage] = React.useState<Page>('home');
-    const [isLoggedIn, setIsLoggedIn] = React.useState(false);
+    const [session, setSession] = React.useState<Session | null>(null);
+    const [isAuthLoading, setIsAuthLoading] = React.useState(true);
+    const [profile, setProfile] = React.useState<Profile | null>(null);
     const [offlineMode, setOfflineMode] = React.useState(false);
+    const [forceShowSetup, setForceShowSetup] = React.useState(false);
+    const [initialInvoiceData, setInitialInvoiceData] = React.useState<{ clientId: string; caseId?: string } | undefined>();
+    const supabase = getSupabaseClient();
+
+    React.useEffect(() => {
+        if (!supabase) {
+            setIsAuthLoading(false);
+            return;
+        }
+
+        const checkInitialSession = async () => {
+            try {
+                const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+                if (sessionError) throw sessionError;
+
+                if (currentSession?.user) {
+                    const { data, error } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', currentSession.user.id)
+                        .maybeSingle();
+
+                    if (error) throw error;
+                    setProfile(data);
+                } else {
+                    setProfile(null);
+                }
+                setSession(currentSession);
+            } catch (error) {
+                console.error("Error bootstrapping session:", error);
+                setSession(null);
+                setProfile(null);
+            } finally {
+                setIsAuthLoading(false);
+            }
+        };
+
+        checkInitialSession();
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            async (_event, newSession) => {
+                setSession(newSession);
+                if (newSession?.user) {
+                    try {
+                        const { data, error } = await supabase
+                            .from('profiles')
+                            .select('*')
+                            .eq('id', newSession.user.id)
+                            .maybeSingle();
+                        if (error) throw error;
+                        setProfile(data);
+                    } catch (e) {
+                        console.error("Error fetching profile on auth state change:", e);
+                        setProfile(null);
+                    }
+                } else {
+                    setProfile(null);
+                }
+            }
+        );
+    
+        return () => {
+            subscription.unsubscribe();
+        };
+    }, []);
 
     const {
-        clients, adminTasks, appointments, accountingEntries, assistants, credentials,
-        setClients, setAdminTasks, setAppointments, setAccountingEntries, setAssistants, setCredentials,
+        clients, adminTasks, appointments, accountingEntries, assistants, invoices,
+        setClients, setAdminTasks, setAppointments, setAccountingEntries, setAssistants, setInvoices,
         allSessions, setFullData, syncStatus, forceSync, manualSync, lastSyncError, isDirty
-    } = useSupabaseData(offlineMode);
+    } = useSupabaseData(offlineMode, session?.user ?? null);
     
-    // FIX: React hooks must be called unconditionally. The call to useAnalysis was moved outside the conditional rendering logic to comply with the Rules of Hooks, preventing runtime errors.
     const { analysisStatus, lastAnalysis, triggerAnalysis, analysisReport } = useAnalysis();
 
-    // --- State Management for Global Components ---
     const [adminTaskModalState, setAdminTaskModalState] = React.useState<{ isOpen: boolean; initialData?: any }>({ isOpen: false });
     const [contextMenuState, setContextMenuState] = React.useState<{ isOpen: boolean; position: { x: number; y: number }; menuItems: MenuItem[] }>({
         isOpen: false,
@@ -164,14 +304,12 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         setAdminTaskModalState({ isOpen: true, initialData: preparedData });
     };
 
-    const handleCloseAdminTaskModal = () => {
-        setAdminTaskModalState({ isOpen: false, initialData: undefined });
-    };
+    const handleCloseAdminTaskModal = () => setAdminTaskModalState({ isOpen: false, initialData: undefined });
 
     const handleTaskSubmit = (taskData: Omit<AdminTask, 'id' | 'completed'> & { id?: string }) => {
-        if (taskData.id) { // Editing
+        if (taskData.id) {
             setAdminTasks(prev => prev.map(t => t.id === taskData.id ? { ...t, ...taskData, completed: t.completed } as AdminTask : t));
-        } else { // Adding
+        } else {
             setAdminTasks(prev => [...prev, { ...taskData, id: `task-${Date.now()}`, completed: false } as AdminTask]);
         }
         handleCloseAdminTaskModal();
@@ -186,75 +324,133 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         });
     };
 
-    const handleCloseContextMenu = () => {
-        setContextMenuState(prev => ({ ...prev, isOpen: false }));
+    const handleCloseContextMenu = () => setContextMenuState(prev => ({ ...prev, isOpen: false }));
+    
+    const handleLogout = React.useCallback(async () => {
+        if (!supabase) return;
+
+        try {
+            const userId = session?.user?.id;
+            const { error } = await supabase.auth.signOut();
+
+            if (error) {
+                throw error;
+            }
+
+            if (userId) {
+                localStorage.removeItem(`${APP_DATA_KEY}_${userId}`);
+                localStorage.removeItem(`lawyerAppIsDirty_${userId}`);
+            }
+            localStorage.removeItem(APP_DATA_KEY);
+            
+            onRefresh();
+        } catch (error) {
+            console.error("Logout failed:", error);
+            alert(`فشل تسجيل الخروج. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.`);
+        }
+    }, [supabase, session?.user?.id, onRefresh]);
+
+    const handleCreateInvoiceFor = (clientId: string, caseId?: string) => {
+        setInitialInvoiceData({ clientId, caseId });
+        setCurrentPage('invoices');
     };
 
+    const clearInitialInvoiceData = () => {
+        setInitialInvoiceData(undefined);
+    };
 
-    const renderPage = () => {
-        const commonProps = {
-            showContextMenu,
-            onOpenAdminTaskModal: handleOpenAdminTaskModal
-        };
+    const renderUserApp = () => {
+        const commonProps = { showContextMenu, onOpenAdminTaskModal: handleOpenAdminTaskModal };
+        let pageComponent: React.ReactNode;
         switch (currentPage) {
-            case 'home':
-                return <HomePage appointments={appointments} clients={clients} setClients={setClients} allSessions={allSessions} setAppointments={setAppointments} adminTasks={adminTasks} setAdminTasks={setAdminTasks} assistants={assistants} {...commonProps} />;
-            case 'clients':
-                return <ClientsPage clients={clients} setClients={setClients} accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} assistants={assistants} {...commonProps} />;
-            case 'accounting':
-                return <AccountingPage accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} clients={clients} />;
-            case 'reports':
-                return <ReportsPage clients={clients} accountingEntries={accountingEntries} />;
-            case 'settings':
-                return <SettingsPage setFullData={setFullData} analysisStatus={analysisStatus} lastAnalysis={lastAnalysis} triggerAnalysis={triggerAnalysis} assistants={assistants} setAssistants={setAssistants} analysisReport={analysisReport} offlineMode={offlineMode} setOfflineMode={setOfflineMode} onLogout={() => setIsLoggedIn(false)} credentials={credentials} setCredentials={setCredentials} />;
-            default:
-                return <HomePage appointments={appointments} clients={clients} setClients={setClients} allSessions={allSessions} setAppointments={setAppointments} adminTasks={adminTasks} setAdminTasks={setAdminTasks} assistants={assistants} {...commonProps} />;
+            case 'home': pageComponent = <HomePage appointments={appointments} clients={clients} setClients={setClients} allSessions={allSessions} setAppointments={setAppointments} adminTasks={adminTasks} setAdminTasks={setAdminTasks} assistants={assistants} {...commonProps} />; break;
+            case 'clients': pageComponent = <ClientsPage clients={clients} setClients={setClients} accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} assistants={assistants} onCreateInvoice={handleCreateInvoiceFor} {...commonProps} />; break;
+            case 'accounting': pageComponent = <AccountingPage accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} clients={clients} />; break;
+            case 'invoices': pageComponent = <InvoicesPage invoices={invoices} setInvoices={setInvoices} clients={clients} initialInvoiceData={initialInvoiceData} clearInitialInvoiceData={clearInitialInvoiceData} />; break;
+            case 'reports': pageComponent = <ReportsPage clients={clients} accountingEntries={accountingEntries} />; break;
+            case 'settings': pageComponent = <SettingsPage setFullData={setFullData} analysisStatus={analysisStatus} lastAnalysis={lastAnalysis} triggerAnalysis={triggerAnalysis} assistants={assistants} setAssistants={setAssistants} analysisReport={analysisReport} offlineMode={offlineMode} setOfflineMode={setOfflineMode} />; break;
+            default: pageComponent = <HomePage appointments={appointments} clients={clients} setClients={setClients} allSessions={allSessions} setAppointments={setAppointments} adminTasks={adminTasks} setAdminTasks={setAdminTasks} assistants={assistants} {...commonProps} />;
         }
+
+        return (
+            <div dir="rtl">
+                <Navbar 
+                    currentPage={currentPage} 
+                    setCurrentPage={setCurrentPage}
+                    syncStatus={syncStatus}
+                    lastSyncError={lastSyncError}
+                    onSync={manualSync}
+                    isDirty={isDirty}
+                    onLogout={handleLogout}
+                    profile={profile}
+                />
+                <div className="p-4 pt-32 md:pt-20">
+                    <main>
+                        {pageComponent}
+                    </main>
+                </div>
+
+                <AdminTaskModal 
+                    isOpen={adminTaskModalState.isOpen}
+                    onClose={handleCloseAdminTaskModal}
+                    onSubmit={handleTaskSubmit}
+                    initialData={adminTaskModalState.initialData}
+                    assistants={assistants}
+                />
+                <ContextMenu 
+                    isOpen={contextMenuState.isOpen}
+                    onClose={handleCloseContextMenu}
+                    position={contextMenuState.position}
+                    menuItems={contextMenuState.menuItems}
+                />
+            </div>
+        );
     };
     
-    const handleLoginSuccess = () => {
-        setIsLoggedIn(true);
-    };
-
-    if (syncStatus === 'unconfigured' || syncStatus === 'uninitialized') {
+    if (isAuthLoading) {
+        return <div className="flex items-center justify-center min-h-screen">جاري تحميل التطبيق...</div>;
+    }
+    
+    if (forceShowSetup || syncStatus === 'unconfigured' || syncStatus === 'uninitialized') {
         return <SetupWizard onRetry={onRefresh} />;
     }
     
-    if (!isLoggedIn) {
-        return <LoginPage onLoginSuccess={handleLoginSuccess} credentials={credentials} />;
+    if (!session) {
+        return <AuthPage onForceSetup={() => setForceShowSetup(true)} />;
+    }
+    
+    // Role-based routing
+    if (profile?.role === 'admin') {
+        return <AdminDashboard onLogout={handleLogout} />;
+    }
+    
+    // User-specific flow
+    if (profile && !profile.is_approved) {
+        return <PendingApprovalPage onLogout={handleLogout} />;
+    }
+    
+    if (profile) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // Normalize to start of day for comparison
+
+        const subStartDate = profile.subscription_start_date ? new Date(profile.subscription_start_date) : null;
+        if (subStartDate) subStartDate.setHours(0, 0, 0, 0);
+
+        const subEndDate = profile.subscription_end_date ? new Date(profile.subscription_end_date) : null;
+        if (subEndDate) subEndDate.setHours(0, 0, 0, 0);
+
+        // Access is denied if the subscription period is invalid.
+        // A period is considered invalid if:
+        // 1. The start date is not set or the end date is not set.
+        // 2. The subscription hasn't started yet.
+        // 3. The subscription has already ended.
+        if (!subStartDate || !subEndDate || today < subStartDate || today > subEndDate) {
+            return <SubscriptionExpiredPage onLogout={handleLogout} />;
+        }
     }
 
-    return (
-        <div dir="rtl">
-            <Navbar 
-                currentPage={currentPage} 
-                setCurrentPage={setCurrentPage}
-                syncStatus={syncStatus}
-                lastSyncError={lastSyncError}
-                onSync={manualSync}
-                isDirty={isDirty}
-            />
-            <div className="p-4 pt-32 md:pt-20">
-                <main>
-                    {renderPage()}
-                </main>
-            </div>
-
-            <AdminTaskModal 
-                isOpen={adminTaskModalState.isOpen}
-                onClose={handleCloseAdminTaskModal}
-                onSubmit={handleTaskSubmit}
-                initialData={adminTaskModalState.initialData}
-                assistants={assistants}
-            />
-            <ContextMenu 
-                isOpen={contextMenuState.isOpen}
-                onClose={handleCloseContextMenu}
-                position={contextMenuState.position}
-                menuItems={contextMenuState.menuItems}
-            />
-        </div>
-    );
+    // Render the main application for the regular user
+    return renderUserApp();
 };
 
 export default App;

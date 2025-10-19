@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
-import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon, GavelIcon, BuildingLibraryIcon, ShareIcon } from './icons';
+import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon, GavelIcon, BuildingLibraryIcon, ShareIcon, DocumentTextIcon } from './icons';
 import SessionsTable from './SessionsTable';
 import CaseAccounting from './CaseAccounting';
 import { formatDate } from '../utils/dateUtils';
@@ -31,6 +31,7 @@ interface ClientsTreeViewProps {
     onDecide: (session: Session, stage: Stage) => void;
     showContextMenu: (event: React.MouseEvent, menuItems: MenuItem[]) => void;
     onOpenAdminTaskModal: (initialData?: any) => void;
+    onCreateInvoice: (clientId: string, caseId?: string) => void;
 }
 
 const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props: ClientsTreeViewProps; expanded: boolean; onToggle: () => void }> = ({ stage, caseItem, client, props, expanded, onToggle }) => {
@@ -183,6 +184,10 @@ const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeVie
     const handleContextMenu = (event: React.MouseEvent) => {
         const statusMap = { active: 'نشطة', closed: 'مغلقة', on_hold: 'معلقة'};
         const menuItems: MenuItem[] = [{
+            label: 'إنشاء فاتورة لهذه القضية',
+            icon: <DocumentTextIcon className="w-4 h-4" />,
+            onClick: () => props.onCreateInvoice(client.id, caseItem.id),
+        }, {
             label: 'إرسال إلى المهام الإدارية',
             icon: <BuildingLibraryIcon className="w-4 h-4" />,
             onClick: () => {
@@ -223,6 +228,7 @@ const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeVie
                     <span className={`px-2 py-1 text-xs rounded-full ${caseItem.status === 'active' ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-800'}`}>{caseItem.status === 'active' ? 'نشطة' : (caseItem.status === 'closed' ? 'مغلقة' : 'معلقة')}</span>
                 </div>
                 <div className="flex items-center gap-2">
+                    <button onClick={(e) => { e.stopPropagation(); props.onCreateInvoice(client.id, caseItem.id); }} className="p-1 text-gray-500 hover:text-green-600" title="إنشاء فاتورة"><DocumentTextIcon className="w-4 h-4" /></button>
                     <button onClick={(e) => { e.stopPropagation(); props.onAddStage(client.id, caseItem.id); }} className="p-1 text-gray-500 hover:text-blue-600"><PlusIcon className="w-4 h-4" /></button>
                     <button onClick={(e) => { e.stopPropagation(); props.onEditCase(caseItem, client); }} className="p-1 text-gray-500 hover:text-blue-600"><PencilIcon className="w-4 h-4" /></button>
                     <button onClick={(e) => { e.stopPropagation(); props.onDeleteCase(caseItem.id, client.id); }} className="p-1 text-gray-500 hover:text-red-600"><TrashIcon className="w-4 h-4" /></button>

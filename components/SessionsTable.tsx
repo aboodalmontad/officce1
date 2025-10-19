@@ -100,8 +100,13 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
 
     const handleCellClick = (session: Session, field: keyof Session) => {
         if (!onUpdate) return;
+        const value = session[field];
+        // FIX: Only allow editing for fields that are string, number or undefined to prevent type errors.
+        if (typeof value === 'boolean' || value instanceof Date) {
+            return;
+        }
         setEditingCell({ sessionId: session.id, field });
-        setEditValue(session[field]);
+        setEditValue(value);
     };
 
     const handleSaveEdit = () => {
