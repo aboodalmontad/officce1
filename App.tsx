@@ -27,10 +27,6 @@ import { useOnlineStatus } from './hooks/useOnlineStatus';
 
 type Page = 'home' | 'clients' | 'accounting' | 'invoices' | 'reports' | 'settings' | 'imageProcessor';
 
-interface AppProps {
-    onRefresh: () => void;
-}
-
 const SyncStatusIndicator: React.FC<{ status: SyncStatus, lastError: string | null, isDirty: boolean, onSync: () => void, isOnline: boolean }> = ({ status, lastError, isDirty, onSync, isOnline }) => {
     
     let displayStatus: { icon: React.ReactNode; text: string; color: string; error?: string; };
@@ -213,7 +209,26 @@ const PageLoader: React.FC = () => (
     </div>
 );
 
-const App: React.FC<AppProps> = ({ onRefresh }) => {
+const ConfigurationErrorPage: React.FC = () => (
+    <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4" dir="rtl">
+        <div className="w-full max-w-2xl p-8 space-y-6 bg-white rounded-lg shadow-md">
+            <div className="text-center">
+                <h1 className="text-3xl font-bold text-red-600">خطأ في الإعدادات</h1>
+                <p className="mt-2 text-lg text-gray-700">
+                    لم يتم العثور على بيانات اعتماد Supabase. لا يمكن تشغيل التطبيق.
+                </p>
+            </div>
+            <div className="text-right bg-gray-50 p-6 rounded-lg border border-gray-200">
+                <h2 className="font-semibold text-gray-800 text-lg">كيفية حل المشكلة (للمطورين):</h2>
+                <p className="mt-3 text-gray-700">
+                    يرجى التحقق من أن قيم <code className="bg-gray-200 text-gray-800 font-mono px-2 py-1 rounded-md text-sm">supabaseUrl</code> و <code className="bg-gray-200 text-gray-800 font-mono px-2 py-1 rounded-md text-sm">supabaseAnonKey</code> تم تعيينها بشكل صحيح في الملف <code className="bg-gray-200 text-gray-800 font-mono px-2 py-1 rounded-md text-sm">supabaseClient.ts</code>.
+                </p>
+            </div>
+        </div>
+    </div>
+);
+
+const App: React.FC = () => {
     const [currentPage, setCurrentPage] = React.useState<Page>('home');
     const [session, setSession] = React.useState<Session | null>(null);
     const [isAuthLoading, setIsAuthLoading] = React.useState(true);
@@ -352,27 +367,34 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const handleLogout = React.useCallback(async () => {
         const supabase = getSupabaseClient();
         if (!supabase) return;
-
+    
         try {
+            // Capture user ID before the session is destroyed by signOut.
             const userId = session?.user?.id;
+            
             const { error } = await supabase.auth.signOut();
-
+    
             if (error) {
                 throw error;
             }
-
+    
+            // Clear user-specific data from localStorage to ensure a clean state.
             if (userId) {
                 localStorage.removeItem(`${APP_DATA_KEY}_${userId}`);
                 localStorage.removeItem(`lawyerAppIsDirty_${userId}`);
             }
-            localStorage.removeItem(APP_DATA_KEY);
             
-            onRefresh();
+            // Directly reset the session and profile states to null. This ensures the UI
+            // updates to the login page immediately and reliably, without solely
+            // depending on the onAuthStateChange event listener which can sometimes have delays.
+            setSession(null);
+            setProfile(null);
+            
         } catch (error) {
             console.error("Logout failed:", error);
             alert(`فشل تسجيل الخروج. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.`);
         }
-    }, [session?.user?.id, onRefresh]);
+    }, [session, setSession, setProfile]);
 
     const handleCreateInvoiceFor = (clientId: string, caseId?: string) => {
         setInitialInvoiceData({ clientId, caseId });
@@ -382,6 +404,8 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const clearInitialInvoiceData = () => {
         setInitialInvoiceData(undefined);
     };
+
+    const handleRetrySetup = () => window.location.reload();
 
     const renderUserApp = () => {
         const commonProps = { showContextMenu, onOpenAdminTaskModal: handleOpenAdminTaskModal };
@@ -438,9 +462,13 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     if (isAuthLoading) {
         return null;
     }
+
+    if (syncStatus === 'unconfigured') {
+        return <ConfigurationErrorPage />;
+    }
     
-    if (forceShowSetup || syncStatus === 'unconfigured' || syncStatus === 'uninitialized') {
-        return <SetupWizard onRetry={onRefresh} />;
+    if (forceShowSetup || syncStatus === 'uninitialized') {
+        return <SetupWizard onRetry={handleRetrySetup} />;
     }
     
     if (!session) {
