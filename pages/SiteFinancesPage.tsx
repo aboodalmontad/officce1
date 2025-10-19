@@ -33,7 +33,7 @@ const SiteFinancesPage: React.FC = () => {
 
         const { data: entriesData, error: entriesError } = await supabase
             .from('site_finances')
-            .select(`*, profile:profiles(full_name)`)
+            .select(`*, profiles(full_name)`)
             .order('payment_date', { ascending: false });
 
         if (entriesError) {
@@ -41,7 +41,7 @@ const SiteFinancesPage: React.FC = () => {
         } else {
             const transformedData = entriesData.map((e: any) => ({
                 ...e,
-                profile_full_name: e.profile?.full_name || 'مستخدم محذوف'
+                profile_full_name: e.profiles?.full_name || 'مستخدم محذوف'
             }));
             setEntries(transformedData);
         }

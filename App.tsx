@@ -210,9 +210,9 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const [offlineMode, setOfflineMode] = React.useState(false);
     const [forceShowSetup, setForceShowSetup] = React.useState(false);
     const [initialInvoiceData, setInitialInvoiceData] = React.useState<{ clientId: string; caseId?: string } | undefined>();
-    const supabase = getSupabaseClient();
-
+    
     React.useEffect(() => {
+        const supabase = getSupabaseClient();
         if (!supabase) {
             setIsAuthLoading(false);
             return;
@@ -327,6 +327,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const handleCloseContextMenu = () => setContextMenuState(prev => ({ ...prev, isOpen: false }));
     
     const handleLogout = React.useCallback(async () => {
+        const supabase = getSupabaseClient();
         if (!supabase) return;
 
         try {
@@ -348,7 +349,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
             console.error("Logout failed:", error);
             alert(`فشل تسجيل الخروج. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.`);
         }
-    }, [supabase, session?.user?.id, onRefresh]);
+    }, [session?.user?.id, onRefresh]);
 
     const handleCreateInvoiceFor = (clientId: string, caseId?: string) => {
         setInitialInvoiceData({ clientId, caseId });

@@ -20,12 +20,10 @@ const AdminPage: React.FC = () => {
     const [error, setError] = React.useState<string | null>(null);
     const [editingUser, setEditingUser] = React.useState<Profile | null>(null);
 
-    const supabase = getSupabaseClient();
-
     const fetchUsers = React.useCallback(async () => {
+        const supabase = getSupabaseClient();
         if (!supabase) return;
-        // Don't show loading indicator on refetches for a smoother experience
-        // setLoading(true); 
+        
         const { data, error } = await supabase
             .from('profiles')
             .select('*')
@@ -38,14 +36,14 @@ const AdminPage: React.FC = () => {
             setUsers(data as Profile[]);
         }
         setLoading(false);
-    }, [supabase]);
+    }, []);
 
     React.useEffect(() => {
-        fetchUsers(); // Initial fetch
+        fetchUsers();
 
+        const supabase = getSupabaseClient();
         if (!supabase) return;
 
-        // Listen for real-time changes to the profiles table
         const channel = supabase
             .channel('public:profiles:admin')
             .on(
@@ -53,18 +51,18 @@ const AdminPage: React.FC = () => {
                 { event: '*', schema: 'public', table: 'profiles' },
                 (payload) => {
                     console.log('Profile change detected, refreshing user list.', payload);
-                    fetchUsers(); // Refetch data on any change
+                    fetchUsers();
                 }
             )
             .subscribe();
 
-        // Cleanup subscription on component unmount
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [fetchUsers, supabase]);
+    }, [fetchUsers]);
 
     const handleUpdateUser = async (user: Profile) => {
+        const supabase = getSupabaseClient();
         if (!supabase) return;
         const { error } = await supabase
             .from('profiles')
@@ -80,7 +78,6 @@ const AdminPage: React.FC = () => {
             alert(`فشل تحديث المستخدم: ${error.message}`);
         } else {
             setEditingUser(null);
-            // fetchUsers() will be called automatically by the real-time subscription
         }
     };
     

@@ -13,9 +13,9 @@ type AdminView = 'users' | 'finances';
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     const [view, setView] = React.useState<AdminView>('users');
     const [pendingUsersCount, setPendingUsersCount] = React.useState(0);
-    const supabase = getSupabaseClient();
 
     React.useEffect(() => {
+        const supabase = getSupabaseClient();
         if (!supabase) return;
 
         const fetchPendingCount = async () => {
@@ -44,7 +44,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [supabase]);
+    }, []);
 
 
     const renderView = () => {
