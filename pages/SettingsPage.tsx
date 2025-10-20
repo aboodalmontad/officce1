@@ -3,7 +3,6 @@ import { TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, Pl
 import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
 import { AnalysisStatus } from '../hooks/useSync';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
-// FIX: The APP_DATA_KEY constant was being imported from an empty file. It is now imported from useSupabaseData.ts where it is correctly defined and exported.
 import { APP_DATA_KEY } from '../hooks/useSupabaseData';
 
 type AppData = {

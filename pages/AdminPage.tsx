@@ -2,7 +2,7 @@ import * as React from 'react';
 import { getSupabaseClient } from '../supabaseClient';
 import { Profile } from '../types';
 import { formatDate } from '../utils/dateUtils';
-import { CheckCircleIcon, NoSymbolIcon, PencilIcon } from '../components/icons';
+import { CheckCircleIcon, NoSymbolIcon, PencilIcon, TrashIcon, ExclamationTriangleIcon } from '../components/icons';
 
 const toInputDateString = (date: string | Date | null): string => {
     if (!date) return '';
@@ -19,9 +19,12 @@ const AdminPage: React.FC = () => {
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
     const [editingUser, setEditingUser] = React.useState<Profile | null>(null);
+    const [userToDelete, setUserToDelete] = React.useState<Profile | null>(null);
+    const [currentAdminId, setCurrentAdminId] = React.useState<string | null>(null);
+    
+    const supabase = getSupabaseClient();
 
     const fetchUsers = React.useCallback(async () => {
-        const supabase = getSupabaseClient();
         if (!supabase) return;
         
         const { data, error } = await supabase
@@ -36,12 +39,18 @@ const AdminPage: React.FC = () => {
             setUsers(data as Profile[]);
         }
         setLoading(false);
-    }, []);
+    }, [supabase]);
 
     React.useEffect(() => {
+        const getAdminId = async () => {
+            if (supabase) {
+                const { data: { user } } = await supabase.auth.getUser();
+                setCurrentAdminId(user?.id || null);
+            }
+        };
+        getAdminId();
         fetchUsers();
 
-        const supabase = getSupabaseClient();
         if (!supabase) return;
 
         const channel = supabase
@@ -59,18 +68,27 @@ const AdminPage: React.FC = () => {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [fetchUsers]);
+    }, [fetchUsers, supabase]);
 
     const handleUpdateUser = async (user: Profile) => {
-        const supabase = getSupabaseClient();
         if (!supabase) return;
+
+        if (user.id === currentAdminId && (user.role !== 'admin' || !user.is_active || !user.is_approved)) {
+            alert('لا يمكنك إزالة صلاحيات المدير أو إلغاء تفعيل حسابك.');
+            setEditingUser(null); // Revert changes in UI
+            return;
+        }
+
         const { error } = await supabase
             .from('profiles')
             .update({
+                full_name: user.full_name,
+                mobile_number: user.mobile_number,
                 is_approved: user.is_approved,
                 is_active: user.is_active,
                 subscription_start_date: user.subscription_start_date || null,
                 subscription_end_date: user.subscription_end_date || null,
+                role: user.role,
             })
             .eq('id', user.id);
 
@@ -87,6 +105,27 @@ const AdminPage: React.FC = () => {
         }
     };
 
+    const openDeleteModal = (user: Profile) => {
+        setUserToDelete(user);
+    };
+
+    const closeDeleteModal = () => {
+        setUserToDelete(null);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!userToDelete || !supabase) return;
+
+        const { error: rpcError } = await supabase.rpc('delete_user', { user_id_to_delete: userToDelete.id });
+        
+        if (rpcError) {
+            alert(`فشل حذف المستخدم: ${rpcError.message}`);
+        }
+        
+        closeDeleteModal();
+    };
+
+
     if (loading) return <div>جاري تحميل المستخدمين...</div>;
     if (error) return <div>خطأ: {error}</div>;
 
@@ -100,6 +139,7 @@ const AdminPage: React.FC = () => {
                         <tr>
                             <th className="px-6 py-3">الاسم الكامل</th>
                             <th className="px-6 py-3">رقم الجوال</th>
+                            <th className="px-6 py-3">الصلاحية</th>
                             <th className="px-6 py-3">تاريخ بداية الاشتراك</th>
                             <th className="px-6 py-3">تاريخ نهاية الاشتراك</th>
                             <th className="px-6 py-3">الحالة</th>
@@ -109,8 +149,30 @@ const AdminPage: React.FC = () => {
                     <tbody>
                         {users.map(user => (
                             <tr key={user.id} className={`border-b hover:bg-gray-50 ${!user.is_approved ? 'bg-yellow-50 hover:bg-yellow-100' : 'bg-white'}`}>
-                                <td className="px-6 py-4">{user.full_name}</td>
-                                <td className="px-6 py-4">{user.mobile_number}</td>
+                                <td className="px-6 py-4">
+                                     {editingUser?.id === user.id ? (
+                                        <input type="text" value={editingUser.full_name} onChange={(e) => handleFieldChange('full_name', e.target.value)} className="p-1 border rounded w-full" />
+                                    ) : (
+                                        user.full_name
+                                    )}
+                                </td>
+                                <td className="px-6 py-4">
+                                    {editingUser?.id === user.id ? (
+                                        <input type="text" value={editingUser.mobile_number} onChange={(e) => handleFieldChange('mobile_number', e.target.value)} className="p-1 border rounded w-full" />
+                                    ) : (
+                                        user.mobile_number
+                                    )}
+                                </td>
+                                <td className="px-6 py-4">
+                                    {editingUser?.id === user.id ? (
+                                        <select value={editingUser.role} onChange={e => handleFieldChange('role', e.target.value)} className="p-1 border rounded w-full" disabled={user.id === currentAdminId}>
+                                            <option value="user">مستخدم</option>
+                                            <option value="admin">مدير</option>
+                                        </select>
+                                    ) : (
+                                        user.role === 'admin' ? 'مدير' : 'مستخدم'
+                                    )}
+                                </td>
                                 <td className="px-6 py-4">
                                     {editingUser?.id === user.id ? (
                                         <input type="date" value={toInputDateString(editingUser.subscription_start_date)} onChange={(e) => handleFieldChange('subscription_start_date', e.target.value)} className="p-1 border rounded" />
@@ -128,8 +190,8 @@ const AdminPage: React.FC = () => {
                                 <td className="px-6 py-4">
                                      {editingUser?.id === user.id ? (
                                         <div className="flex items-center gap-4">
-                                            <label className="flex items-center gap-1"><input type="checkbox" checked={editingUser.is_approved} onChange={e => handleFieldChange('is_approved', e.target.checked)} />مفعل</label>
-                                            <label className="flex items-center gap-1"><input type="checkbox" checked={editingUser.is_active} onChange={e => handleFieldChange('is_active', e.target.checked)} />نشط</label>
+                                            <label className="flex items-center gap-1"><input type="checkbox" checked={editingUser.is_approved} onChange={e => handleFieldChange('is_approved', e.target.checked)} disabled={user.id === currentAdminId} />مفعل</label>
+                                            <label className="flex items-center gap-1"><input type="checkbox" checked={editingUser.is_active} onChange={e => handleFieldChange('is_active', e.target.checked)} disabled={user.id === currentAdminId} />نشط</label>
                                         </div>
                                      ) : (
                                         <div className="flex items-center gap-2">
@@ -145,7 +207,12 @@ const AdminPage: React.FC = () => {
                                             <button onClick={() => setEditingUser(null)} className="px-3 py-1 bg-gray-200 rounded">إلغاء</button>
                                         </div>
                                     ) : (
-                                        <button onClick={() => setEditingUser(user)} className="p-2 text-gray-500 hover:text-blue-600"><PencilIcon className="w-4 h-4" /></button>
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={() => setEditingUser(user)} className="p-2 text-gray-500 hover:text-blue-600"><PencilIcon className="w-4 h-4" /></button>
+                                            <button onClick={() => openDeleteModal(user)} disabled={user.id === currentAdminId || user.role === 'admin'} className="p-2 text-gray-500 hover:text-red-600 disabled:text-gray-300 disabled:cursor-not-allowed">
+                                                <TrashIcon className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     )}
                                 </td>
                             </tr>
@@ -153,6 +220,25 @@ const AdminPage: React.FC = () => {
                     </tbody>
                 </table>
             </div>
+            
+            {userToDelete && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={closeDeleteModal}>
+                    <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                        <div className="text-center">
+                            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4"><ExclamationTriangleIcon className="h-6 w-6 text-red-600" /></div>
+                            <h3 className="text-lg font-bold">تأكيد حذف المستخدم</h3>
+                            <p className="text-sm my-4">
+                                هل أنت متأكد من حذف المستخدم "{userToDelete.full_name}"؟<br />
+                                سيتم حذف جميع بياناته بشكل نهائي، بما في ذلك الموكلين والقضايا والجلسات. لا يمكن التراجع عن هذا الإجراء.
+                            </p>
+                        </div>
+                        <div className="mt-6 flex justify-center gap-4">
+                            <button type="button" className="px-4 py-2 bg-gray-200 rounded" onClick={closeDeleteModal}>إلغاء</button>
+                            <button type="button" className="px-4 py-2 bg-red-600 text-white rounded" onClick={handleConfirmDelete}>نعم، قم بالحذف</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

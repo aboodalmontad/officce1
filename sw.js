@@ -1,5 +1,5 @@
 const CACHE_NAME = 'lawyer-app-cache-v8';
-// FIX: The list of URLs to cache has been expanded to include all critical,
+// The list of URLs to cache has been expanded to include all critical,
 // external dependencies. This ensures the app is fully functional offline
 // immediately after the service worker is installed, preventing failures
 // if the user goes offline before these assets are dynamically cached.

@@ -205,9 +205,10 @@ const Navbar: React.FC<{ currentPage: Page, setCurrentPage: (page: Page) => void
 
 const MemoizedNavbar = React.memo(Navbar);
 
-const PageLoader: React.FC = () => (
-    <div className="flex justify-center items-center h-96">
+const PageLoader: React.FC<{ message?: string }> = ({ message = "جاري تحميل بيانات المستخدم..." }) => (
+    <div className="flex flex-col justify-center items-center h-screen bg-gray-100">
         <div className="spinner"></div>
+        <p className="mt-4 text-gray-600">{message}</p>
     </div>
 );
 
@@ -350,26 +351,35 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const handleLogout = React.useCallback(async () => {
         const supabase = getSupabaseClient();
         if (!supabase) return;
-
+    
+        const userId = session?.user?.id;
+    
         try {
-            const userId = session?.user?.id;
             const { error } = await supabase.auth.signOut();
-
             if (error) {
                 throw error;
             }
-
-            if (userId) {
-                localStorage.removeItem(`${APP_DATA_KEY}_${userId}`);
-                localStorage.removeItem(`lawyerAppIsDirty_${userId}`);
-            }
-            localStorage.removeItem(APP_DATA_KEY);
-            
-            onRefresh();
         } catch (error) {
             console.error("Logout failed:", error);
             alert(`فشل تسجيل الخروج. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.`);
+            return; // Stop if sign out fails
         }
+        
+        // After successful sign out, clear all app-related local storage.
+        if (userId) {
+            localStorage.removeItem(`${APP_DATA_KEY}_${userId}`);
+            localStorage.removeItem(`lawyerAppIsDirty_${userId}`);
+        }
+        localStorage.removeItem(APP_DATA_KEY);
+        
+        // Explicitly clear session state to ensure the UI updates to the login page immediately.
+        setSession(null);
+        setProfile(null);
+        
+        // Then, force a full app refresh to completely reset all other component states,
+        // ensuring no user data remains in memory.
+        onRefresh();
+        
     }, [session?.user?.id, onRefresh]);
 
     const handleCreateInvoiceFor = (clientId: string, caseId?: string) => {
@@ -409,7 +419,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                 />
                 <div className="p-4 pt-32 md:pt-20">
                     <main>
-                         <React.Suspense fallback={<PageLoader />}>
+                         <React.Suspense fallback={<PageLoader message="جاري تحميل الصفحة..."/>}>
                             {pageComponent}
                         </React.Suspense>
                     </main>
@@ -435,6 +445,36 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     if (isAuthLoading) {
         return null;
     }
+
+    if (syncStatus === 'error' && lastSyncError && lastSyncError.includes('فشل الاتصال بالخادم')) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4" dir="rtl">
+                <div className="w-full max-w-lg p-8 space-y-4 bg-white rounded-lg shadow-md text-center">
+                    <ExclamationTriangleIcon className="h-12 w-12 text-red-500 mx-auto" />
+                    <h1 className="text-2xl font-bold text-gray-800">خطأ في الاتصال</h1>
+                    <p className="text-gray-600">{lastSyncError}</p>
+                    <div className="text-right bg-gray-50 p-4 rounded-md border text-sm space-y-2">
+                        <p className="font-semibold">خطوات مقترحة للحل:</p>
+                        <ol className="list-decimal list-inside">
+                            <li>تأكد من أن جهازك متصل بالإنترنت بشكل صحيح.</li>
+                            <li>تأكد من أن بيانات اعتماد Supabase (URL and Key) في ملف <code className="bg-gray-200 p-1 rounded text-xs">supabaseClient.ts</code> صحيحة.</li>
+                            <li>
+                                تحقق من إعدادات CORS في لوحة تحكم Supabase. اذهب إلى:
+                                <code className="block bg-gray-200 p-2 rounded text-xs my-1 ltr text-left">Project Settings &rarr; API &rarr; CORS configuration</code>
+                                وتأكد من أن <code className="bg-gray-200 p-1 rounded text-xs">*</code> أو نطاق التطبيق الخاص بك مضاف.
+                            </li>
+                        </ol>
+                    </div>
+                    <button 
+                        onClick={onRefresh}
+                        className="mt-4 px-6 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                    >
+                        إعادة المحاولة
+                    </button>
+                </div>
+            </div>
+        );
+    }
     
     if (forceShowSetup || syncStatus === 'unconfigured' || syncStatus === 'uninitialized') {
         return <SetupWizard onRetry={onRefresh} />;
@@ -443,35 +483,39 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     if (!session) {
         return <React.Suspense fallback={<PageLoader />}><AuthPage onForceSetup={() => setForceShowSetup(true)} /></React.Suspense>;
     }
+
+    // When a session exists, we must have a profile. If not, it's loading.
+    // This handles the delay between signup (session created) and profile creation by the trigger.
+    if (!profile) {
+        return <PageLoader />;
+    }
     
     // Role-based routing
-    if (profile?.role === 'admin') {
+    if (profile.role === 'admin') {
         return <React.Suspense fallback={<PageLoader />}><AdminDashboard onLogout={handleLogout} /></React.Suspense>;
     }
     
     // User-specific flow
-    if (profile && !profile.is_approved) {
+    if (!profile.is_approved) {
         return <React.Suspense fallback={<PageLoader />}><PendingApprovalPage onLogout={handleLogout} /></React.Suspense>;
     }
     
-    if (profile) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0); // Normalize to start of day for comparison
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalize to start of day for comparison
 
-        const subStartDate = profile.subscription_start_date ? new Date(profile.subscription_start_date) : null;
-        if (subStartDate) subStartDate.setHours(0, 0, 0, 0);
+    const subStartDate = profile.subscription_start_date ? new Date(profile.subscription_start_date) : null;
+    if (subStartDate) subStartDate.setHours(0, 0, 0, 0);
 
-        const subEndDate = profile.subscription_end_date ? new Date(profile.subscription_end_date) : null;
-        if (subEndDate) subEndDate.setHours(0, 0, 0, 0);
+    const subEndDate = profile.subscription_end_date ? new Date(profile.subscription_end_date) : null;
+    if (subEndDate) subEndDate.setHours(0, 0, 0, 0);
 
-        // Access is denied if the subscription period is invalid.
-        // A period is considered invalid if:
-        // 1. The start date is not set or the end date is not set.
-        // 2. The subscription hasn't started yet.
-        // 3. The subscription has already ended.
-        if (!subStartDate || !subEndDate || today < subStartDate || today > subEndDate) {
-            return <React.Suspense fallback={<PageLoader />}><SubscriptionExpiredPage onLogout={handleLogout} /></React.Suspense>;
-        }
+    // Access is denied if the subscription period is invalid.
+    // A period is considered invalid if:
+    // 1. The start date is not set or the end date is not set.
+    // 2. The subscription hasn't started yet.
+    // 3. The subscription has already ended.
+    if (!subStartDate || !subEndDate || today < subStartDate || today > subEndDate) {
+        return <React.Suspense fallback={<PageLoader />}><SubscriptionExpiredPage onLogout={handleLogout} /></React.Suspense>;
     }
 
     // Render the main application for the regular user

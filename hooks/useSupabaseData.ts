@@ -255,7 +255,7 @@ export const useSupabaseData = (offlineMode: boolean, user: User | null) => {
             if (message.includes('failed to fetch')) {
                 console.error("Network error during schema check:", error);
                 setSyncStatus('error');
-                setLastSyncError('فشل الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت.');
+                setLastSyncError('فشل الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت وإعدادات CORS في لوحة تحكم Supabase.');
                 return;
             }
             
@@ -322,7 +322,7 @@ export const useSupabaseData = (offlineMode: boolean, user: User | null) => {
             
             if (message.includes('failed to fetch')) {
                 setSyncStatus('error');
-                setLastSyncError('فشل الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.');
+                setLastSyncError('فشل الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت وإعدادات CORS في لوحة تحكم Supabase.');
             } else if (message.includes('does not exist') || message.includes('could not find the table') || code === '42P01' || message.includes('schema cache')) {
                 console.warn(`Database uninitialized during fetch. A table is missing. Error: ${error.message}`);
                 setSyncStatus('uninitialized');

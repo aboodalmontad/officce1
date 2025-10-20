@@ -6,8 +6,7 @@ import { ExclamationCircleIcon, EyeIcon, EyeSlashIcon, ClipboardDocumentIcon, Cl
  * =============================================================================
  *  ! تنبيه هام بخصوص إعدادات المصادقة في Supabase !
  * =============================================================================
- * لحل أخطاء "Email logins are disabled" و "Email not confirmed"، 
- * يجب التأكد من ضبط الإعدادات التالية في لوحة تحكم Supabase لمشروعك:
+ * لتمكين تسجيل الدخول باستخدام البريد الإلكتروني الوهمي، يجب ضبط الإعدادات التالية في لوحة تحكم Supabase:
  * 
  * 1. اذهب إلى: Authentication -> Providers
  * 2. ابحث عن مزود الخدمة "Email".
@@ -16,9 +15,8 @@ import { ExclamationCircleIcon, EyeIcon, EyeSlashIcon, ClipboardDocumentIcon, Cl
  * 5. تأكد من أن المفتاح الفرعي "Confirm email" في وضعية (OFF / إيقاف).
  * 6. اضغط "Save".
  * 
- * هذا الإعداد ضروري لأن التطبيق يعتمد على مزود البريد الإلكتروني لإنشاء
- * حسابات فريدة للمستخدمين من أرقام هواتفهم، ولكن لا يمكن للمستخدمين تأكيد
- * بريدهم الإلكتروني الوهمي الذي يتم إنشاؤه في الخلفية.
+ * هذا الإعداد ضروري لأن التطبيق يحول رقم الهاتف إلى بريد إلكتروني للمصادقة،
+ * وتعطيل تأكيد البريد الإلكتروني يسمح بتفعيل الحسابات يدوياً من قبل المدير.
  * =============================================================================
  */
 
@@ -61,16 +59,43 @@ const AuthPage: React.FC<AuthPageProps> = ({ onForceSetup }) => {
 
     const supabase = getSupabaseClient();
 
-    const normalizeMobile = (mobile: string): string => {
-        // 1. Remove all non-digit characters.
-        let digits = mobile.replace(/\D/g, '');
-        // 2. Handle international Syrian format (e.g., 9639...).
-        if (digits.startsWith('9639') && digits.length === 12) {
-            return '0' + digits.substring(3);
-        }
-        // 3. Return the digits, assuming it's a local format (e.g., 09...).
-        return digits;
+    const toggleView = (e: React.MouseEvent) => {
+        e.preventDefault();
+        setIsLoginView(prev => !prev);
+        setError(null);
+        setMessage(null);
+        setInfo(null);
+        setAuthFailed(false);
     };
+
+    const normalizeMobileToE164 = (mobile: string): string | null => {
+        // Remove all non-digit characters to get a clean string of numbers
+        let digits = mobile.replace(/\D/g, '');
+
+        // Case 1: International format with double zero (e.g., 009639...)
+        if (digits.startsWith('009639') && digits.length === 14) {
+            return `+${digits.substring(2)}`; // Becomes +9639...
+        }
+
+        // Case 2: International format without plus/zeros (e.g., 9639...)
+        if (digits.startsWith('9639') && digits.length === 12) {
+            return `+${digits}`; // Becomes +9639...
+        }
+
+        // Case 3: Local format with leading zero (e.g., 09...)
+        if (digits.startsWith('09') && digits.length === 10) {
+            return `+963${digits.substring(1)}`; // Becomes +9639...
+        }
+        
+        // Case 4: Local format without leading zero (e.g., 9...)
+        if (digits.startsWith('9') && digits.length === 9) {
+            return `+963${digits}`; // Becomes +9639...
+        }
+
+        // If none of the patterns match, the number is considered invalid for Syria.
+        return null;
+    };
+
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -93,26 +118,22 @@ const AuthPage: React.FC<AuthPageProps> = ({ onForceSetup }) => {
         setInfo(null);
         setAuthFailed(false); // Reset on every new attempt
 
-        const normalizedMobile = normalizeMobile(form.mobile);
+        const phone = normalizeMobileToE164(form.mobile);
 
-        // Add validation for the normalized number
-        if (!/^(09)\d{8}$/.test(normalizedMobile)) {
+        if (!phone) {
             setError('رقم الجوال غير صالح. يجب أن يكون رقماً سورياً صحيحاً (مثال: 0912345678).');
             setLoading(false);
             return;
         }
         
-        // Add validation for password length
+        const email = `sy${phone}@email.com`; // Construct the new fake email with 'sy' prefix
+
         if (form.password.length < 6) {
             setError('يجب أن تكون كلمة المرور 6 أحرف على الأقل.');
             setLoading(false);
             return;
         }
-
-        // This format `sy{mobile_number}@mail.com` uses a generic, known email provider domain ('mail.com')
-        // and a simple prefix to maximize the chances of passing validation checks.
-        const email = `sy${normalizedMobile}@mail.com`;
-
+        
         try {
             if (isLoginView) {
                 const { error } = await supabase.auth.signInWithPassword({
@@ -127,12 +148,13 @@ const AuthPage: React.FC<AuthPageProps> = ({ onForceSetup }) => {
                     options: {
                         data: {
                             full_name: form.fullName,
-                            mobile_number: normalizedMobile,
+                            mobile_number: form.mobile.replace(/\D/g, ''), // Send clean local number
                         },
                     }
                 });
                 if (error) throw error;
-                setMessage('تم إرسال طلب التسجيل بنجاح. يرجى انتظار موافقة المدير لتفعيل حسابك.');
+                // After signup, the user is automatically logged in.
+                // App.tsx's onAuthStateChange listener will handle redirection.
             }
         } catch (error: any) {
             console.error('Auth error:', error);
@@ -142,15 +164,45 @@ const AuthPage: React.FC<AuthPageProps> = ({ onForceSetup }) => {
             if (error && error.message) {
                 const lowerMsg = String(error.message).toLowerCase();
 
-                // Special handling for "User already registered" to provide a better UX flow.
-                if (lowerMsg.includes('user already registered')) {
+                 if (lowerMsg.includes('email sign-ups are disabled')) {
+                    displayError = (
+                        <div className="text-right w-full">
+                            <p className="font-bold mb-2">خطأ: التسجيل بالبريد الإلكتروني معطل</p>
+                            <p>هذا يعني أن مزود خدمة البريد الإلكتروني غير مفعل.</p>
+                            <div className="mt-3 text-sm">
+                                <p className="font-semibold">الحل:</p>
+                                <ol className="list-decimal list-inside mt-1 space-y-1 text-gray-700">
+                                    <li>اذهب إلى <strong className="text-gray-800">Authentication &rarr; Providers</strong> في لوحة تحكم Supabase.</li>
+                                    <li>ابحث عن مزود <strong className="text-gray-800">Email</strong>.</li>
+                                    <li>تأكد من أنه في وضعية <strong className="text-green-600">ON (تشغيل)</strong>.</li>
+                                    <li>اضغط "Save" ثم حاول مرة أخرى.</li>
+                                </ol>
+                            </div>
+                        </div>
+                    );
+                } else if (lowerMsg.includes('user already registered')) {
                     setIsLoginView(true);
                     setInfo('هذا الرقم مسجل بالفعل. تم تحويلك إلى شاشة تسجيل الدخول.');
                     setLoading(false);
                     return; // Exit early
-                }
-                
-                if (lowerMsg.includes('email not confirmed')) {
+                } else if (lowerMsg.includes('database error')) {
+                    displayError = (
+                        <div className="text-right w-full">
+                            <p className="font-bold mb-2">خطأ في قاعدة البيانات عند إنشاء الحساب</p>
+                            <p>هذا الخطأ يحدث عادة بسبب مشكلة في إعدادات صلاحيات قاعدة البيانات (RLS).</p>
+                            <div className="mt-3 text-sm">
+                                <p className="font-semibold">الحل المقترح:</p>
+                                <ol className="list-decimal list-inside mt-1 space-y-1 text-gray-700">
+                                    <li>اذهب إلى <strong className="text-gray-800">صفحة إدارة قاعدة البيانات</strong> بالضغط على الأيقونة الصفراء في زاوية الشاشة.</li>
+                                    <li>انسخ <strong className="text-gray-800">السكربت الشامل والنهائي</strong> بالكامل.</li>
+                                    <li>اذهب إلى <strong className="text-gray-800">SQL Editor</strong> في لوحة تحكم Supabase وشغّل السكربت.</li>
+                                    <li>بعد نجاح التنفيذ، حاول إنشاء الحساب مرة أخرى.</li>
+                                </ol>
+                                <p className="mt-3 text-xs text-gray-500">ملاحظة: لقد تم تحديث سكربت الإعداد لحل هذه المشكلة. تأكد من أنك تستخدم النسخة الأحدث.</p>
+                            </div>
+                        </div>
+                    );
+                } else if (lowerMsg.includes('email not confirmed')) {
                     const sqlCommandAll = `UPDATE auth.users SET email_confirmed_at = NOW() WHERE email_confirmed_at IS NULL;`;
                     const sqlCommandSpecific = `UPDATE auth.users SET email_confirmed_at = NOW() WHERE email = '${email}';`;
 
@@ -178,14 +230,27 @@ const AuthPage: React.FC<AuthPageProps> = ({ onForceSetup }) => {
                         </div>
                     );
                 } else if(lowerMsg.includes('invalid login credentials')) {
-                    displayError = 'رقم الجوال أو كلمة المرور غير صحيحة.';
-                    setAuthFailed(true); // Trigger visual feedback on input fields
-                } else if (lowerMsg.includes('database error saving new user')) {
-                    displayError = 'حدث خطأ في قاعدة البيانات أثناء إنشاء المستخدم. قد يكون هذا الرقم مرتبطًا بحساب قديم تم حذفه بشكل غير كامل. يرجى التواصل مع المسؤول إذا استمرت المشكلة.';
+                    const phoneForError = normalizeMobileToE164(form.mobile);
+                    const expectedEmail = phoneForError ? `sy${phoneForError}@email.com` : 'لم يمكن استنتاج البريد من الرقم المدخل.';
+                    displayError = (
+                        <div className="text-right w-full">
+                            <p className="font-bold">بيانات دخول غير صحيحة.</p>
+                            <p className="mt-2 text-sm text-gray-600">
+                                أنت على حق، المشكلة قد تكون في طريقة تحويل رقم الهاتف. 
+                                البريد الإلكتروني الذي حاول التطبيق استخدامه للمصادقة هو:
+                                <code dir="ltr" className="block text-center text-xs bg-gray-100 p-2 rounded my-2 text-black font-mono">{expectedEmail}</code>
+                                يرجى الذهاب إلى جدول <code dir="ltr">auth.users</code> في لوحة تحكم Supabase والتأكد من وجود حساب بهذا البريد الإلكتروني تماماً، وأن كلمة المرور التي تستخدمها صحيحة.
+                            </p>
+                             <p className="mt-2 text-xs text-gray-500">
+                                إذا كنت المدير، فإن تشغيل "السكربت الشامل والنهائي" سيقوم بإنشاء أو إصلاح حسابك بهذه البيانات.
+                            </p>
+                        </div>
+                    );
+                    setAuthFailed(true);
                 } else if (lowerMsg.includes('password should be at least 6 characters')) {
                     displayError = 'يجب أن تكون كلمة المرور 6 أحرف على الأقل.';
                 } else if (lowerMsg.includes('failed to fetch')) {
-                    displayError = 'فشل الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت.';
+                    displayError = 'فشل الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت ومن أن خدمة Supabase تعمل بشكل صحيح.';
                 }
             }
             setError(displayError);
@@ -209,6 +274,12 @@ const AuthPage: React.FC<AuthPageProps> = ({ onForceSetup }) => {
                         {isLoginView ? 'سجل الدخول للمتابعة' : 'إنشاء حساب جديد'}
                     </p>
                 </div>
+                
+                {isLoginView && !info && (
+                    <div className="mt-4 text-sm text-center bg-blue-50 text-blue-800 p-3 rounded-lg border border-blue-200 animate-fade-in">
+                        <p>إذا كنت تقوم بإعداد التطبيق لأول مرة، يجب عليك <a href="#" onClick={toggleView} className="font-bold underline hover:text-blue-600">إنشاء حساب مدير جديد</a> أولاً.</p>
+                    </div>
+                )}
                 
                 <form className="space-y-6" onSubmit={handleAuth}>
                     {!isLoginView && (
@@ -257,7 +328,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onForceSetup }) => {
                         </div>
                     )}
                     {info && (
-                        <div className="p-3 text-sm text-blue-700 bg-blue-100 rounded-md">
+                        <div className="p-3 text-sm text-blue-700 bg-blue-100 rounded-md animate-fade-in">
                             {info}
                         </div>
                     )}
@@ -269,7 +340,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onForceSetup }) => {
                     </div>
                     
                     <div className="text-sm text-center">
-                        <a href="#" onClick={(e) => { e.preventDefault(); setIsLoginView(!isLoginView); setError(null); setMessage(null); setInfo(null); setAuthFailed(false); }} className="font-medium text-blue-600 hover:text-blue-500">
+                        <a href="#" onClick={toggleView} className="font-medium text-blue-600 hover:text-blue-500">
                             {isLoginView ? 'ليس لديك حساب؟ قم بإنشاء واحد' : 'لديك حساب بالفعل؟ سجل الدخول'}
                         </a>
                     </div>
