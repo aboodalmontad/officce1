@@ -223,7 +223,7 @@ const AdminPage: React.FC = () => {
                                     ) : (
                                         <div className="flex items-center gap-2">
                                             <button onClick={() => setEditingUser(user)} className="p-2 text-gray-500 hover:text-blue-600"><PencilIcon className="w-4 h-4" /></button>
-                                            <button onClick={() => openDeleteModal(user)} disabled={user.id === currentAdminId || user.role === 'admin'} className="p-2 text-gray-500 hover:text-red-600 disabled:text-gray-300 disabled:cursor-not-allowed">
+                                            <button onClick={() => openDeleteModal(user)} disabled={user.id === currentAdminId} className="p-2 text-gray-500 hover:text-red-600 disabled:text-gray-300 disabled:cursor-not-allowed">
                                                 <TrashIcon className="w-4 h-4" />
                                             </button>
                                         </div>
