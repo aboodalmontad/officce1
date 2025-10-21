@@ -1,23 +1,27 @@
-import * as React from 'https://esm.sh/react@18.2.0';
+import * as React from 'react';
 import { Client, AccountingEntry, Case, Stage, Session } from '../types';
-import { formatDate } from '../utils/dateUtils';
+import { formatDate, toInputDateString } from '../utils/dateUtils';
 import { PrintIcon } from '../components/icons';
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'https://esm.sh/recharts@2.12.7';
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { printElement } from '../utils/printUtils';
+import { useData } from '../App';
 
-interface ReportsPageProps {
-    clients: Client[];
-    accountingEntries: AccountingEntry[];
-}
+interface ReportsPageProps {}
 
-const toInputDateString = (date: Date) => {
-    const y = date.getFullYear();
-    const m = date.getMonth() + 1;
-    const d = date.getDate();
-    return `${y}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
+const CustomTooltip = ({ active, payload, label, formatter }: any) => {
+    if (active && payload && payload.length) {
+        return (
+            <div className="bg-white p-2 border shadow-lg rounded-md">
+                <p className="font-bold">{label}</p>
+                <p className="text-sm">{`${payload[0].name}: ${formatter ? formatter(payload[0].value) : payload[0].value.toLocaleString()}`}</p>
+            </div>
+        );
+    }
+    return null;
 };
 
-const ReportsPage: React.FC<ReportsPageProps> = ({ clients, accountingEntries }) => {
+const ReportsPage: React.FC<ReportsPageProps> = () => {
+    const { clients, accountingEntries } = useData();
     const today = new Date();
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(today.getDate() - 30);
@@ -209,18 +213,6 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ clients, accountingEntries })
 
     const PIE_COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF'];
     const BAR_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
-
-    const CustomTooltip = ({ active, payload, label }: any) => {
-        if (active && payload && payload.length) {
-            return (
-                <div className="bg-white p-2 border shadow-lg rounded-md">
-                    <p className="font-bold">{label}</p>
-                    <p className="text-sm">{`${payload[0].name}: ${payload[0].value.toLocaleString()}`}</p>
-                </div>
-            );
-        }
-        return null;
-    };
 
 
     return (

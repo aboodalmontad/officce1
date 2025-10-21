@@ -1,36 +1,23 @@
-import * as React from 'https://esm.sh/react@18.2.0';
+import * as React from 'react';
 import ClientsTreeView from '../components/ClientsTreeView';
 import ClientsListView from '../components/ClientsListView';
 import { PlusIcon, SearchIcon, ListBulletIcon, ViewColumnsIcon, ExclamationTriangleIcon, PrintIcon, ScaleIcon } from '../components/icons';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
-import { formatDate } from '../utils/dateUtils';
+import { formatDate, toInputDateString } from '../utils/dateUtils';
 import PrintableClientReport from '../components/PrintableClientReport';
 import { printElement } from '../utils/printUtils';
 import { MenuItem } from '../components/ContextMenu';
 import { useDebounce } from '../hooks/useDebounce';
+import { useData } from '../App';
 
 interface ClientsPageProps {
-    clients: Client[];
-    setClients: (updater: (prevClients: Client[]) => Client[]) => void;
-    accountingEntries: AccountingEntry[];
-    setAccountingEntries: (updater: (prev: AccountingEntry[]) => AccountingEntry[]) => void;
-    assistants: string[];
     onOpenAdminTaskModal: (initialData?: any) => void;
     showContextMenu: (event: React.MouseEvent, menuItems: MenuItem[]) => void;
     onCreateInvoice: (clientId: string, caseId?: string) => void;
 }
 
-const toInputDateString = (date?: Date) => {
-    if (!date) return '';
-    const d = new Date(date);
-    const y = d.getFullYear();
-    const m = d.getMonth() + 1;
-    const day = d.getDate();
-    return `${y}-${m.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-};
-
-
-const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accountingEntries, setAccountingEntries, assistants, showContextMenu, onOpenAdminTaskModal, onCreateInvoice }) => {
+const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminTaskModal, onCreateInvoice }) => {
+    const { clients, setClients, accountingEntries, setAccountingEntries, assistants } = useData();
     const [modal, setModal] = React.useState<{ type: 'client' | 'case' | 'stage' | 'session' | null, context?: any, isEditing: boolean }>({ type: null, isEditing: false });
     const [formData, setFormData] = React.useState<any>({});
     const [searchQuery, setSearchQuery] = React.useState('');
@@ -554,9 +541,30 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
         setIsPrintModalOpen(true);
     };
     
-    const handleOpenDecideModal = (session: Session, stage: Stage) => {
-        setDecideFormData({ decisionNumber: '', decisionSummary: '', decisionNotes: '' });
-        setDecideModal({ isOpen: true, session, stage });
+    const handleOpenDecideModal = (session: Session) => {
+        if (!session.stageId) {
+            console.error("Cannot decide session: stageId is missing.", session);
+            return;
+        }
+
+        let foundStage: Stage | null = null;
+        for (const client of clients) {
+            for (const caseItem of client.cases) {
+                const stage = caseItem.stages.find(st => st.id === session.stageId);
+                if (stage) {
+                    foundStage = stage;
+                    break;
+                }
+            }
+            if (foundStage) break;
+        }
+
+        if (foundStage) {
+            setDecideFormData({ decisionNumber: '', decisionSummary: '', decisionNotes: '' });
+            setDecideModal({ isOpen: true, session, stage: foundStage });
+        } else {
+            console.error("Cannot decide session: Corresponding stage not found for stageId:", session.stageId);
+        }
     };
 
     const handleCloseDecideModal = () => {
@@ -904,4 +912,22 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
 
             {isPrintModalOpen && printData && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] no-print" onClick={() => setIsPrintModalOpen(false)}>
-                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e
+                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="overflow-y-auto" ref={printClientReportRef}>
+                            <PrintableClientReport {...printData} />
+                        </div>
+                         <div className="mt-6 flex justify-end gap-4 border-t pt-4">
+                            <button type="button" onClick={() => setIsPrintModalOpen(false)} className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors">إغلاق</button>
+                            <button type="button" onClick={() => printElement(printClientReportRef.current)} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                                <PrintIcon className="w-5 h-5"/>
+                                <span>طباعة</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default ClientsPage;

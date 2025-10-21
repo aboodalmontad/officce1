@@ -1,15 +1,11 @@
-import * as React from 'https://esm.sh/react@18.2.0';
+import * as React from 'react';
 import { AccountingEntry, Client } from '../types';
 import { formatDate } from '../utils/dateUtils';
 import { PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon } from '../components/icons';
+import { useData } from '../App';
 
-interface AccountingPageProps {
-    accountingEntries: AccountingEntry[];
-    setAccountingEntries: (updater: (prev: AccountingEntry[]) => AccountingEntry[]) => void;
-    clients: Client[];
-}
-
-const AccountingPage: React.FC<AccountingPageProps> = ({ accountingEntries, setAccountingEntries, clients }) => {
+const AccountingPage: React.FC = () => {
+    const { accountingEntries, setAccountingEntries, clients } = useData();
     const [modal, setModal] = React.useState<{ isOpen: boolean; data?: AccountingEntry }>({ isOpen: false });
     const [formData, setFormData] = React.useState<Partial<AccountingEntry>>({});
     const [searchQuery, setSearchQuery] = React.useState('');
@@ -163,35 +159,35 @@ const AccountingPage: React.FC<AccountingPageProps> = ({ accountingEntries, setA
             {modal.isOpen && (
                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={handleCloseModal}>
                     <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                        <h2 className="text-xl font-bold mb-4">{modal.data ? 'تعديل القيد' : 'إضافة قيد جديد'}</h2>
+                        <h2 className="text-xl font-bold mb-4">{modal.data ? 'تعديل قيد' : 'إضافة قيد جديد'}</h2>
                         <form onSubmit={handleSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">النوع</label>
-                                <select name="type" value={formData.type} onChange={handleFormChange} className="w-full p-2 border rounded" required>
-                                    <option value="income">إيراد</option>
-                                    <option value="expense">مصروف</option>
-                                </select>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">النوع</label>
+                                    <select name="type" value={formData.type || 'income'} onChange={handleFormChange} className="w-full p-2 border rounded" required>
+                                        <option value="income">إيرادات</option>
+                                        <option value="expense">مصروفات</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">التاريخ</label>
+                                    <input type="date" name="date" value={formData.date as any} onChange={handleFormChange} className="w-full p-2 border rounded" placeholder="DD/MM/YYYY" required />
+                                </div>
                             </div>
                              <div>
-                                <label className="block text-sm font-medium text-gray-700">المبلغ</label>
-                                <input type="number" name="amount" value={formData.amount || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">التاريخ</label>
-                                <input type="date" name="date" value={formData.date as any} onChange={handleFormChange} className="w-full p-2 border rounded" placeholder="DD/MM/YYYY" required />
+                                <label className="block text-sm font-medium text-gray-700">القضية (اختياري)</label>
+                                <select name="caseId" value={formData.caseId || ''} onChange={handleFormChange} className="w-full p-2 border rounded">
+                                    <option value="">-- مصروفات عامة --</option>
+                                    {clients.flatMap(c => c.cases.map(cs => <option key={cs.id} value={cs.id}>{c.name} - {cs.subject}</option>))}
+                                </select>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">البيان</label>
                                 <input type="text" name="description" value={formData.description || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">ربط بقضية (اختياري)</label>
-                                 <select name="caseId" value={formData.caseId || ''} onChange={handleFormChange} className="w-full p-2 border rounded">
-                                     <option value="">مصاريف عامة</option>
-                                     {clients.flatMap(client => client.cases.map(c => (
-                                         <option key={c.id} value={c.id}>{client.name} - {c.subject}</option>
-                                     )))}
-                                 </select>
+                                <label className="block text-sm font-medium text-gray-700">المبلغ</label>
+                                <input type="number" name="amount" value={formData.amount || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required />
                             </div>
                             <div className="mt-6 flex justify-end gap-4">
                                 <button type="button" onClick={handleCloseModal} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">إلغاء</button>
@@ -201,7 +197,7 @@ const AccountingPage: React.FC<AccountingPageProps> = ({ accountingEntries, setA
                     </div>
                 </div>
             )}
-
+            
             {isDeleteModalOpen && entryToDelete && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={closeDeleteModal}>
                     <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
@@ -213,10 +209,7 @@ const AccountingPage: React.FC<AccountingPageProps> = ({ accountingEntries, setA
                                 تأكيد حذف القيد
                             </h3>
                             <p className="text-gray-600 my-4">
-                                هل أنت متأكد من حذف القيد التالي؟
-                                <br/>
-                                <strong className="font-semibold">{entryToDelete.description}</strong> بمبلغ <strong className="font-semibold">{entryToDelete.amount.toLocaleString()} ل.س</strong>
-                                <br />
+                                هل أنت متأكد من حذف قيد "{entryToDelete.description}"؟<br />
                                 هذا الإجراء لا يمكن التراجع عنه.
                             </p>
                         </div>

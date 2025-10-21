@@ -1,4 +1,4 @@
-import * as React from 'https://esm.sh/react@18.2.0';
+import * as React from 'react';
 
 // Common props for all icons
 interface IconProps extends React.SVGProps<SVGSVGElement> {
@@ -282,5 +282,18 @@ export const ShareIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props
 export const UserGroupIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className} {...props}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m-7.5-2.962c.57-1.036 1.363-2.23 2.378-3.482M15 12a3 3 0 11-6 0 3 3 0 016 0zM21 12c0-4.418-4.03-8-9-8S3 7.582 3 12m18 0v6.488A2.25 2.25 0 0118.75 21H5.25A2.25 2.25 0 013 18.488V12m18 0c0-4.418-4.03-8-9-8S3 7.582 3 12m15 6.488V12" />
+    </svg>
+);
+
+export const ChartPieIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className} {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z" />
+    </svg>
+);
+
+export const CurrencyDollarIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className} {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 11.21 12.75 11 12 11c-.75 0-1.536.21-2.218.682l-.879.659z" />
     </svg>
 );

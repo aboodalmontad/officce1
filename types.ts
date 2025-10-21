@@ -7,6 +7,7 @@ export interface Profile {
   subscription_start_date: string | null; // ISO string
   subscription_end_date: string | null; // ISO string
   role: 'user' | 'admin';
+  created_at?: string; // ISO string
 }
 
 
@@ -109,13 +110,14 @@ export interface Invoice {
   notes?: string;
 }
 
+// FIX: Define and export the SiteFinancialEntry interface to resolve the import error.
 export interface SiteFinancialEntry {
-    id: number;
-    user_id: string | null;
-    profile_full_name?: string; // Optional: Joined from profiles table
-    type: 'income' | 'expense';
-    payment_date: string; // ISO string
-    amount: number;
-    description: string;
-    payment_method: string;
+  id: number;
+  user_id: string | null;
+  type: 'income' | 'expense';
+  payment_date: string;
+  amount: number;
+  description: string | null;
+  payment_method: string | null;
+  profile_full_name?: string;
 }

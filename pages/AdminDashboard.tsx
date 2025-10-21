@@ -1,18 +1,48 @@
-import * as React from 'https://esm.sh/react@18.2.0';
+import * as React from 'react';
 import AdminPage from './AdminPage';
-import SiteFinancesPage from './SiteFinancesPage';
-import { PowerIcon, UserGroupIcon, CalculatorIcon } from '../components/icons';
+import { PowerIcon, UserGroupIcon, ChartPieIcon } from '../components/icons';
 import { getSupabaseClient } from '../supabaseClient';
+
+const AdminAnalyticsPage = React.lazy(() => import('./AdminAnalyticsPage'));
 
 interface AdminDashboardProps {
     onLogout: () => void;
 }
 
-type AdminView = 'users' | 'finances';
+type AdminView = 'analytics' | 'users';
+
+const NavLink: React.FC<{
+    label: string;
+    icon: React.ReactNode;
+    isActive: boolean;
+    onClick: () => void;
+    badgeCount?: number;
+}> = ({ label, icon, isActive, onClick, badgeCount }) => (
+    <button
+        onClick={onClick}
+        className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg text-right transition-colors ${
+            isActive
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-700 hover:bg-gray-200'
+        }`}
+    >
+        <div className="flex items-center gap-3">
+            {icon}
+            <span className="font-semibold">{label}</span>
+        </div>
+        {badgeCount && badgeCount > 0 && (
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white animate-pulse">
+                {badgeCount}
+            </span>
+        )}
+    </button>
+);
+
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
-    const [view, setView] = React.useState<AdminView>('users');
+    const [view, setView] = React.useState<AdminView>('analytics');
     const [pendingUsersCount, setPendingUsersCount] = React.useState(0);
+    const [loading, setLoading] = React.useState(true);
 
     React.useEffect(() => {
         const supabase = getSupabaseClient();
@@ -40,6 +70,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                 fetchPendingCount();
             })
             .subscribe();
+            
+        setLoading(false);
 
         return () => {
             supabase.removeChannel(channel);
@@ -49,50 +81,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
 
     const renderView = () => {
         switch (view) {
+            case 'analytics':
+                return <React.Suspense fallback={<div className="text-center p-8">جاري تحميل التحليلات...</div>}><AdminAnalyticsPage /></React.Suspense>;
             case 'users':
                 return <AdminPage />;
-            case 'finances':
-                return <SiteFinancesPage />;
             default:
-                return <AdminPage />;
+                return <React.Suspense fallback={<div className="text-center p-8">جاري تحميل التحليلات...</div>}><AdminAnalyticsPage /></React.Suspense>;
         }
     };
-
-    const NavLink: React.FC<{
-        label: string;
-        icon: React.ReactNode;
-        isActive: boolean;
-        onClick: () => void;
-        badgeCount?: number;
-    }> = ({ label, icon, isActive, onClick, badgeCount }) => (
-        <button
-            onClick={onClick}
-            className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg text-right transition-colors ${
-                isActive
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-700 hover:bg-gray-200'
-            }`}
-        >
-            <div className="flex items-center gap-3">
-                {icon}
-                <span className="font-semibold">{label}</span>
-            </div>
-             {badgeCount !== undefined && badgeCount > 0 && (
-                <span className="bg-red-500 text-white text-xs font-bold rounded-full h-6 w-6 flex items-center justify-center animate-fade-in">
-                    {badgeCount}
-                </span>
-            )}
-        </button>
-    );
+    
+    if (loading) {
+        return <div className="flex justify-center items-center h-screen">جاري التحميل...</div>
+    }
 
     return (
-        <div className="flex h-screen bg-gray-100" dir="rtl">
-            {/* Sidebar */}
-            <aside className="w-64 bg-gray-50 border-l flex flex-col p-4">
-                <div className="text-center mb-8">
-                    <h1 className="text-2xl font-bold text-gray-800">إدارة الموقع</h1>
+        <div className="flex min-h-screen bg-gray-100" dir="rtl">
+            <aside className="w-64 bg-white shadow-md flex flex-col p-4">
+                <div className="text-center py-4 mb-4 border-b">
+                    <h1 className="text-2xl font-bold text-gray-800">لوحة تحكم المدير</h1>
                 </div>
                 <nav className="flex-grow space-y-2">
+                     <NavLink
+                        label="لوحة التحكم والتحليلات"
+                        icon={<ChartPieIcon className="w-6 h-6" />}
+                        isActive={view === 'analytics'}
+                        onClick={() => setView('analytics')}
+                    />
                     <NavLink
                         label="إدارة المستخدمين"
                         icon={<UserGroupIcon className="w-6 h-6" />}
@@ -100,26 +114,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                         onClick={() => setView('users')}
                         badgeCount={pendingUsersCount}
                     />
-                    <NavLink
-                        label="مالية الموقع"
-                        icon={<CalculatorIcon className="w-6 h-6" />}
-                        isActive={view === 'finances'}
-                        onClick={() => setView('finances')}
-                    />
                 </nav>
                 <div className="mt-auto">
-                     <button
+                    <button
                         onClick={onLogout}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-600 hover:bg-red-100 transition-colors"
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-red-100 hover:text-red-700 transition-colors"
                     >
                         <PowerIcon className="w-6 h-6" />
                         <span className="font-semibold">تسجيل الخروج</span>
                     </button>
                 </div>
             </aside>
-
-            {/* Main Content */}
-            <main className="flex-1 p-8 overflow-y-auto">
+            <main className="flex-1 p-8">
                 {renderView()}
             </main>
         </div>

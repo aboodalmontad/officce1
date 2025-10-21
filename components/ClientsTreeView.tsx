@@ -1,4 +1,4 @@
-import * as React from 'https://esm.sh/react@18.2.0';
+import * as React from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
 import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon, GavelIcon, BuildingLibraryIcon, ShareIcon, DocumentTextIcon } from './icons';
 import SessionsTable from './SessionsTable';
@@ -28,7 +28,7 @@ interface ClientsTreeViewProps {
     onPrintClientStatement: (clientId: string) => void;
     assistants: string[];
     onUpdateSession: (sessionId: string, updatedFields: Partial<Session>) => void;
-    onDecide: (session: Session, stage: Stage) => void;
+    onDecide: (session: Session) => void;
     showContextMenu: (event: React.MouseEvent, menuItems: MenuItem[]) => void;
     onOpenAdminTaskModal: (initialData?: any) => void;
     onCreateInvoice: (clientId: string, caseId?: string) => void;
@@ -159,7 +159,7 @@ const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props:
                         onDelete={(sessionId) => props.onDeleteSession(sessionId, stage.id, caseItem.id, client.id)}
                         onUpdate={props.onUpdateSession}
                         assistants={props.assistants}
-                        onDecide={(session) => props.onDecide(session, stage)}
+                        onDecide={props.onDecide}
                         stage={stage}
                         showSessionDate={true}
                         onContextMenu={handleSessionContextMenu}
@@ -169,6 +169,11 @@ const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props:
         </div>
     );
 };
+
+const StageItemContainer: React.FC<{ stage: Stage; caseItem: Case; client: Client; props: ClientsTreeViewProps }> = ({ stage, caseItem, client, props }) => {
+    const [isExpanded, setIsExpanded] = React.useState(false);
+    return <StageItem stage={stage} caseItem={caseItem} client={client} props={props} expanded={isExpanded} onToggle={() => setIsExpanded(!isExpanded)} />
+}
 
 const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeViewProps; expanded: boolean; onToggle: () => void }> = ({ caseItem, client, props, expanded, onToggle }) => {
     const [activeTab, setActiveTab] = React.useState<'stages' | 'accounting'>('stages');
@@ -251,7 +256,7 @@ const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeVie
                         <CaseAccounting
                             caseData={caseItem}
                             client={client}
-                            caseAccountingEntries={caseAccountingEntries}
+                            caseAccountingEntries={props.accountingEntries.filter(e => e.caseId === caseItem.id)}
                             setAccountingEntries={props.setAccountingEntries}
                             onFeeAgreementChange={handleFeeChange}
                         />
@@ -261,12 +266,6 @@ const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeVie
         </div>
     );
 };
-
-
-const StageItemContainer: React.FC<{ stage: Stage; caseItem: Case; client: Client; props: ClientsTreeViewProps }> = ({ stage, caseItem, client, props }) => {
-    const [isExpanded, setIsExpanded] = React.useState(false);
-    return <StageItem stage={stage} caseItem={caseItem} client={client} props={props} expanded={isExpanded} onToggle={() => setIsExpanded(!isExpanded)} />
-}
 
 const CaseItemContainer: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeViewProps }> = ({ caseItem, client, props }) => {
     const [isExpanded, setIsExpanded] = React.useState(false);
@@ -300,33 +299,38 @@ const ClientItem: React.FC<{ client: Client; props: ClientsTreeViewProps; expand
         }];
         props.showContextMenu(event, menuItems);
     };
-    
+
     return (
-        <div className="border rounded-lg mb-4 bg-sky-50 shadow-sm overflow-hidden">
+        <div className="bg-sky-50 border rounded-lg shadow-sm">
             <header 
-                className="flex justify-between items-center p-4 bg-sky-100 cursor-pointer hover:bg-sky-200 transition-colors" 
+                className="flex justify-between items-center p-4 cursor-pointer bg-sky-100 hover:bg-sky-200"
                 onClick={onToggle}
                 onContextMenu={handleContextMenu}
             >
                 <div className="flex items-center gap-3">
-                     <UserIcon className="w-6 h-6 text-sky-700" />
-                    <h2 className="text-xl font-bold text-sky-900">{client.name}</h2>
-                    <span className="text-gray-500 text-sm">{client.contactInfo}</span>
+                    <UserIcon className="w-6 h-6 text-sky-700" />
+                    <div>
+                        <h3 className="font-bold text-lg text-sky-900">{client.name}</h3>
+                        <p className="text-sm text-gray-500">{client.contactInfo}</p>
+                    </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <button onClick={(e) => { e.stopPropagation(); props.onAddCase(client.id); }} className="p-2 text-gray-600 hover:text-blue-700"><PlusIcon className="w-5 h-5" /></button>
-                    <button onClick={(e) => { e.stopPropagation(); props.onEditClient(client); }} className="p-2 text-gray-600 hover:text-blue-700"><PencilIcon className="w-5 h-5" /></button>
-                    <button onClick={(e) => { e.stopPropagation(); props.onDeleteClient(client.id); }} className="p-2 text-gray-600 hover:text-red-700"><TrashIcon className="w-5 h-5" /></button>
-                    <button onClick={(e) => { e.stopPropagation(); props.onPrintClientStatement(client.id); }} className="p-2 text-gray-600 hover:text-green-700"><PrintIcon className="w-5 h-5" /></button>
-                     <ChevronLeftIcon className={`w-6 h-6 transition-transform text-gray-500 ${expanded ? '-rotate-90' : ''}`} />
+                <div className="flex items-center gap-1">
+                    <span className="text-sm font-medium text-gray-600 bg-gray-200 px-2 py-1 rounded-full">{client.cases.length} قضايا</span>
+                    <button onClick={(e) => { e.stopPropagation(); props.onPrintClientStatement(client.id); }} className="p-2 text-gray-500 hover:text-green-600" title="طباعة كشف حساب"><PrintIcon className="w-4 h-4" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); props.onAddCase(client.id); }} className="p-2 text-gray-500 hover:text-blue-600" title="إضافة قضية"><PlusIcon className="w-4 h-4" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); props.onEditClient(client); }} className="p-2 text-gray-500 hover:text-blue-600" title="تعديل الموكل"><PencilIcon className="w-4 h-4" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); props.onDeleteClient(client.id); }} className="p-2 text-gray-500 hover:text-red-600" title="حذف الموكل"><TrashIcon className="w-4 h-4" /></button>
+                    <ChevronLeftIcon className={`w-5 h-5 transition-transform text-gray-500 ${expanded ? '-rotate-90' : ''}`} />
                 </div>
             </header>
             {expanded && (
-                <div className="p-4 bg-white">
+                <div className="border-t border-sky-200 p-4 space-y-3 bg-white">
                     {client.cases.length > 0 ? (
-                        client.cases.map(caseItem => <CaseItemContainer key={caseItem.id} caseItem={caseItem} client={client} props={props} />)
+                        client.cases.map(caseItem => (
+                            <CaseItemContainer key={caseItem.id} caseItem={caseItem} client={client} props={props} />
+                        ))
                     ) : (
-                        <p className="text-center text-gray-500 py-4">لا توجد قضايا لهذا الموكل.</p>
+                        <p className="text-center text-gray-500 py-3">لا توجد قضايا لهذا الموكل.</p>
                     )}
                 </div>
             )}
@@ -335,12 +339,12 @@ const ClientItem: React.FC<{ client: Client; props: ClientsTreeViewProps; expand
 };
 
 const ClientsTreeView: React.FC<ClientsTreeViewProps> = (props) => {
-    const [expandedClientId, setExpandedClientId] = React.useState<string | null>(null);
+    const [expanded, setExpanded] = React.useState<ExpandedState>({});
 
-    const handleToggleClient = (clientId: string) => {
-        setExpandedClientId(prevId => (prevId === clientId ? null : clientId));
+    const toggle = (id: string) => {
+        setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
     };
-    
+
     if (props.clients.length === 0) {
         return <p className="p-6 text-center text-gray-500">لا يوجد موكلون لعرضهم. ابدأ بإضافة موكل جديد.</p>;
     }
@@ -351,13 +355,13 @@ const ClientsTreeView: React.FC<ClientsTreeViewProps> = (props) => {
                 <ClientItem 
                     key={client.id} 
                     client={client} 
-                    props={props}
-                    expanded={expandedClientId === client.id}
-                    onToggle={() => handleToggleClient(client.id)}
+                    props={props} 
+                    expanded={!!expanded[client.id]} 
+                    onToggle={() => toggle(client.id)}
                 />
             ))}
         </div>
     );
 };
 
-export default React.memo(ClientsTreeView);
+export default ClientsTreeView;

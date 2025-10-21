@@ -1,4 +1,4 @@
-import * as React from 'https://esm.sh/react@18.2.0';
+import * as React from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
 import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon, GavelIcon, BuildingLibraryIcon, ShareIcon, DocumentTextIcon } from './icons';
 import SessionsTable from './SessionsTable';
@@ -26,7 +26,7 @@ interface ClientsListViewProps {
     onPrintClientStatement: (clientId: string) => void;
     assistants: string[];
     onUpdateSession: (sessionId: string, updatedFields: Partial<Session>) => void;
-    onDecide: (session: Session, stage: Stage) => void;
+    onDecide: (session: Session) => void;
     showContextMenu: (event: React.MouseEvent, menuItems: MenuItem[]) => void;
     onOpenAdminTaskModal: (initialData?: any) => void;
     onCreateInvoice: (clientId: string, caseId?: string) => void;
@@ -287,7 +287,7 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
                                                                 onDelete={(sessionId) => props.onDeleteSession(sessionId, stage.id, caseItem.id, client.id)}
                                                                 onUpdate={props.onUpdateSession}
                                                                 assistants={props.assistants}
-                                                                onDecide={(session) => props.onDecide(session, stage)}
+                                                                onDecide={props.onDecide}
                                                                 stage={stage}
                                                                 showSessionDate={true}
                                                                 onContextMenu={(e, session) => handleSessionContextMenu(e, session, caseItem)}

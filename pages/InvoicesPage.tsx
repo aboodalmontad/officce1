@@ -1,25 +1,15 @@
-import * as React from 'https://esm.sh/react@18.2.0';
+import * as React from 'react';
 import { Invoice, InvoiceItem, Client, Case } from '../types';
-import { formatDate } from '../utils/dateUtils';
+import { formatDate, toInputDateString } from '../utils/dateUtils';
 import { PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, PrintIcon } from '../components/icons';
 import PrintableInvoice from '../components/PrintableInvoice';
 import { printElement } from '../utils/printUtils';
+import { useData } from '../App';
 
 interface InvoicesPageProps {
-    invoices: Invoice[];
-    setInvoices: (updater: (prev: Invoice[]) => Invoice[]) => void;
-    clients: Client[];
     initialInvoiceData?: { clientId: string; caseId?: string };
     clearInitialInvoiceData: () => void;
 }
-
-const toInputDateString = (date: Date): string => {
-    const d = new Date(date);
-    const y = d.getFullYear();
-    const m = d.getMonth() + 1;
-    const day = d.getDate();
-    return `${y}-${m.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-};
 
 const getStatusStyles = (status: Invoice['status']) => {
     switch (status) {
@@ -30,7 +20,8 @@ const getStatusStyles = (status: Invoice['status']) => {
     }
 };
 
-const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoices, setInvoices, clients, initialInvoiceData, clearInitialInvoiceData }) => {
+const InvoicesPage: React.FC<InvoicesPageProps> = ({ initialInvoiceData, clearInitialInvoiceData }) => {
+    const { invoices, setInvoices, clients } = useData();
     const [modal, setModal] = React.useState<{ isOpen: boolean; data?: Invoice }>({ isOpen: false });
     const [formData, setFormData] = React.useState<Partial<Invoice> & { items: InvoiceItem[] }>({ items: [] });
     const [searchQuery, setSearchQuery] = React.useState('');

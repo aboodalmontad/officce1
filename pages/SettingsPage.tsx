@@ -1,36 +1,20 @@
-import * as React from 'https://esm.sh/react@18.2.0';
+import * as React from 'react';
 import { TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, PlusIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ShieldCheckIcon } from '../components/icons';
 import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
-import { AnalysisStatus } from '../hooks/useSync';
-import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { APP_DATA_KEY } from '../hooks/useSupabaseData';
-
-type AppData = {
-    clients: Client[];
-    adminTasks: AdminTask[];
-    appointments: Appointment[];
-    accountingEntries: AccountingEntry[];
-    assistants: string[];
-};
+import { useData } from '../App';
 
 interface SettingsPageProps {
-    setFullData: (data: any) => void;
-    analysisStatus: AnalysisStatus;
-    lastAnalysis: Date | null;
-    triggerAnalysis: () => void;
-    assistants: string[];
-    setAssistants: (updater: (prev: string[]) => string[]) => void;
-    analysisReport: string | null;
     offlineMode: boolean;
     setOfflineMode: (value: boolean) => void;
 }
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus, lastAnalysis, triggerAnalysis, assistants, setAssistants, analysisReport, offlineMode, setOfflineMode }) => {
+const SettingsPage: React.FC<SettingsPageProps> = ({ offlineMode, setOfflineMode }) => {
+    const { setFullData, assistants, setAssistants } = useData();
     const [feedback, setFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = React.useState(false);
     const [isDeleteAssistantModalOpen, setIsDeleteAssistantModalOpen] = React.useState(false);
     const [assistantToDelete, setAssistantToDelete] = React.useState<string | null>(null);
-    const isOnline = useOnlineStatus();
     const [newAssistant, setNewAssistant] = React.useState('');
     
 
@@ -100,19 +84,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
     };
 
 
-    const getAnalysisButtonContent = () => {
-        switch (analysisStatus) {
-            case 'analyzing':
-                return <><ArrowPathIcon className="w-5 h-5 animate-spin" /> <span>جاري التحليل...</span></>;
-            case 'success':
-                return <><CheckCircleIcon className="w-5 h-5 text-green-400" /> <span>اكتمل التحليل</span></>;
-            case 'error':
-                return <><XCircleIcon className="w-5 h-5 text-red-400" /> <span>فشل التحليل</span></>;
-            default:
-                return <><CloudArrowUpIcon className="w-5 h-5" /> <span>تحليل الأداء الآن</span></>;
-        }
-    };
-
     const handleAddAssistant = (e: React.FormEvent) => {
         e.preventDefault();
         if (newAssistant && !assistants.includes(newAssistant) && newAssistant !== 'بدون تخصيص') {
@@ -146,31 +117,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
         if (window.confirm(message)) {
             setOfflineMode(isOffline);
         }
-    };
-
-    const AnalysisReportDisplay: React.FC<{ report: string; status: AnalysisStatus }> = ({ report, status }) => {
-        const isError = status === 'error';
-        const renderContent = (content: string) => content.split('\n').map((line, i) => {
-            line = line.trim();
-            if (line.startsWith('- ')) return <li key={i} className="ms-5 list-disc">{line.substring(2)}</li>;
-            if (line) return <p key={i}>{line}</p>;
-            return null;
-        }).filter(Boolean);
-        const sections = report.split('### ').slice(1);
-        return (
-            <div className={`mt-6 p-4 border ${isError ? 'border-red-200 bg-red-50' : 'border-blue-200 bg-blue-50'} rounded-lg space-y-4 animate-fade-in`}>
-                {sections.map((section, index) => {
-                    const [title, ...contentLines] = section.split('\n');
-                    const content = contentLines.join('\n').trim();
-                    return (
-                        <div key={index}>
-                            <h4 className={`text-lg font-bold ${isError ? 'text-red-800' : 'text-blue-800'}`}>{title.trim()}</h4>
-                            <div className={`mt-2 text-sm ${isError ? 'text-red-700' : 'text-gray-700'} space-y-2`}>{renderContent(content)}</div>
-                        </div>
-                    );
-                })}
-            </div>
-        );
     };
 
     return (
@@ -240,31 +186,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setFullData, analysisStatus
                         </label>
                     </div>
                 </div>
-            </div>
-
-
-            <div className="bg-white p-6 rounded-lg shadow space-y-6">
-                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">تحليل الأداء بالذكاء الاصطناعي</h2>
-                <div className="flex flex-col lg:flex-row items-start justify-between gap-4">
-                    <div className="flex-grow">
-                        <h3 className="font-semibold text-lg">تحليل بيانات المكتب</h3>
-                        <p className="text-gray-600 text-sm mt-1">
-                           استخدم الذكاء الاصطناعي لتحليل بياناتك الحالية والحصول على ملخص أداء وتوصيات ذكية لتحسين إدارة مكتبك.
-                        </p>
-                        <p className="text-xs text-gray-500 mt-2">
-                            آخر تحليل ناجح: {lastAnalysis ? lastAnalysis.toLocaleString('ar-SY') : 'لم يتم التحليل بعد'}
-                        </p>
-                    </div>
-                    <button 
-                        onClick={triggerAnalysis}
-                        disabled={!isOnline || analysisStatus === 'analyzing'}
-                        className="flex-shrink-0 w-full lg:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-gray-700 text-white font-semibold rounded-lg hover:bg-gray-600 transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed"
-                        title={!isOnline ? 'التحليل يتطلب اتصالاً بالإنترنت' : 'تحليل بيانات المكتب'}
-                    >
-                        {getAnalysisButtonContent()}
-                    </button>
-                </div>
-                 {analysisReport && <AnalysisReportDisplay report={analysisReport} status={analysisStatus} />}
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow space-y-6">

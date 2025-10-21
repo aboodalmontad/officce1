@@ -1,15 +1,25 @@
-import * as React from 'https://esm.sh/react@18.2.0';
+import * as React from 'react';
 import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem } from '../types';
-import { getSupabaseClient } from '../supabaseClient';
 import { useOnlineStatus } from './useOnlineStatus';
-import { User } from 'https://esm.sh/@supabase/supabase-js@2.44.4';
+import { User } from '@supabase/supabase-js';
+import { AppData as OnlineAppData } from './useOnlineData';
+import { useSync, SyncStatus as SyncStatusType } from './useSync';
 
 export const APP_DATA_KEY = 'lawyerBusinessManagementData';
-export type SyncStatus = 'loading' | 'syncing' | 'synced' | 'error' | 'offline' | 'unconfigured' | 'uninitialized';
+export type SyncStatus = SyncStatusType;
+
+export type AppData = {
+    clients: Client[];
+    adminTasks: AdminTask[];
+    appointments: Appointment[];
+    accountingEntries: AccountingEntry[];
+    invoices: Invoice[];
+    assistants: string[];
+};
 
 const defaultAssistants = ['أحمد', 'فاطمة', 'سارة', 'بدون تخصيص'];
 
-const getInitialData = () => ({
+const getInitialData = (): AppData => ({
     clients: [] as Client[],
     adminTasks: [] as AdminTask[],
     appointments: [] as Appointment[],
@@ -18,7 +28,6 @@ const getInitialData = () => ({
     assistants: [...defaultAssistants],
 });
 
-type AppData = ReturnType<typeof getInitialData>;
 
 const validateAssistantsList = (list: any): string[] => {
     if (!Array.isArray(list)) {
@@ -170,22 +179,17 @@ const validateAndHydrate = (data: any): AppData => {
 
 export const useSupabaseData = (offlineMode: boolean, user: User | null) => {
     const getLocalStorageKey = () => user ? `${APP_DATA_KEY}_${user.id}` : APP_DATA_KEY;
-    const userId = user?.id; // Stable dependency
-
-    // Use a ref to hold the latest user object to prevent stale closures in callbacks
-    const userRef = React.useRef(user);
-    userRef.current = user;
+    const userId = user?.id;
 
     const [data, setData] = React.useState<AppData>(getInitialData);
     const [syncStatus, setSyncStatus] = React.useState<SyncStatus>('loading');
     const [lastSyncError, setLastSyncError] = React.useState<string | null>(null);
     const [isDirty, setIsDirty] = React.useState(false);
+    
     const isOnline = useOnlineStatus();
-    const isSavingRef = React.useRef(false);
 
     React.useEffect(() => {
         if (!userId) {
-            // Clear data if user logs out
             setData(getInitialData());
             setIsDirty(false);
             return;
@@ -198,293 +202,58 @@ export const useSupabaseData = (offlineMode: boolean, user: User | null) => {
             console.error("Failed to load or parse data from localStorage for user.", error);
             setData(getInitialData());
         }
-    }, [userId]); // Depend on the stable userId
+    }, [userId]);
 
-    const performCheckAndFetch = React.useCallback(async () => {
-        const currentUser = userRef.current; // Use the latest user object from the ref
-        if (offlineMode || !isOnline) {
-            setSyncStatus(offlineMode ? 'offline' : (isOnline ? 'synced' : 'offline'));
-            return;
-        }
-        
-        const supabase = getSupabaseClient();
-        if (!supabase) {
-            setSyncStatus('unconfigured');
-            return;
-        }
-
-        const tableChecks: { [key: string]: string } = {
-            'profiles': 'id',
-            'clients': 'id, cases(id)',
-            'cases': 'id, stages(id)',
-            'stages': 'id, sessions(id)',
-            'sessions': 'id',
-            'admin_tasks': 'id',
-            'appointments': 'id',
-            'accounting_entries': 'id',
-            'assistants': 'id',
-            'invoices': 'id, invoice_items(id)',
-            'invoice_items': 'id',
-        };
-        
-        const tableCheckPromises = Object.entries(tableChecks).map(([table, query]) =>
-            supabase.from(table).select(query, { head: true }).then(res => ({ ...res, table }))
-        );
-
-        try {
-            const results = await Promise.all(tableCheckPromises);
-            for (const result of results) {
-                if (result.error) {
-                    const message = String(result.error.message || '').toLowerCase();
-                    const code = String(result.error.code || '');
-                    
-                    if (code === '42P01' || message.includes('does not exist') || message.includes('could not find the table') || message.includes('schema cache') || message.includes('relation') ) {
-                        console.warn(`Database uninitialized. Missing table or relation: ${result.table}. Reason: ${result.error.message}`);
-                        setSyncStatus('uninitialized');
-                        setLastSyncError(`قاعدة البيانات غير مهيأة بالكامل. الجدول '${result.table}' أو علاقاته مفقودة. يرجى تشغيل شيفرة التهيئة.`);
-                        return;
-                    } else {
-                        throw result.error;
-                    }
-                }
-            }
-        } catch (error: any) {
-            const message = String(error?.message || '').toLowerCase();
-            const code = String(error?.code || '');
-
-            if (message.includes('failed to fetch')) {
-                console.error("Network error during schema check:", error);
-                setSyncStatus('error');
-                setLastSyncError('فشل الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت وإعدادات CORS في لوحة تحكم Supabase.');
-                return;
-            }
-            
-            if (message.includes('does not exist') || code === '42P01' || message.includes('could not find the table') || message.includes('schema cache')) {
-                console.warn(`Database uninitialized. A table is missing. Error: ${error.message}`);
-                setSyncStatus('uninitialized');
-                setLastSyncError(`قاعدة البيانات غير مهيأة بالكامل. يرجى تشغيل شيفرة التهيئة.`);
-                return;
-            }
-
-            let errorMessage = 'An unknown error occurred during the schema check.';
-            if (error?.message) {
-                 errorMessage = error.message;
-            } else if (error?.details) {
-                 errorMessage = error.details;
-            }
-
-            console.error("Error during schema check:", error);
-            setSyncStatus('error');
-            setLastSyncError(`خطأ في التحقق من قاعدة البيانات: ${errorMessage}`);
-            return;
-        }
-        
-        if (!currentUser) {
+    const handleDataFetched = React.useCallback((fetchedData: any) => {
+        if (fetchedData === null) {
             setData(getInitialData());
-            setSyncStatus('synced');
             return;
         }
-
-        setSyncStatus('syncing');
-        setLastSyncError(null);
-        try {
-            const clientsRes = await supabase.from('clients').select('*, cases(*, stages(*, sessions(*)))').order('name');
-            const adminTasksRes = await supabase.from('admin_tasks').select('*');
-            const appointmentsRes = await supabase.from('appointments').select('*');
-            const accountingEntriesRes = await supabase.from('accounting_entries').select('*');
-            const assistantsRes = await supabase.from('assistants').select('name');
-            const invoicesRes = await supabase.from('invoices').select('*, invoice_items(*)');
-
-            const allResults = [clientsRes, adminTasksRes, appointmentsRes, accountingEntriesRes, assistantsRes, invoicesRes];
-            
-            const errors = allResults.map(res => res.error).filter(Boolean);
-            if (errors.length > 0) throw new Error(errors.map(e => e!.message).join(', '));
-            
-            const remoteData = {
-                clients: clientsRes.data || [],
-                adminTasks: adminTasksRes.data || [],
-                appointments: appointmentsRes.data || [],
-                accountingEntries: accountingEntriesRes.data || [],
-                assistants: (assistantsRes.data || []).map((a: any) => a.name),
-                invoices: invoicesRes.data || [],
-            };
-
-            const validatedData = validateAndHydrate(remoteData);
-            setData(validatedData);
-            localStorage.setItem(getLocalStorageKey(), JSON.stringify(validatedData));
-            setIsDirty(false);
-            localStorage.setItem(`lawyerAppIsDirty_${currentUser.id}`, 'false');
-            setSyncStatus('synced');
-        } catch (error: any) {
-            console.error("Error fetching data from Supabase:", error);
-            const message = String(error?.message || '').toLowerCase();
-            const code = String(error?.code || '');
-            
-            if (message.includes('failed to fetch')) {
-                setSyncStatus('error');
-                setLastSyncError('فشل الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت وإعدادات CORS في لوحة تحكم Supabase.');
-            } else if (message.includes('does not exist') || message.includes('could not find the table') || code === '42P01' || message.includes('schema cache')) {
-                console.warn(`Database uninitialized during fetch. A table is missing. Error: ${error.message}`);
-                setSyncStatus('uninitialized');
-                setLastSyncError(`قاعدة البيانات غير مهيأة بالكامل. يرجى تشغيل شيفرة التهيئة.`);
-            } else {
-                setSyncStatus('error');
-                const errorMessage = error?.message ? String(error.message) : 'حدث خطأ غير معروف أثناء جلب البيانات.';
-                setLastSyncError(`خطأ في المزامنة: ${errorMessage}`);
-            }
+        const validatedData = validateAndHydrate({
+            ...fetchedData,
+            assistants: fetchedData.assistants.map((a: any) => a.name),
+        });
+        setData(validatedData);
+        if (userId) {
+            localStorage.setItem(`${APP_DATA_KEY}_${userId}`, JSON.stringify(validatedData));
         }
-    }, [userId, isOnline, offlineMode]);
-
-    React.useEffect(() => {
-        performCheckAndFetch();
-    }, [performCheckAndFetch]);
-
-
-    const uploadData = React.useCallback(async (currentData: AppData) => {
-        const currentUser = userRef.current;
-        const supabase = getSupabaseClient();
-        if (offlineMode || !isOnline || !supabase || syncStatus === 'uninitialized' || !currentUser) {
-            if (syncStatus === 'uninitialized') setLastSyncError('لا يمكن الحفظ، قاعدة البيانات غير مهيأة.');
-            return false;
-        }
-
-        if (isSavingRef.current) return false;
-
-        isSavingRef.current = true;
-        setSyncStatus('syncing');
-        setLastSyncError(null);
-
-        const toISOStringOrNull = (date: any): string | null => (date && !isNaN(new Date(date).getTime())) ? new Date(date).toISOString() : null;
-        const toISOStringOrNow = (date: any): string => (date && !isNaN(new Date(date).getTime())) ? new Date(date).toISOString() : new Date().toISOString();
-        const textToNull = (val: any): string | null => (val === undefined || val === null || String(val).trim() === '') ? null : String(val);
-
-        try {
-            const clientsToUpsert = currentData.clients.map(({ cases, contactInfo, ...client }) => ({ ...client, contact_info: textToNull(contactInfo), user_id: currentUser.id }));
-            const casesToUpsert = currentData.clients.flatMap(c => c.cases.map(({ stages, clientName, opponentName, feeAgreement, ...caseItem }) => ({ ...caseItem, client_id: c.id, client_name: clientName, opponent_name: textToNull(opponentName), fee_agreement: textToNull(feeAgreement), user_id: currentUser.id })));
-            const stagesToUpsert = currentData.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.map(({ sessions, caseNumber, firstSessionDate, decisionDate, decisionNumber, decisionSummary, decisionNotes, ...stage }) => ({ ...stage, case_id: cs.id, case_number: textToNull(caseNumber), first_session_date: toISOStringOrNull(firstSessionDate), decision_date: toISOStringOrNull(decisionDate), decision_number: textToNull(decisionNumber), decision_summary: textToNull(decisionSummary), decision_notes: textToNull(decisionNotes), user_id: currentUser.id }))));
-            const sessionsToUpsert = currentData.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.map(({ caseNumber, clientName, opponentName, postponementReason, isPostponed, nextSessionDate, nextPostponementReason, date, stageId, stageDecisionDate, ...session }) => ({ ...session, stage_id: st.id, case_number: textToNull(caseNumber), client_name: clientName, opponent_name: textToNull(opponentName), postponement_reason: textToNull(postponementReason), is_postponed: isPostponed, date: toISOStringOrNow(date), next_session_date: toISOStringOrNull(nextSessionDate), next_postponement_reason: textToNull(nextPostponementReason), user_id: currentUser.id })))));
-            const adminTasksToUpsert = currentData.adminTasks.map(({ dueDate, location, ...task }) => ({ ...task, due_date: toISOStringOrNow(dueDate), location: textToNull(location), user_id: currentUser.id }));
-            const appointmentsToUpsert = currentData.appointments.map(({ reminderTimeInMinutes, date, ...apt }) => ({ ...apt, date: toISOStringOrNow(date), reminder_time_in_minutes: reminderTimeInMinutes, user_id: currentUser.id }));
-            const accountingEntriesToUpsert = currentData.accountingEntries.map(({ clientId, caseId, clientName, date, description, ...entry }) => ({ ...entry, date: toISOStringOrNow(date), description: textToNull(description), client_id: textToNull(clientId), case_id: textToNull(caseId), client_name: clientName, user_id: currentUser.id }));
-            const assistantsToUpsert = currentData.assistants.map(name => ({ name, user_id: currentUser.id }));
-            const invoicesToUpsert = currentData.invoices.map(({ items, clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, ...inv }) => ({ ...inv, client_id: clientId, client_name: clientName, case_id: textToNull(caseId), case_subject: textToNull(caseSubject), issue_date: toISOStringOrNow(issueDate), due_date: toISOStringOrNow(dueDate), tax_rate: taxRate, user_id: currentUser.id }));
-            const invoiceItemsToUpsert = currentData.invoices.flatMap(inv => inv.items.map(item => ({ ...item, invoice_id: inv.id, user_id: currentUser.id })));
-            
-            // --- Deletion Phase ---
-            const topLevelTables = ['clients', 'admin_tasks', 'appointments', 'accounting_entries', 'assistants', 'invoices'];
-            const deletePromises = topLevelTables.map(table => 
-                supabase.from(table).delete().eq('user_id', currentUser.id)
-            );
-            const deleteResults = await Promise.all(deletePromises);
-            for (const result of deleteResults) {
-                if (result.error) {
-                    console.error('Error during parallel delete:', result.error);
-                    throw result.error;
-                }
-            }
-            
-            // --- Sequential Upsert Phase ---
-            // This ensures that records with foreign key dependencies are inserted in the correct order.
-            const checkResults = (results: { error: any }[], tableNames: string[]) => {
-                results.forEach((result, index) => {
-                    if (result.error) {
-                        const error = { ...result.error, table: tableNames[index] };
-                        console.error(`Error during upsert on ${tableNames[index]}:`, error);
-                        throw error;
-                    }
-                });
-            };
-
-            // Level 1: Independent or top-level tables
-            const level1Promises = [];
-            const level1Tables = [];
-            if (clientsToUpsert.length > 0) { level1Promises.push(supabase.from('clients').upsert(clientsToUpsert)); level1Tables.push('clients'); }
-            if (assistantsToUpsert.length > 0) { level1Promises.push(supabase.from('assistants').upsert(assistantsToUpsert)); level1Tables.push('assistants'); }
-            if (adminTasksToUpsert.length > 0) { level1Promises.push(supabase.from('admin_tasks').upsert(adminTasksToUpsert)); level1Tables.push('admin_tasks'); }
-            if (appointmentsToUpsert.length > 0) { level1Promises.push(supabase.from('appointments').upsert(appointmentsToUpsert)); level1Tables.push('appointments'); }
-            if (level1Promises.length > 0) checkResults(await Promise.all(level1Promises), level1Tables);
-
-            // Level 2: Depend on clients
-            const level2Promises = [];
-            const level2Tables = [];
-            if (casesToUpsert.length > 0) { level2Promises.push(supabase.from('cases').upsert(casesToUpsert)); level2Tables.push('cases'); }
-            if (accountingEntriesToUpsert.length > 0) { level2Promises.push(supabase.from('accounting_entries').upsert(accountingEntriesToUpsert)); level2Tables.push('accounting_entries'); }
-            if (level2Promises.length > 0) checkResults(await Promise.all(level2Promises), level2Tables);
-
-            // Level 3: Depend on cases
-            const level3Promises = [];
-            const level3Tables = [];
-            if (stagesToUpsert.length > 0) { level3Promises.push(supabase.from('stages').upsert(stagesToUpsert)); level3Tables.push('stages'); }
-            if (invoicesToUpsert.length > 0) { level3Promises.push(supabase.from('invoices').upsert(invoicesToUpsert)); level3Tables.push('invoices'); }
-            if (level3Promises.length > 0) checkResults(await Promise.all(level3Promises), level3Tables);
-
-            // Level 4: Depend on stages and invoices
-            const level4Promises = [];
-            const level4Tables = [];
-            if (sessionsToUpsert.length > 0) { level4Promises.push(supabase.from('sessions').upsert(sessionsToUpsert)); level4Tables.push('sessions'); }
-            if (invoiceItemsToUpsert.length > 0) { level4Promises.push(supabase.from('invoice_items').upsert(invoiceItemsToUpsert)); level4Tables.push('invoice_items'); }
-            if (level4Promises.length > 0) checkResults(await Promise.all(level4Promises), level4Tables);
-            
-            setIsDirty(false);
-            localStorage.setItem(`lawyerAppIsDirty_${currentUser.id}`, 'false');
-            return true;
-        } catch (error: any) {
-            console.error("Error saving to Supabase:", error);
-            setSyncStatus('error');
-            
-            const message = String(error?.message || '').toLowerCase();
-            if (message.includes('failed to fetch')) {
-                setLastSyncError('فشل رفع البيانات: لا يمكن الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت.');
-                return false;
-            }
-            
-            let errorMessage = 'حدث خطأ غير معروف أثناء حفظ البيانات.';
-            if (error && error.message) {
-                errorMessage = error.message;
-                if (error.table) errorMessage = `[جدول: ${error.table}] ${errorMessage}`;
-                if (error.details) errorMessage += ` | التفاصيل: ${error.details}`;
-                if (error.hint) errorMessage += ` | تلميح: ${error.hint}`;
-            } else if (error) {
-                try {
-                    errorMessage = JSON.stringify(error);
-                } catch {
-                    errorMessage = String(error);
-                }
-            }
-            
-            setLastSyncError(`فشل رفع البيانات: ${errorMessage}`);
-            return false;
-        } finally {
-            isSavingRef.current = false;
-        }
-    }, [userId, isOnline, offlineMode, syncStatus]);
+    }, [userId]);
     
-    const manualSync = React.useCallback(async () => {
-        if (!isOnline || offlineMode) return;
-        const uploadSuccessful = await uploadData(data);
-        if (uploadSuccessful) {
-            await performCheckAndFetch();
+    const handleSyncStatusChange = React.useCallback((status: SyncStatus, error: string | null) => {
+        setSyncStatus(status);
+        setLastSyncError(error);
+    }, []);
+
+    const handleSyncSuccess = React.useCallback(() => {
+        setIsDirty(false);
+        if (userId) {
+            localStorage.setItem(`lawyerAppIsDirty_${userId}`, 'false');
         }
-    }, [data, uploadData, performCheckAndFetch, isOnline, offlineMode]);
+    }, [userId]);
+
+    const { forceSync, manualSync } = useSync({
+        user,
+        currentData: data,
+        onDataFetched: handleDataFetched,
+        onSyncStatusChange: handleSyncStatusChange,
+        onSyncSuccess: handleSyncSuccess,
+        isOnline,
+        offlineMode,
+    });
     
     React.useEffect(() => {
-        // This effect ensures data is immediately persisted to localStorage whenever it changes.
         if (!userId) return;
         try {
             localStorage.setItem(getLocalStorageKey(), JSON.stringify(data));
-            // Also persist the dirty status.
             if (isDirty) {
                 localStorage.setItem(`lawyerAppIsDirty_${userId}`, 'true');
             } else {
-                // Ensure the dirty flag is removed when the state is no longer dirty (e.g., after a sync).
                 localStorage.removeItem(`lawyerAppIsDirty_${userId}`);
             }
         } catch (e) {
             console.error("Failed to save data to localStorage:", e);
         }
-    }, [data, userId, isDirty]); // Re-run whenever data, user, or dirty state changes.
-
-    const forceSync = React.useCallback(performCheckAndFetch, [performCheckAndFetch]);
+    }, [data, userId, isDirty]);
 
     const createSetter = <K extends keyof AppData>(key: K) => (updater: React.SetStateAction<AppData[K]>) => {
         setData(prev => ({ ...prev, [key]: updater instanceof Function ? updater(prev[key]) : updater }));
@@ -508,19 +277,18 @@ export const useSupabaseData = (offlineMode: boolean, user: User | null) => {
         return data.clients.flatMap(client =>
             client.cases.flatMap(caseItem =>
                 caseItem.stages.flatMap(stage =>
-                    stage.sessions.map(session => ({ ...session, stageId: stage.id, stageDecisionDate: stage.decisionDate }))
+                    stage.sessions.map(session => ({
+                        ...session,
+                        stageId: stage.id,
+                        stageDecisionDate: stage.decisionDate,
+                    }))
                 )
             )
         );
     }, [data.clients]);
 
     return {
-        clients: data.clients,
-        adminTasks: data.adminTasks,
-        appointments: data.appointments,
-        accountingEntries: data.accountingEntries,
-        invoices: data.invoices,
-        assistants: data.assistants,
+        ...data,
         setClients,
         setAdminTasks,
         setAppointments,

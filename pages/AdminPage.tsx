@@ -1,18 +1,64 @@
-import * as React from 'https://esm.sh/react@18.2.0';
+import * as React from 'react';
 import { getSupabaseClient } from '../supabaseClient';
 import { Profile } from '../types';
-import { formatDate } from '../utils/dateUtils';
+import { formatDate, toInputDateString } from '../utils/dateUtils';
 import { CheckCircleIcon, NoSymbolIcon, PencilIcon, TrashIcon, ExclamationTriangleIcon } from '../components/icons';
 
-const toInputDateString = (date: string | Date | null): string => {
-    if (!date) return '';
+/**
+ * A robust helper function to format the subscription date range for display.
+ * It handles null, undefined, empty, and invalid date strings gracefully,
+ * always returning a renderable string.
+ * @param user The user profile object.
+ * @returns A formatted string representing the date range or a fallback message.
+ */
+const formatSubscriptionDateRange = (user: Profile): string => {
+    const { subscription_start_date, subscription_end_date } = user;
+
+    // 1. Check for null, undefined, or empty strings
+    if (!subscription_start_date || !subscription_end_date) {
+        return 'لا يوجد';
+    }
+
+    const startDate = new Date(subscription_start_date);
+    const endDate = new Date(subscription_end_date);
+
+    // 2. Check for invalid dates after parsing
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        console.warn('Invalid subscription date found for user:', user.id);
+        return 'تاريخ غير صالح';
+    }
+    
+    // 3. Dates are valid, format and return the string
     try {
-        const d = new Date(date);
-        return d.toISOString().split('T')[0];
-    } catch {
-        return '';
+        return `${formatDate(startDate)} - ${formatDate(endDate)}`;
+    } catch (e) {
+        console.error("Error formatting date range for user:", user.id, e);
+        return 'خطأ في التهيئة';
     }
 };
+
+/**
+ * Formats a mobile number string for display, cleaning up potentially malformed data.
+ * It expects a Syrian number and will format it to the local '09...' format.
+ * @param mobile The mobile number string from the database.
+ * @returns A cleaned '09...' formatted string or the original string as a fallback.
+ */
+const getDisplayPhoneNumber = (mobile: string | null | undefined): string => {
+    if (!mobile) return '-';
+    // Strip all non-digit characters from the string.
+    const digits = mobile.replace(/\D/g, '');
+    // Check if we have at least 9 digits (standard for Syrian mobile numbers without country code).
+    if (digits.length >= 9) {
+        const lastNine = digits.slice(-9);
+        // Ensure the number starts with '9' as expected for local Syrian numbers.
+        if (lastNine.startsWith('9')) {
+            return '0' + lastNine;
+        }
+    }
+    // If the format is unexpected, return the original string to avoid breaking display.
+    return mobile;
+};
+
 
 const AdminPage: React.FC = () => {
     const [users, setUsers] = React.useState<Profile[]>([]);
@@ -156,9 +202,11 @@ const AdminPage: React.FC = () => {
                         {users.map(user => (
                             <tr key={user.id} className={`border-b ${!user.is_approved ? 'bg-yellow-50' : 'bg-white'}`}>
                                 <td className="px-6 py-4 font-medium text-gray-900">{user.full_name} {user.role === 'admin' && <span className="text-xs font-semibold text-blue-600">(مدير)</span>}</td>
-                                <td className="px-6 py-4">{user.mobile_number}</td>
+                                <td className="px-6 py-4">{getDisplayPhoneNumber(user.mobile_number)}</td>
                                 <td className="px-6 py-4">{user.created_at ? formatDate(new Date(user.created_at)) : '-'}</td>
-                                <td className="px-6 py-4">{user.subscription_start_date ? `${formatDate(new Date(user.subscription_start_date))} - ${formatDate(new Date(user.subscription_end_date))}` : 'لا يوجد'}</td>
+                                <td className="px-6 py-4">
+                                    {formatSubscriptionDateRange(user)}
+                                </td>
                                 <td className="px-6 py-4">
                                     <button onClick={() => toggleUserApproval(user)} disabled={user.role === 'admin'} className="disabled:opacity-50 disabled:cursor-not-allowed">
                                         {user.is_approved ? <CheckCircleIcon className="w-6 h-6 text-green-500" /> : <NoSymbolIcon className="w-6 h-6 text-gray-400" />}

@@ -38,6 +38,23 @@ export const formatDate = (date: Date): string => {
     }).format(date);
 };
 
+/**
+ * A robust helper function to format a Date object or string into a 'YYYY-MM-DD' string for input fields.
+ * It handles null, undefined, empty, and invalid date strings gracefully.
+ * @param date The date to format.
+ * @returns A formatted 'YYYY-MM-DD' string or an empty string if the date is invalid.
+ */
+export const toInputDateString = (date: Date | string | null | undefined): string => {
+    if (!date) return ''; // Handles null, undefined, ''
+    const d = new Date(date);
+    if (isNaN(d.getTime())) { // Handles invalid dates
+        return '';
+    }
+    // Using toISOString and slicing is a reliable way to get YYYY-MM-DD format,
+    // as it correctly handles timezones by converting to UTC first.
+    return d.toISOString().split('T')[0];
+};
+
 // --- Holiday and Weekend Logic ---
 
 // List of fixed Syrian public holidays (Month is 0-indexed)

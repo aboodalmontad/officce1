@@ -1,4 +1,4 @@
-import * as React from 'https://esm.sh/react@18.2.0';
+import * as React from 'react';
 
 /**
  * A custom hook that delays updating a value until a certain amount of time has passed without that value changing.

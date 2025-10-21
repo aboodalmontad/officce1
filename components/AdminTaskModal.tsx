@@ -1,45 +1,38 @@
-import * as React from 'https://esm.sh/react@18.2.0';
+import * as React from 'react';
 import { AdminTask } from '../types';
+import { useData } from '../App';
+import { toInputDateString } from '../utils/dateUtils';
 
 interface AdminTaskModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSubmit: (taskData: Omit<AdminTask, 'id' | 'completed'> & { id?: string }) => void;
     initialData?: Partial<Omit<AdminTask, 'dueDate'>> & { dueDate?: string; id?: string };
-    assistants: string[];
 }
 
-const toInputDateString = (date: Date) => {
-    const y = date.getFullYear();
-    const m = date.getMonth() + 1;
-    const d = date.getDate();
-    return `${y}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
-}
-
-const AdminTaskModal: React.FC<AdminTaskModalProps> = ({ isOpen, onClose, onSubmit, initialData, assistants }) => {
+const AdminTaskModal: React.FC<AdminTaskModalProps> = ({ isOpen, onClose, onSubmit, initialData }) => {
+    const { assistants } = useData();
     const [taskFormData, setTaskFormData] = React.useState({
         task: '',
         dueDate: toInputDateString(new Date()),
         importance: 'normal' as 'normal' | 'important' | 'urgent',
         assignee: 'بدون تخصيص',
         location: '',
-        ...initialData
     });
     
-    // Effect to update form when initialData changes (e.g., for editing or context menu)
+    // Effect to reset and populate form state when the modal opens.
     React.useEffect(() => {
-        if (initialData) {
-            setTaskFormData(prev => ({
+        if (isOpen) {
+            const defaultState = {
                 task: '',
                 dueDate: toInputDateString(new Date()),
-                importance: 'normal',
+                importance: 'normal' as const,
                 assignee: 'بدون تخصيص',
                 location: '',
-                 ...prev,
-                 ...initialData
-            }));
+            };
+            setTaskFormData({ ...defaultState, ...initialData });
         }
-    }, [initialData]);
+    }, [isOpen, initialData]);
 
     const handleTaskFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;

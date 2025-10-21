@@ -1,13 +1,14 @@
-import * as React from 'https://esm.sh/react@18.2.0';
+import * as React from 'react';
 import Calendar from '../components/Calendar';
 import { Session, AdminTask, Appointment, Stage, Client } from '../types';
-import { formatDate, isSameDay, isBeforeToday } from '../utils/dateUtils';
+import { formatDate, isSameDay, isBeforeToday, toInputDateString } from '../utils/dateUtils';
 import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, CalendarIcon, ChevronLeftIcon, ScaleIcon, BuildingLibraryIcon, ShareIcon } from '../components/icons';
 import SessionsTable from '../components/SessionsTable';
 import PrintableReport from '../components/PrintableReport';
 import { printElement } from '../utils/printUtils';
 import { MenuItem } from '../components/ContextMenu';
 import { useDebounce } from '../hooks/useDebounce';
+import { useData } from '../App';
 
 const importanceMap: { [key: string]: { text: string, className: string } } = {
     normal: { text: 'عادي', className: 'bg-gray-100 text-gray-800' },
@@ -78,19 +79,12 @@ const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointmen
 ));
 
 interface HomePageProps {
-    appointments: Appointment[];
-    clients: Client[];
-    setClients: (updater: (prevClients: Client[]) => Client[]) => void;
-    allSessions: Session[];
-    setAppointments: (updater: (prevAppointments: Appointment[]) => Appointment[]) => void;
-    adminTasks: AdminTask[];
-    setAdminTasks: (updater: (prevTasks: AdminTask[]) => AdminTask[]) => void;
-    assistants: string[];
     onOpenAdminTaskModal: (initialData?: any) => void;
     showContextMenu: (event: React.MouseEvent, menuItems: MenuItem[]) => void;
 }
 
-const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, allSessions, setAppointments, adminTasks, setAdminTasks, assistants, onOpenAdminTaskModal, showContextMenu }) => {
+const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMenu }) => {
+    const { appointments, clients, setClients, allSessions, setAppointments, adminTasks, setAdminTasks, assistants } = useData();
     const [selectedDate, setSelectedDate] = React.useState(new Date());
     const [calendarViewDate, setCalendarViewDate] = React.useState(new Date());
     type ViewMode = 'daily' | 'unpostponed' | 'upcoming';
@@ -125,13 +119,6 @@ const HomePage: React.FC<HomePageProps> = ({ appointments, clients, setClients, 
     const [decideModal, setDecideModal] = React.useState<{ isOpen: boolean; session?: Session, stage?: Stage }>({ isOpen: false });
     const [decideFormData, setDecideFormData] = React.useState({ decisionNumber: '', decisionSummary: '', decisionNotes: '' });
 
-
-    const toInputDateString = (date: Date) => {
-        const y = date.getFullYear();
-        const m = date.getMonth() + 1;
-        const d = date.getDate();
-        return `${y}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
-    }
 
     // Appointment Handlers
     const handleOpenAddAppointmentModal = () => {

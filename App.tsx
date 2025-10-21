@@ -1,5 +1,5 @@
-import * as React from 'https://esm.sh/react@18.2.0';
-import { Session as AuthSession } from 'https://esm.sh/@supabase/supabase-js@2.44.4';
+import * as React from 'react';
+import { Session as AuthSession } from '@supabase/supabase-js';
 
 // Lazy load page components for code splitting and faster initial load
 const HomePage = React.lazy(() => import('./pages/HomePage'));
@@ -8,21 +8,55 @@ const AccountingPage = React.lazy(() => import('./pages/AccountingPage'));
 const InvoicesPage = React.lazy(() => import('./pages/InvoicesPage'));
 const ReportsPage = React.lazy(() => import('./pages/ReportsPage'));
 const SettingsPage = React.lazy(() => import('./pages/SettingsPage'));
-const AuthPage = React.lazy(() => import('./pages/AuthPage'));
+const LoginPage = React.lazy(() => import('./pages/LoginPage'));
 const AdminDashboard = React.lazy(() => import('./pages/AdminDashboard'));
 const PendingApprovalPage = React.lazy(() => import('./pages/PendingApprovalPage'));
 const SubscriptionExpiredPage = React.lazy(() => import('./pages/SubscriptionExpiredPage'));
 
-import SetupWizard from './components/SetupWizard';
-import { useSupabaseData, SyncStatus, APP_DATA_KEY } from './hooks/useSupabaseData';
+import ConfigurationModal from './components/ConfigurationModal';
+import { useSupabaseData, SyncStatus, APP_DATA_KEY, AppData } from './hooks/useSupabaseData';
 import { HomeIcon, UserIcon, CalculatorIcon, ChartBarIcon, Cog6ToothIcon, ArrowPathIcon, WifiIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, CloudIcon, ExclamationTriangleIcon, ServerIcon, CloudArrowDownIcon, CloudArrowUpIcon, DocumentTextIcon, PowerIcon, ChevronLeftIcon } from './components/icons';
-import { useAnalysis } from './hooks/useSync';
 import ContextMenu, { MenuItem } from './components/ContextMenu';
 import AdminTaskModal from './components/AdminTaskModal';
-import { AdminTask, Profile } from './types';
+import { AdminTask, Profile, Session, Client, Appointment, AccountingEntry, Invoice } from './types';
 import { getSupabaseClient } from './supabaseClient';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
+import { toInputDateString } from './utils/dateUtils';
 
+
+// --- Data Context for avoiding prop drilling ---
+// We define the context shape based on the return value of useSupabaseData
+interface IDataContext {
+    clients: Client[];
+    adminTasks: AdminTask[];
+    appointments: Appointment[];
+    accountingEntries: AccountingEntry[];
+    invoices: Invoice[];
+    assistants: string[];
+    setClients: (updater: React.SetStateAction<Client[]>) => void;
+    setAdminTasks: (updater: React.SetStateAction<AdminTask[]>) => void;
+    setAppointments: (updater: React.SetStateAction<Appointment[]>) => void;
+    setAccountingEntries: (updater: React.SetStateAction<AccountingEntry[]>) => void;
+    setInvoices: (updater: React.SetStateAction<Invoice[]>) => void;
+    setAssistants: (updater: React.SetStateAction<string[]>) => void;
+    allSessions: (Session & { stageId?: string, stageDecisionDate?: Date })[];
+    setFullData: (data: any) => void;
+    syncStatus: SyncStatus;
+    forceSync: () => Promise<void>;
+    manualSync: () => Promise<void>;
+    lastSyncError: string | null;
+    isDirty: boolean;
+}
+
+const DataContext = React.createContext<IDataContext | null>(null);
+
+export const useData = () => {
+    const context = React.useContext(DataContext);
+    if (!context) {
+        throw new Error('useData must be used within a DataProvider');
+    }
+    return context;
+};
 
 type Page = 'home' | 'clients' | 'accounting' | 'invoices' | 'reports' | 'settings';
 
@@ -81,6 +115,17 @@ const SyncStatusIndicator: React.FC<{ status: SyncStatus, lastError: string | nu
     );
 };
 
+const NavLink: React.FC<{ page: Page, label: string, icon: React.ReactElement<any>, currentPage: Page, setCurrentPage: (page: Page) => void }> = ({ page, label, icon, currentPage, setCurrentPage }) => (
+    <a
+        href="#"
+        onClick={(e) => { e.preventDefault(); setCurrentPage(page); }}
+        className={`flex-shrink-0 flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${currentPage === page ? 'bg-gray-200 text-gray-900' : 'text-gray-600 hover:bg-gray-200'}`}
+    >
+        {React.cloneElement(icon, { className: "w-5 h-5 text-gray-500"})}
+        <span className="ms-2">{label}</span>
+    </a>
+);
+
 const Navbar: React.FC<{ currentPage: Page, setCurrentPage: (page: Page) => void, syncStatus: SyncStatus, lastSyncError: string | null, isDirty: boolean, onLogout: () => void, profile: Profile | null, onSync: () => void, isOnline: boolean }> = ({ currentPage, setCurrentPage, syncStatus, lastSyncError, isDirty, onLogout, profile, onSync, isOnline }) => {
     const [openDropdown, setOpenDropdown] = React.useState<string | null>(null);
     const navRef = React.useRef<HTMLElement>(null);
@@ -112,17 +157,6 @@ const Navbar: React.FC<{ currentPage: Page, setCurrentPage: (page: Page) => void
         },
         { id: 'settings', label: 'الإعدادات', icon: <Cog6ToothIcon className="w-5 h-5" /> },
     ];
-
-    const NavLink: React.FC<{ page: Page, label: string, icon: React.ReactElement<any> }> = ({ page, label, icon }) => (
-        <a
-            href="#"
-            onClick={(e) => { e.preventDefault(); setCurrentPage(page); }}
-            className={`flex-shrink-0 flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${currentPage === page ? 'bg-gray-200 text-gray-900' : 'text-gray-600 hover:bg-gray-200'}`}
-        >
-            {React.cloneElement(icon, { className: "w-5 h-5 text-gray-500"})}
-            <span className="ms-2">{label}</span>
-        </a>
-    );
 
     const fullName = profile?.full_name?.trim();
 
@@ -176,7 +210,7 @@ const Navbar: React.FC<{ currentPage: Page, setCurrentPage: (page: Page) => void
                                 </div>
                             );
                         }
-                        return <NavLink key={item.id} page={item.id as Page} label={item.label} icon={item.icon} />;
+                        return <NavLink key={item.id} page={item.id as Page} label={item.label} icon={item.icon} currentPage={currentPage} setCurrentPage={setCurrentPage} />;
                     })}
                 </nav>
 
@@ -195,7 +229,7 @@ const Navbar: React.FC<{ currentPage: Page, setCurrentPage: (page: Page) => void
             <div className="md:hidden border-t">
                 <nav className="flex items-center gap-x-2 p-2 overflow-x-auto">
                      {navItems.flatMap(item => item.children ?? [item]).map(item => (
-                        <NavLink key={item.id} page={item.id as Page} label={item.label} icon={item.icon} />
+                        <NavLink key={item.id} page={item.id as Page} label={item.label} icon={item.icon} currentPage={currentPage} setCurrentPage={setCurrentPage} />
                     ))}
                 </nav>
             </div>
@@ -244,12 +278,20 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
             return;
         }
 
-        const checkInitialSession = async () => {
-            try {
-                const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
-                if (sessionError) throw sessionError;
+        // onAuthStateChange handles everything: initial session, login, and logout.
+        // It fires once on component mount.
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            async (_event, currentSession) => {
+                // Case 1: User is logged out or session is invalid
+                if (!currentSession?.user) {
+                    setSession(null);
+                    setProfile(null);
+                    setIsAuthLoading(false); // Stable state: show login page
+                    return;
+                }
 
-                if (currentSession?.user) {
+                // Case 2: Session exists, we must verify a matching profile exists.
+                try {
                     const { data, error } = await supabase
                         .from('profiles')
                         .select('*')
@@ -257,56 +299,33 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                         .maybeSingle();
 
                     if (error) throw error;
-                    setProfile(data);
-                } else {
-                    setProfile(null);
-                }
-                setSession(currentSession);
-            } catch (error) {
-                console.error("Error bootstrapping session:", error);
-                setSession(null);
-                setProfile(null);
-            } finally {
-                setIsAuthLoading(false);
-            }
-        };
 
-        checkInitialSession();
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            async (_event, newSession) => {
-                setSession(newSession);
-                if (newSession?.user) {
-                    try {
-                        const { data, error } = await supabase
-                            .from('profiles')
-                            .select('*')
-                            .eq('id', newSession.user.id)
-                            .maybeSingle();
-                        if (error) throw error;
+                    if (data) {
+                        // Stable state: user is logged in with a valid profile
                         setProfile(data);
-                    } catch (e) {
-                        console.error("Error fetching profile on auth state change:", e);
-                        setProfile(null);
+                        setSession(currentSession);
+                        setIsAuthLoading(false);
+                    } else {
+                        // Unstable state: session exists but no profile.
+                        // This can happen briefly after signup or if a profile is deleted.
+                        // Log the user out to force a clean login. The next onAuthStateChange event will handle it.
+                        console.warn("Session exists without a profile, signing out to correct state.");
+                        await supabase.auth.signOut();
                     }
-                } else {
-                    setProfile(null);
+                } catch (e) {
+                    console.error("Error fetching profile, signing out:", e);
+                    await supabase.auth.signOut();
                 }
             }
         );
-    
+
         return () => {
             subscription.unsubscribe();
         };
     }, []);
 
-    const {
-        clients, adminTasks, appointments, accountingEntries, assistants, invoices,
-        setClients, setAdminTasks, setAppointments, setAccountingEntries, setAssistants, setInvoices,
-        allSessions, setFullData, syncStatus, forceSync, manualSync, lastSyncError, isDirty
-    } = useSupabaseData(offlineMode, session?.user ?? null);
-
-    const { analysisStatus, lastAnalysis, triggerAnalysis, analysisReport } = useAnalysis();
+    const supabaseData = useSupabaseData(offlineMode, session?.user ?? null);
+    const { syncStatus, manualSync, lastSyncError, isDirty, assistants, setAdminTasks } = supabaseData;
 
     const [adminTaskModalState, setAdminTaskModalState] = React.useState<{ isOpen: boolean; initialData?: any }>({ isOpen: false });
     const [contextMenuState, setContextMenuState] = React.useState<{ isOpen: boolean; position: { x: number; y: number }; menuItems: MenuItem[] }>({
@@ -315,13 +334,6 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         menuItems: [],
     });
     
-    const toInputDateString = (date: Date) => {
-        const y = date.getFullYear();
-        const m = date.getMonth() + 1;
-        const d = date.getDate();
-        return `${y}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
-    }
-
     const handleOpenAdminTaskModal = (initialData: any = {}) => {
         const isEditing = !!initialData.id;
         const preparedData = isEditing 
@@ -377,6 +389,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         localStorage.removeItem(APP_DATA_KEY);
         
         // Explicitly clear session state to ensure the UI updates to the login page immediately.
+        // onAuthStateChange will also handle this, but being explicit prevents flickers.
         setSession(null);
         setProfile(null);
         
@@ -395,58 +408,9 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         setInitialInvoiceData(undefined);
     };
 
-    const renderUserApp = () => {
-        const commonProps = { showContextMenu, onOpenAdminTaskModal: handleOpenAdminTaskModal };
-        let pageComponent: React.ReactNode;
-        switch (currentPage) {
-            case 'home': pageComponent = <HomePage appointments={appointments} clients={clients} setClients={setClients} allSessions={allSessions} setAppointments={setAppointments} adminTasks={adminTasks} setAdminTasks={setAdminTasks} assistants={assistants} {...commonProps} />; break;
-            case 'clients': pageComponent = <ClientsPage clients={clients} setClients={setClients} accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} assistants={assistants} onCreateInvoice={handleCreateInvoiceFor} {...commonProps} />; break;
-            case 'accounting': pageComponent = <AccountingPage accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} clients={clients} />; break;
-            case 'invoices': pageComponent = <InvoicesPage invoices={invoices} setInvoices={setInvoices} clients={clients} initialInvoiceData={initialInvoiceData} clearInitialInvoiceData={clearInitialInvoiceData} />; break;
-            case 'reports': pageComponent = <ReportsPage clients={clients} accountingEntries={accountingEntries} />; break;
-            case 'settings': pageComponent = <SettingsPage setFullData={setFullData} analysisStatus={analysisStatus} lastAnalysis={lastAnalysis} triggerAnalysis={triggerAnalysis} assistants={assistants} setAssistants={setAssistants} analysisReport={analysisReport} offlineMode={offlineMode} setOfflineMode={setOfflineMode} />; break;
-            default: pageComponent = <HomePage appointments={appointments} clients={clients} setClients={setClients} allSessions={allSessions} setAppointments={setAppointments} adminTasks={adminTasks} setAdminTasks={setAdminTasks} assistants={assistants} {...commonProps} />;
-        }
-
-        return (
-            <div dir="rtl">
-                <MemoizedNavbar 
-                    currentPage={currentPage} 
-                    setCurrentPage={setCurrentPage}
-                    syncStatus={syncStatus}
-                    lastSyncError={lastSyncError}
-                    isDirty={isDirty}
-                    onLogout={handleLogout}
-                    profile={profile}
-                    onSync={manualSync}
-                    isOnline={isOnline}
-                />
-                <div className="p-4 pt-32 md:pt-20">
-                    <main>
-                         <React.Suspense fallback={<PageLoader message="جاري تحميل الصفحة..."/>}>
-                            {pageComponent}
-                        </React.Suspense>
-                    </main>
-                </div>
-
-                <AdminTaskModal 
-                    isOpen={adminTaskModalState.isOpen}
-                    onClose={handleCloseAdminTaskModal}
-                    onSubmit={handleTaskSubmit}
-                    initialData={adminTaskModalState.initialData}
-                    assistants={assistants}
-                />
-                <ContextMenu 
-                    isOpen={contextMenuState.isOpen}
-                    onClose={handleCloseContextMenu}
-                    position={contextMenuState.position}
-                    menuItems={contextMenuState.menuItems}
-                />
-            </div>
-        );
-    };
-    
     if (isAuthLoading) {
+        // Render nothing, allowing the initial HTML loader to show.
+        // This prevents flashes of incorrect UI before auth state is determined.
         return null;
     }
 
@@ -481,15 +445,15 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     }
     
     if (forceShowSetup || syncStatus === 'unconfigured' || syncStatus === 'uninitialized') {
-        return <SetupWizard onRetry={onRefresh} />;
+        return <ConfigurationModal onRetry={onRefresh} />;
     }
     
     if (!session) {
-        return <React.Suspense fallback={<PageLoader />}><AuthPage onForceSetup={() => setForceShowSetup(true)} /></React.Suspense>;
+        return <React.Suspense fallback={<PageLoader />}><LoginPage onForceSetup={() => setForceShowSetup(true)} /></React.Suspense>;
     }
 
-    // When a session exists, we must have a profile. If not, it's loading.
-    // This handles the delay between signup (session created) and profile creation by the trigger.
+    // When a session exists, we must have a profile. If not, it's an inconsistent state,
+    // and the app should show a loader until onAuthStateChange corrects it by logging out.
     if (!profile) {
         return <PageLoader />;
     }
@@ -523,7 +487,54 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     }
 
     // Render the main application for the regular user
-    return renderUserApp();
+    let pageComponent: React.ReactNode;
+    switch (currentPage) {
+        case 'home': pageComponent = <HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} />; break;
+        case 'clients': pageComponent = <ClientsPage onCreateInvoice={handleCreateInvoiceFor} onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} />; break;
+        case 'accounting': pageComponent = <AccountingPage />; break;
+        case 'invoices': pageComponent = <InvoicesPage initialInvoiceData={initialInvoiceData} clearInitialInvoiceData={clearInitialInvoiceData} />; break;
+        case 'reports': pageComponent = <ReportsPage />; break;
+        case 'settings': pageComponent = <SettingsPage offlineMode={offlineMode} setOfflineMode={setOfflineMode} />; break;
+        default: pageComponent = <HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} />;
+    }
+
+    return (
+        <DataContext.Provider value={supabaseData}>
+            <div dir="rtl">
+                <MemoizedNavbar 
+                    currentPage={currentPage} 
+                    setCurrentPage={setCurrentPage}
+                    syncStatus={syncStatus}
+                    lastSyncError={lastSyncError}
+                    isDirty={isDirty}
+                    onLogout={handleLogout}
+                    profile={profile}
+                    onSync={manualSync}
+                    isOnline={isOnline}
+                />
+                <div className="p-4 pt-32 md:pt-20">
+                    <main>
+                         <React.Suspense fallback={<PageLoader message="جاري تحميل الصفحة..."/>}>
+                            {pageComponent}
+                        </React.Suspense>
+                    </main>
+                </div>
+
+                <AdminTaskModal 
+                    isOpen={adminTaskModalState.isOpen}
+                    onClose={handleCloseAdminTaskModal}
+                    onSubmit={handleTaskSubmit}
+                    initialData={adminTaskModalState.initialData}
+                />
+                <ContextMenu 
+                    isOpen={contextMenuState.isOpen}
+                    onClose={handleCloseContextMenu}
+                    position={contextMenuState.position}
+                    menuItems={contextMenuState.menuItems}
+                />
+            </div>
+        </DataContext.Provider>
+    );
 };
 
 export default App;

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lawyer-app-cache-v8';
+const CACHE_NAME = 'lawyer-app-cache-v9';
 // The list of URLs to cache has been expanded to include all critical,
 // external dependencies. This ensures the app is fully functional offline
 // immediately after the service worker is installed, preventing failures
@@ -15,8 +15,8 @@ const urlsToCache = [
   'https://esm.sh/v135/@google/genai@1.20.0/es2022/genai.mjs',
   'https://esm.sh/v135/@supabase/supabase-js@2.44.4/es2022/supabase-js.mjs',
   'https://esm.sh/v135/react@18.2.0/es2022/react.mjs',
+  'https://esm.sh/v135/react-dom@18.2.0/es2022/react-dom.mjs',
   'https://esm.sh/v135/react-dom@18.2.0/es2022/client.mjs',
-  'https://esm.sh/v135/react-router-dom@7.9.1/es2022/react-router-dom.mjs',
   'https://esm.sh/v135/recharts@2.12.7/es2022/recharts.mjs'
 ];
 
@@ -99,75 +99,3 @@ self.addEventListener('fetch', event => {
       })
   );
 });
-
-
-// --- Helper functions for periodic notifications ---
-
-const isBeforeToday = (date) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Set to start of today
-    return date < today;
-};
-
-const DB_NAME = 'LawyerAppDB';
-const DB_VERSION = 1;
-const SESSIONS_STORE_NAME = 'sessions';
-
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const request = self.indexedDB.open(DB_NAME, DB_VERSION);
-    request.onerror = () => reject("Error opening DB");
-    request.onsuccess = () => resolve(request.result);
-    request.onupgradeneeded = event => {
-      const db = event.target.result;
-      if (!db.objectStoreNames.contains(SESSIONS_STORE_NAME)) {
-        db.createObjectStore(SESSIONS_STORE_NAME, { keyPath: 'id' });
-      }
-    };
-  });
-}
-
-function getSessions(db) {
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([SESSIONS_STORE_NAME], 'readonly');
-    const store = transaction.objectStore(SESSIONS_STORE_NAME);
-    const request = store.getAll();
-    request.onerror = () => reject("Error fetching sessions");
-    request.onsuccess = () => resolve(request.result);
-  });
-}
-
-
-self.addEventListener('periodicsync', event => {
-  if (event.tag === 'check-unpostponed-sessions') {
-    event.waitUntil(
-      checkForUnpostponedSessions()
-    );
-  }
-});
-
-async function checkForUnpostponedSessions() {
-    try {
-        const db = await openDB();
-        const sessions = await getSessions(db);
-        
-        const revivedSessions = sessions.map(s => ({
-            ...s,
-            date: new Date(s.date)
-        }));
-        
-        const unpostponed = revivedSessions.filter(s => !s.isPostponed && isBeforeToday(s.date));
-
-        if (unpostponed.length > 0) {
-            await self.registration.showNotification('تنبيه بالجلسات غير المرحلة', {
-                body: `لديك ${unpostponed.length} جلسات سابقة لم يتم ترحيلها. الرجاء مراجعتها.`,
-                icon: './icon.svg',
-                lang: 'ar',
-                dir: 'rtl',
-                tag: 'unpostponed-sessions-notification' // Use a tag to prevent multiple notifications
-            });
-        }
-    } catch (error) {
-        console.error('Failed to check for unpostponed sessions in SW:', error);
-    }
-}
