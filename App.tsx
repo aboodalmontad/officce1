@@ -1,4 +1,4 @@
-import * as React from 'react';
+import * as React from 'https://esm.sh/react@18.2.0';
 import { Session as AuthSession } from 'https://esm.sh/@supabase/supabase-js@2.44.4';
 
 // Lazy load page components for code splitting and faster initial load

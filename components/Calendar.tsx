@@ -1,4 +1,4 @@
-import * as React from 'react';
+import * as React from 'https://esm.sh/react@18.2.0';
 import { getDaysInMonth, getFirstDayOfMonth, isSameDay, isToday, isWeekend, getPublicHoliday } from '../utils/dateUtils';
 import { Session, Appointment } from '../types';
 import { ChevronLeftIcon } from './icons';

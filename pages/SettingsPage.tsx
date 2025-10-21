@@ -1,4 +1,4 @@
-import * as React from 'react';
+import * as React from 'https://esm.sh/react@18.2.0';
 import { TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, PlusIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ShieldCheckIcon } from '../components/icons';
 import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
 import { AnalysisStatus } from '../hooks/useSync';

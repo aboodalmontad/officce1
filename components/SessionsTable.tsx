@@ -1,4 +1,4 @@
-import * as React from 'react';
+import * as React from 'https://esm.sh/react@18.2.0';
 import { Session, Stage } from '../types';
 import { formatDate, isBeforeToday, isWeekend, getPublicHoliday } from '../utils/dateUtils';
 import { PencilIcon, TrashIcon, ScaleIcon, GavelIcon } from './icons';

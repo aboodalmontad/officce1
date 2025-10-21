@@ -1,4 +1,4 @@
-import * as React from 'react';
+import * as React from 'https://esm.sh/react@18.2.0';
 import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem } from '../types';
 import { getSupabaseClient } from '../supabaseClient';
 import { useOnlineStatus } from './useOnlineStatus';

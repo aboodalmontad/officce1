@@ -1,4 +1,4 @@
-import * as React from 'react';
+import * as React from 'https://esm.sh/react@18.2.0';
 import Calendar from '../components/Calendar';
 import { Session, AdminTask, Appointment, Stage, Client } from '../types';
 import { formatDate, isSameDay, isBeforeToday } from '../utils/dateUtils';

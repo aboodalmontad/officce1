@@ -1,4 +1,4 @@
-import * as React from 'react';
+import * as React from 'https://esm.sh/react@18.2.0';
 import ClientsTreeView from '../components/ClientsTreeView';
 import ClientsListView from '../components/ClientsListView';
 import { PlusIcon, SearchIcon, ListBulletIcon, ViewColumnsIcon, ExclamationTriangleIcon, PrintIcon, ScaleIcon } from '../components/icons';
@@ -904,24 +904,4 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, setClients, accounti
 
             {isPrintModalOpen && printData && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] no-print" onClick={() => setIsPrintModalOpen(false)}>
-                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="overflow-y-auto" ref={printClientReportRef}>
-                            <PrintableClientReport 
-                                client={printData.client} 
-                                caseData={printData.caseData}
-                                entries={printData.entries}
-                                totals={printData.totals}
-                            />
-                        </div>
-                        <div className="mt-6 flex justify-end gap-4 border-t pt-4">
-                            <button type="button" onClick={() => setIsPrintModalOpen(false)} className="px-6 py-2 bg-gray-200 rounded-lg">إغلاق</button>
-                            <button type="button" onClick={() => printElement(printClientReportRef.current)} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg"><PrintIcon className="w-5 h-5"/>طباعة</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
-
-export default ClientsPage;
+                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e

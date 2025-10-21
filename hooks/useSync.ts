@@ -1,4 +1,4 @@
-import * as React from 'react';
+import * as React from 'https://esm.sh/react@18.2.0';
 import { GoogleGenAI } from 'https://esm.sh/@google/genai@1.20.0';
 import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
 import { APP_DATA_KEY } from './useSupabaseData';
