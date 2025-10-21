@@ -14,6 +14,17 @@ const toInputDateString = (date: string | Date | null): string => {
     }
 };
 
+const formatMobileForDisplay = (mobile: string | null): string => {
+    if (!mobile) return 'لم يحدد';
+    // This regex specifically targets and corrects the malformed '0sy+963...' pattern.
+    const match = mobile.match(/^0sy\+963(\d{9})@email\.com$/);
+    if (match && match[1]) {
+        return `0${match[1]}`; // Returns the correct local format, e.g., '09...'
+    }
+    // If the string doesn't match the malformed pattern, return it as is.
+    return mobile;
+};
+
 const AdminPage: React.FC = () => {
     const [users, setUsers] = React.useState<Profile[]>([]);
     const [loading, setLoading] = React.useState(true);
@@ -95,6 +106,7 @@ const AdminPage: React.FC = () => {
         if (error) {
             alert(`فشل تحديث المستخدم: ${error.message}`);
         } else {
+            setUsers(prevUsers => prevUsers.map(u => (u.id === user.id ? user : u)));
             setEditingUser(null);
         }
     };
@@ -120,6 +132,8 @@ const AdminPage: React.FC = () => {
         
         if (rpcError) {
             alert(`فشل حذف المستخدم: ${rpcError.message}`);
+        } else {
+            setUsers(prevUsers => prevUsers.filter(u => u.id !== userToDelete.id));
         }
         
         closeDeleteModal();
@@ -160,7 +174,7 @@ const AdminPage: React.FC = () => {
                                     {editingUser?.id === user.id ? (
                                         <input type="text" value={editingUser.mobile_number} onChange={(e) => handleFieldChange('mobile_number', e.target.value)} className="p-1 border rounded w-full" />
                                     ) : (
-                                        user.mobile_number
+                                        formatMobileForDisplay(user.mobile_number)
                                     )}
                                 </td>
                                 <td className="px-6 py-4">

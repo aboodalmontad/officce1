@@ -1,8 +1,3 @@
-
-
-
-
-
 export interface Profile {
   id: string; // uuid
   full_name: string;
@@ -118,6 +113,7 @@ export interface SiteFinancialEntry {
     id: number;
     user_id: string | null;
     profile_full_name?: string; // Optional: Joined from profiles table
+    type: 'income' | 'expense';
     payment_date: string; // ISO string
     amount: number;
     description: string;

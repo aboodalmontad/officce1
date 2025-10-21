@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Session } from '@supabase/supabase-js';
+import { Session as AuthSession } from '@supabase/supabase-js';
 
 // Lazy load page components for code splitting and faster initial load
 const HomePage = React.lazy(() => import('./pages/HomePage'));
@@ -214,7 +214,7 @@ const PageLoader: React.FC<{ message?: string }> = ({ message = "جاري تحم
 
 const App: React.FC<AppProps> = ({ onRefresh }) => {
     const [currentPage, setCurrentPage] = React.useState<Page>('home');
-    const [session, setSession] = React.useState<Session | null>(null);
+    const [session, setSession] = React.useState<AuthSession | null>(null);
     const [isAuthLoading, setIsAuthLoading] = React.useState(true);
     const [profile, setProfile] = React.useState<Profile | null>(null);
     const [offlineMode, setOfflineMode] = React.useState(false);
@@ -224,12 +224,16 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
 
     React.useEffect(() => {
         if ('serviceWorker' in navigator) {
-            const swUrl = `${location.origin}/sw.js`;
-            navigator.serviceWorker.register(swUrl).then(registration => {
-                console.log('SW registered from React: ', registration);
-            }).catch(registrationError => {
-                console.log('SW registration failed from React: ', registrationError);
-            });
+            const registerServiceWorker = () => {
+                const swUrl = `${location.origin}/sw.js`;
+                navigator.serviceWorker.register(swUrl).then(registration => {
+                    console.log('SW registered from React: ', registration);
+                }).catch(registrationError => {
+                    console.log('SW registration failed from React: ', registrationError);
+                });
+            };
+            window.addEventListener('load', registerServiceWorker);
+            return () => window.removeEventListener('load', registerServiceWorker);
         }
     }, []);
     

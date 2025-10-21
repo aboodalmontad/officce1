@@ -275,12 +275,6 @@ const AuthPage: React.FC<AuthPageProps> = ({ onForceSetup }) => {
                     </p>
                 </div>
                 
-                {isLoginView && !info && (
-                    <div className="mt-4 text-sm text-center bg-blue-50 text-blue-800 p-3 rounded-lg border border-blue-200 animate-fade-in">
-                        <p>إذا كنت تقوم بإعداد التطبيق لأول مرة، يجب عليك <a href="#" onClick={toggleView} className="font-bold underline hover:text-blue-600">إنشاء حساب مدير جديد</a> أولاً.</p>
-                    </div>
-                )}
-                
                 <form className="space-y-6" onSubmit={handleAuth}>
                     {!isLoginView && (
                          <div>

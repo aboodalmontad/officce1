@@ -169,24 +169,24 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                             className={`bg-white border-b hover:bg-gray-50 ${editingCell?.sessionId === s.id ? 'bg-blue-50' : ''}`}
                         >
                             <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('court') && handleCellClick(s, 'court')}>
-                                {isEditing('court') ? <input type="text" value={editValue as string} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : s.court}
+                                {isEditing('court') ? <input type="text" value={editValue || ''} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : s.court}
                             </td>
                             <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('caseNumber') && handleCellClick(s, 'caseNumber')}>
-                                {isEditing('caseNumber') ? <input type="text" value={editValue as string} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : s.caseNumber}
+                                {isEditing('caseNumber') ? <input type="text" value={editValue || ''} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : s.caseNumber}
                             </td>
                             {showSessionDate && <td className="px-2 sm:px-6 py-4">{formatDate(s.date)}</td>}
                             <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('clientName') && handleCellClick(s, 'clientName')}>
-                                {isEditing('clientName') ? <input type="text" value={editValue as string} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : s.clientName}
+                                {isEditing('clientName') ? <input type="text" value={editValue || ''} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : s.clientName}
                             </td>
                             <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('opponentName') && handleCellClick(s, 'opponentName')}>
-                                {isEditing('opponentName') ? <input type="text" value={editValue as string} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : s.opponentName}
+                                {isEditing('opponentName') ? <input type="text" value={editValue || ''} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : s.opponentName}
                             </td>
                             <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('assignee') && handleCellClick(s, 'assignee')}>
-                                {isEditing('assignee') ? <select value={editValue as string} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus>{assistants?.map(a => <option key={a} value={a}>{a}</option>)}</select> : (s.assignee || '-')}
+                                {isEditing('assignee') ? <select value={editValue || 'بدون تخصيص'} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus>{assistants?.map(a => <option key={a} value={a}>{a}</option>)}</select> : (s.assignee || '-')}
                             </td>
                             <td className={`px-2 sm:px-6 py-4 ${isStageDecided ? '' : cellClasses}`} onClick={() => !isEditing('postponementReason') && !isStageDecided && handleCellClick(s, 'postponementReason')}>
                                 {isEditing('postponementReason') && !isStageDecided ? (
-                                    <input type="text" value={editValue as string || ''} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus />
+                                    <input type="text" value={editValue || ''} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus />
                                 ) : (
                                     s.postponementReason || 'لا يوجد'
                                 )}
@@ -237,7 +237,7 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                                 <>
                                     <td className="px-2 sm:px-6 py-4 text-center">{s.nextSessionDate ? formatDate(s.nextSessionDate) : '-'}</td>
                                     <td className={`px-2 sm:px-6 py-4 ${nextReasonCellClasses}`} onClick={() => !isEditing('nextPostponementReason') && s.isPostponed && handleCellClick(s, 'nextPostponementReason')}>
-                                        {isEditing('nextPostponementReason') ? <input type="text" value={editValue as string || ''} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : (s.nextPostponementReason || '-')}
+                                        {isEditing('nextPostponementReason') ? <input type="text" value={editValue || ''} onChange={e => setEditValue(e.target.value)} onBlur={handleSaveEdit} onKeyDown={handleInputKeyDown} className="p-1 border rounded bg-white w-full" autoFocus /> : (s.nextPostponementReason || '-')}
                                     </td>
                                     <td className="px-2 sm:px-6 py-4 text-center">
                                        {(onEdit || onDelete) ? (
