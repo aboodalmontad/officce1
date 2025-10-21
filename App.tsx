@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Session as AuthSession } from '@supabase/supabase-js';
+import { Session as AuthSession } from 'https://esm.sh/@supabase/supabase-js@2.44.4';
 
 // Lazy load page components for code splitting and faster initial load
 const HomePage = React.lazy(() => import('./pages/HomePage'));

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI } from 'https://esm.sh/@google/genai@1.20.0';
 import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
 import { APP_DATA_KEY } from './useSupabaseData';
 

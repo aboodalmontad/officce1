@@ -1,4 +1,4 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.44.4';
 
 // Hardcoded Supabase credentials provided by the user.
 const supabaseUrl = "https://qzpsmriupcfpwbsbcdwq.supabase.co";

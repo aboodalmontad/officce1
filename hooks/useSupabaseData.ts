@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem } from '../types';
 import { getSupabaseClient } from '../supabaseClient';
 import { useOnlineStatus } from './useOnlineStatus';
-import { User } from '@supabase/supabase-js';
+import { User } from 'https://esm.sh/@supabase/supabase-js@2.44.4';
 
 export const APP_DATA_KEY = 'lawyerBusinessManagementData';
 export type SyncStatus = 'loading' | 'syncing' | 'synced' | 'error' | 'offline' | 'unconfigured' | 'uninitialized';

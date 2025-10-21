@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Client, AccountingEntry, Case, Stage, Session } from '../types';
 import { formatDate } from '../utils/dateUtils';
 import { PrintIcon } from '../components/icons';
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'https://esm.sh/recharts@2.12.7';
 import { printElement } from '../utils/printUtils';
 
 interface ReportsPageProps {
