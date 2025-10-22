@@ -2,6 +2,7 @@ import * as React from 'react';
 import AdminPage from './AdminPage';
 import { PowerIcon, UserGroupIcon, ChartPieIcon } from '../components/icons';
 import { getSupabaseClient } from '../supabaseClient';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
 const AdminAnalyticsPage = React.lazy(() => import('./AdminAnalyticsPage'));
 
@@ -46,7 +47,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
 
     React.useEffect(() => {
         const supabase = getSupabaseClient();
-        if (!supabase) return;
+        if (!supabase) {
+            setLoading(false);
+            return;
+        }
 
         const fetchPendingCount = async () => {
             const { count, error } = await supabase
@@ -63,18 +67,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
 
         fetchPendingCount();
 
-        const channel = supabase.channel('public:profiles')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, 
+        const channel: RealtimeChannel = supabase.channel('public:profiles');
+        
+        channel.on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, 
             (payload) => {
                 console.log('Profile change received, refetching count.', payload);
                 fetchPendingCount();
             })
-            .subscribe();
+            .subscribe((status, err) => {
+                if (err) {
+                    console.error("Supabase channel subscription error:", err);
+                }
+            });
             
         setLoading(false);
 
         return () => {
-            supabase.removeChannel(channel);
+            if (channel) {
+                supabase.removeChannel(channel).catch(error => {
+                    console.error("Failed to remove Supabase channel on unmount:", error);
+                });
+            }
         };
     }, []);
 

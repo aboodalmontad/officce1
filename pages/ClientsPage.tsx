@@ -1,7 +1,8 @@
 import * as React from 'react';
+import { GoogleGenAI, Type } from '@google/genai';
 import ClientsTreeView from '../components/ClientsTreeView';
 import ClientsListView from '../components/ClientsListView';
-import { PlusIcon, SearchIcon, ListBulletIcon, ViewColumnsIcon, ExclamationTriangleIcon, PrintIcon, ScaleIcon } from '../components/icons';
+import { PlusIcon, SearchIcon, ListBulletIcon, ViewColumnsIcon, ExclamationTriangleIcon, PrintIcon, ScaleIcon, FolderOpenIcon, SparklesIcon, ArrowPathIcon } from '../components/icons';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
 import { formatDate, toInputDateString } from '../utils/dateUtils';
 import PrintableClientReport from '../components/PrintableClientReport';
@@ -17,7 +18,7 @@ interface ClientsPageProps {
 }
 
 const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminTaskModal, onCreateInvoice }) => {
-    const { clients, setClients, accountingEntries, setAccountingEntries, assistants } = useData();
+    const { clients, setClients, accountingEntries, setAccountingEntries, assistants, setFullData, invoices } = useData();
     const [modal, setModal] = React.useState<{ type: 'client' | 'case' | 'stage' | 'session' | null, context?: any, isEditing: boolean }>({ type: null, isEditing: false });
     const [formData, setFormData] = React.useState<any>({});
     const [searchQuery, setSearchQuery] = React.useState('');
@@ -42,6 +43,9 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
     // State for Decide Session Modal
     const [decideModal, setDecideModal] = React.useState<{ isOpen: boolean; session?: Session, stage?: Stage }>({ isOpen: false });
     const [decideFormData, setDecideFormData] = React.useState({ decisionNumber: '', decisionSummary: '', decisionNotes: '' });
+    
+    // State for AI data generation
+    const [isGenerating, setIsGenerating] = React.useState(false);
 
 
     const filteredClients = React.useMemo(() => {
@@ -598,6 +602,127 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
         handleCloseDecideModal();
     };
 
+    const handleGenerateSampleData = async () => {
+        if (!window.confirm('هل أنت متأكد من رغبتك في إنشاء بيانات تجريبية؟ سيتم إضافة عملاء وقضايا ومهام جديدة إلى بياناتك الحالية.')) {
+            return;
+        }
+        setIsGenerating(true);
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+            const dataSchema = {
+                type: Type.OBJECT,
+                properties: {
+                    clients: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                name: { type: Type.STRING },
+                                contactInfo: { type: Type.STRING },
+                                cases: { type: Type.ARRAY, items: {
+                                    type: Type.OBJECT,
+                                    properties: {
+                                        subject: { type: Type.STRING },
+                                        opponentName: { type: Type.STRING },
+                                        feeAgreement: { type: Type.STRING },
+                                        status: { type: Type.STRING, enum: ['active', 'closed', 'on_hold'] },
+                                        stages: { type: Type.ARRAY, items: {
+                                            type: Type.OBJECT,
+                                            properties: {
+                                                court: { type: Type.STRING },
+                                                caseNumber: { type: Type.STRING },
+                                                sessions: { type: Type.ARRAY, items: {
+                                                    type: Type.OBJECT,
+                                                    properties: {
+                                                        date: { type: Type.STRING, description: 'ISO 8601 date string' },
+                                                        postponementReason: { type: Type.STRING },
+                                                        assignee: { type: Type.STRING },
+                                                    }
+                                                }}
+                                            }
+                                        }}
+                                    }
+                                }}
+                            }
+                        }
+                    },
+                    adminTasks: { type: Type.ARRAY, items: {
+                        type: Type.OBJECT, properties: {
+                            task: { type: Type.STRING },
+                            dueDate: { type: Type.STRING, description: 'ISO 8601 date string' },
+                            importance: { type: Type.STRING, enum: ['normal', 'important', 'urgent'] },
+                            assignee: { type: Type.STRING },
+                            location: { type: Type.STRING }
+                        }
+                    }},
+                    appointments: { type: Type.ARRAY, items: {
+                        type: Type.OBJECT, properties: {
+                            title: { type: Type.STRING },
+                            time: { type: Type.STRING, description: 'HH:mm format' },
+                            date: { type: Type.STRING, description: 'ISO 8601 date string' },
+                            importance: { type: Type.STRING, enum: ['normal', 'important', 'urgent'] },
+                            assignee: { type: Type.STRING },
+                        }
+                    }},
+                    accountingEntries: { type: Type.ARRAY, items: {
+                        type: Type.OBJECT, properties: {
+                            type: { type: Type.STRING, enum: ['income', 'expense']},
+                            amount: { type: Type.NUMBER },
+                            date: { type: Type.STRING, description: 'ISO 8601 date string' },
+                            description: { type: Type.STRING },
+                            clientName: { type: Type.STRING },
+                        }
+                    }}
+                }
+            };
+            
+            const prompt = `You are a helpful assistant for a law office management app. Generate a realistic set of sample data for a user to explore the app.
+The data must be in Arabic and suitable for a Syrian law office.
+The sample data should include:
+- 2 clients.
+- Each client should have 1-2 cases.
+- Each case should have 1-2 stages.
+- Each stage should have 2-3 sessions. The sessions should be chronologically ordered.
+- A few (3-4) sample administrative tasks related to these cases.
+- A few (2-3) sample appointments related to these clients.
+- A few (3-4) sample accounting entries (income/expense) related to these clients and cases.
+Important rules:
+- All dates should be recent, relative to today's date (${new Date().toISOString().split('T')[0]}). For example, some in the past few weeks, some today, and some in the next few weeks.
+- Ensure that the 'clientName' and 'opponentName' within sessions and cases are consistent.
+- For 'assignee' fields, use one of these names: [${assistants.join(', ')}].
+- The output must be a single JSON object that strictly adheres to the provided schema. Do not include any extra text or explanations.`;
+
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: dataSchema,
+                },
+            });
+
+            const jsonStr = response.text.trim();
+            const generatedData = JSON.parse(jsonStr);
+
+            const finalData = {
+                clients: [...clients, ...(generatedData.clients || [])],
+                adminTasks: [...accountingEntries, ...(generatedData.adminTasks || [])],
+                appointments: [...accountingEntries, ...(generatedData.appointments || [])],
+                accountingEntries: [...accountingEntries, ...(generatedData.accountingEntries || [])],
+                invoices: invoices,
+                assistants: assistants,
+            };
+            
+            setFullData(finalData);
+
+        } catch (e) {
+            console.error("Failed to generate sample data:", e);
+            alert("حدث خطأ أثناء إنشاء البيانات التجريبية. يرجى المحاولة مرة أخرى.");
+        } finally {
+            setIsGenerating(false);
+        }
+    };
     
     const getModalTitle = () => {
         if (!modal.type) return '';
@@ -636,6 +761,40 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
         onCreateInvoice,
     };
     
+    const EmptyClientsState: React.FC<{ onAddClient: () => void; onGenerate: () => Promise<void>; isGenerating: boolean; }> = ({ onAddClient, onGenerate, isGenerating }) => (
+        <div className="text-center p-16 bg-white rounded-lg border-2 border-dashed">
+            <FolderOpenIcon className="mx-auto h-12 w-12 text-gray-400" />
+            <h2 className="mt-4 text-xl font-semibold text-gray-800">لا يوجد موكلون بعد</h2>
+            <p className="mt-2 text-sm text-gray-500">ابدأ بإضافة موكلك الأول، أو دع الذكاء الاصطناعي ينشئ لك بعض البيانات التجريبية لاستكشاف التطبيق.</p>
+            <div className="mt-6 flex justify-center items-center gap-4 flex-wrap">
+                <button
+                    onClick={onAddClient}
+                    className="flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
+                >
+                    <PlusIcon className="w-5 h-5" />
+                    <span>إضافة موكل</span>
+                </button>
+                <button
+                    onClick={onGenerate}
+                    disabled={isGenerating}
+                    className="flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors disabled:bg-indigo-300 disabled:cursor-wait whitespace-nowrap"
+                >
+                    {isGenerating ? (
+                        <>
+                            <ArrowPathIcon className="w-5 h-5 animate-spin"/>
+                            <span>جاري الإنشاء...</span>
+                        </>
+                    ) : (
+                        <>
+                            <SparklesIcon className="w-5 h-5" />
+                            <span>إنشاء بيانات تجريبية بالذكاء الاصطناعي</span>
+                        </>
+                    )}
+                </button>
+            </div>
+        </div>
+    );
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -675,14 +834,22 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                     </div>
                 </div>
             </div>
-
-            <div className="bg-white rounded-lg shadow overflow-hidden">
-                {viewMode === 'tree' ? (
-                     <ClientsTreeView {...commonViewProps} />
-                ) : (
-                    <ClientsListView {...commonViewProps} />
-                )}
-            </div>
+            
+            {clients.length === 0 && !debouncedSearchQuery ? (
+                 <EmptyClientsState 
+                    onAddClient={() => handleOpenModal('client')}
+                    onGenerate={handleGenerateSampleData}
+                    isGenerating={isGenerating}
+                />
+            ) : (
+                <div className="bg-white rounded-lg shadow overflow-hidden">
+                    {viewMode === 'tree' ? (
+                        <ClientsTreeView {...commonViewProps} />
+                    ) : (
+                        <ClientsListView {...commonViewProps} />
+                    )}
+                </div>
+            )}
 
             {modal.type && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={handleCloseModal}>
