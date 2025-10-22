@@ -272,16 +272,25 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     }, []);
     
     React.useEffect(() => {
+        // Set a timeout to handle cases where onAuthStateChange doesn't fire,
+        // preventing a permanently blank screen.
+        const authTimeout = setTimeout(() => {
+            console.warn("Authentication provider check timed out. Proceeding without an active session.");
+            setIsAuthLoading(false);
+        }, 5000); // 5-second timeout.
+
         const supabase = getSupabaseClient();
         if (!supabase) {
+            clearTimeout(authTimeout);
             setIsAuthLoading(false);
             return;
         }
 
-        // onAuthStateChange handles everything: initial session, login, and logout.
-        // It fires once on component mount.
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (_event, currentSession) => {
+                // Auth provider responded, so clear the timeout.
+                clearTimeout(authTimeout);
+                
                 // Case 1: User is logged out or session is invalid
                 if (!currentSession?.user) {
                     setSession(null);
@@ -307,8 +316,6 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                         setIsAuthLoading(false);
                     } else {
                         // Unstable state: session exists but no profile.
-                        // This can happen briefly after signup or if a profile is deleted.
-                        // Log the user out to force a clean login. The next onAuthStateChange event will handle it.
                         console.warn("Session exists without a profile, signing out to correct state.");
                         await supabase.auth.signOut();
                     }
@@ -321,6 +328,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
 
         return () => {
             subscription.unsubscribe();
+            clearTimeout(authTimeout); // Ensure timeout is cleared on unmount.
         };
     }, []);
 
