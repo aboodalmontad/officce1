@@ -4,13 +4,10 @@ import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
 import { APP_DATA_KEY } from '../hooks/useSupabaseData';
 import { useData } from '../App';
 
-interface SettingsPageProps {
-    offlineMode: boolean;
-    setOfflineMode: (value: boolean) => void;
-}
+interface SettingsPageProps {}
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ offlineMode, setOfflineMode }) => {
-    const { setFullData, assistants, setAssistants } = useData();
+const SettingsPage: React.FC<SettingsPageProps> = () => {
+    const { setFullData, assistants, setAssistants, userId } = useData();
     const [feedback, setFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = React.useState(false);
     const [isDeleteAssistantModalOpen, setIsDeleteAssistantModalOpen] = React.useState(false);
@@ -43,7 +40,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ offlineMode, setOfflineMode
 
     const handleExportData = () => {
         try {
-            const data = localStorage.getItem(APP_DATA_KEY);
+            const key = userId ? `${APP_DATA_KEY}_${userId}` : APP_DATA_KEY;
+            const data = localStorage.getItem(key);
             if (!data) {
                 showFeedback('لا توجد بيانات لتصديرها.', 'error');
                 return;
@@ -107,17 +105,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ offlineMode, setOfflineMode
         setIsDeleteAssistantModalOpen(false);
         setAssistantToDelete(null);
     };
-    
-    const handleOfflineModeToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const isOffline = e.target.checked;
-        const message = isOffline
-            ? 'سيؤدي تفعيل وضع عدم الاتصال إلى إيقاف المزامنة التلقائية. هل أنت متأكد؟'
-            : 'سيؤدي تعطيل وضع عدم الاتصال إلى محاولة مزامنة بياناتك مع السحابة. هل تريد المتابعة؟';
-
-        if (window.confirm(message)) {
-            setOfflineMode(isOffline);
-        }
-    };
 
     return (
         <div className="space-y-6">
@@ -128,35 +115,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ offlineMode, setOfflineMode
                     <span>{feedback.message}</span>
                 </div>
             )}
-
-            <div className="bg-white p-6 rounded-lg shadow space-y-4">
-                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">وضع عدم الاتصال</h2>
-                <div className="flex items-center justify-between">
-                    <div>
-                        <p className="text-gray-700 font-medium">
-                            العمل دون اتصال بالإنترنت
-                        </p>
-                        <p className="text-sm text-gray-600 mt-1">
-                            {offlineMode 
-                                ? 'أنت تعمل حاليًا في وضع عدم الاتصال. لن تتم مزامنة التغييرات.' 
-                                : 'أنت متصل حاليًا. تتم مزامنة التغييرات تلقائيًا.'}
-                        </p>
-                    </div>
-                    <label htmlFor="offline-toggle" className="relative inline-flex items-center cursor-pointer">
-                        <input 
-                            type="checkbox" 
-                            id="offline-toggle" 
-                            className="sr-only peer" 
-                            checked={offlineMode} 
-                            onChange={handleOfflineModeToggle}
-                        />
-                        <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
-                </div>
-                <p className="text-xs text-gray-500 pt-2 border-t">
-                    استخدم هذا الوضع إذا كنت تريد إجراء تغييرات محلية فقط دون التأثير على بياناتك السحابية، أو إذا كنت تعمل في منطقة ذات اتصال ضعيف بالإنترنت.
-                </p>
-            </div>
 
             <div className="bg-white p-6 rounded-lg shadow space-y-4">
                 <h2 className="text-xl font-bold text-gray-800 border-b pb-3">حفظ ونقل البيانات</h2>

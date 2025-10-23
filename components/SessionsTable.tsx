@@ -245,7 +245,7 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                                                 {onEdit && <button onClick={() => onEdit(s)} className="p-2 text-gray-500 hover:text-blue-600" aria-label="تعديل"><PencilIcon className="w-4 h-4" /></button>}
                                                 {onDelete && <button onClick={() => onDelete(s.id)} className="p-2 text-gray-500 hover:text-red-600" aria-label="حذف"><TrashIcon className="w-4 h-4" /></button>}
                                             </div>
-                                       ) : '-'}
+                                       ) : (isStageDecided ? <GavelIcon className="w-5 h-5 text-green-600 mx-auto" title="تم حسم المرحلة"/> : '-')}
                                     </td>
                                 </>
                             )}

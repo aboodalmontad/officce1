@@ -39,31 +39,15 @@
         "react/": "https://esm.sh/react@^19.1.1/",
         "react": "https://esm.sh/react@^19.1.1",
         "react-dom/": "https://esm.sh/react-dom@^19.1.1/",
-        "react-router-dom": "https://esm.sh/react-router-dom@^7.9.1",
         "recharts": "https://esm.sh/recharts@^2.12.7"
       }
     }
-    </script>
-    <!-- Service Worker Registration -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          // FIX: Explicitly construct the Service Worker URL with the current origin
-          // to prevent cross-origin registration errors in sandboxed environments.
-          const swUrl = `${location.origin}/sw.js`;
-          navigator.serviceWorker.register(swUrl).then(registration => {
-            console.log('SW registered: ', registration);
-          }).catch(registrationError => {
-            console.log('SW registration failed: ', registrationError);
-          });
-        });
-      }
     </script>
   </head>
   <body class="bg-gray-100">
     <!-- The root element for React -->
     <div id="root"></div>
     <!-- The main script for the application -->
-    <script type="module" src="./index.js"></script>
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>

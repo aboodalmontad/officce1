@@ -1,35 +1,127 @@
 import * as React from 'react';
 import { User } from '@supabase/supabase-js';
-import { AppData, checkSupabaseSchema, fetchDataFromSupabase, uploadDataToSupabase } from './useOnlineData';
+import { AppData, checkSupabaseSchema, fetchDataFromSupabase, upsertDataToSupabase, FlatData, deleteDataFromSupabase } from './useOnlineData';
 import { getSupabaseClient } from '../supabaseClient';
+import { Client, Case, Stage, Session } from '../types';
 
-export type SyncStatus = 'loading' | 'syncing' | 'synced' | 'error' | 'offline' | 'unconfigured' | 'uninitialized';
+export type SyncStatus = 'loading' | 'syncing' | 'synced' | 'error' | 'unconfigured' | 'uninitialized';
 
 interface UseSyncProps {
     user: User | null;
-    currentData: AppData;
-    onDataFetched: (fetchedData: any) => void;
+    localData: AppData;
+    onDataSynced: (mergedData: AppData) => void;
     onSyncStatusChange: (status: SyncStatus, error: string | null) => void;
-    onSyncSuccess: () => void;
     isOnline: boolean;
-    offlineMode: boolean;
+    isAuthLoading: boolean;
 }
 
+// Flattens the nested client data structure into separate arrays for each entity type.
+const flattenData = (data: AppData): FlatData => {
+    const cases = data.clients.flatMap(c => c.cases.map(cs => ({ ...cs, client_id: c.id })));
+    const stages = cases.flatMap(cs => cs.stages.map(st => ({ ...st, case_id: cs.id })));
+    const sessions = stages.flatMap(st => st.sessions.map(s => ({ ...s, stage_id: st.id })));
+    const invoice_items = data.invoices.flatMap(inv => inv.items.map(item => ({ ...item, invoice_id: inv.id })));
+
+    return {
+        clients: data.clients.map(({ cases, ...client }) => client),
+        cases: cases.map(({ stages, ...caseItem }) => caseItem),
+        stages: stages.map(({ sessions, ...stage }) => stage),
+        sessions,
+        admin_tasks: data.adminTasks,
+        appointments: data.appointments,
+        accounting_entries: data.accountingEntries,
+        assistants: data.assistants.map(name => ({ name })),
+        invoices: data.invoices.map(({ items, ...inv }) => inv),
+        invoice_items,
+    };
+};
+
+// Reconstructs the nested client data structure from flat arrays.
+const constructData = (flatData: FlatData): AppData => {
+    const sessionMap = new Map<string, Session[]>();
+    flatData.sessions.forEach(s => {
+        const stageId = (s as any).stage_id;
+        if (!sessionMap.has(stageId)) sessionMap.set(stageId, []);
+        sessionMap.get(stageId)!.push(s as Session);
+    });
+
+    const stageMap = new Map<string, Stage[]>();
+    flatData.stages.forEach(st => {
+        const stage = { ...st, sessions: sessionMap.get(st.id) || [] } as Stage;
+        const caseId = (st as any).case_id;
+        if (!stageMap.has(caseId)) stageMap.set(caseId, []);
+        stageMap.get(caseId)!.push(stage);
+    });
+
+    const caseMap = new Map<string, Case[]>();
+    flatData.cases.forEach(cs => {
+        const caseItem = { ...cs, stages: stageMap.get(cs.id) || [] } as Case;
+        const clientId = (cs as any).client_id;
+        if (!caseMap.has(clientId)) caseMap.set(clientId, []);
+        caseMap.get(clientId)!.push(caseItem);
+    });
+    
+    const invoiceItemMap = new Map<string, any[]>();
+    flatData.invoice_items.forEach(item => {
+        const invoiceId = (item as any).invoice_id;
+        if(!invoiceItemMap.has(invoiceId)) invoiceItemMap.set(invoiceId, []);
+        invoiceItemMap.get(invoiceId)!.push(item);
+    });
+
+    return {
+        clients: flatData.clients.map(c => ({ ...c, cases: caseMap.get(c.id) || [] } as Client)),
+        adminTasks: flatData.admin_tasks as any,
+        appointments: flatData.appointments as any,
+        accountingEntries: flatData.accounting_entries as any,
+        assistants: flatData.assistants.map(a => a.name),
+        invoices: flatData.invoices.map(inv => ({...inv, items: invoiceItemMap.get(inv.id) || []})) as any,
+    };
+};
+
 /**
- * A dedicated hook to manage the data synchronization lifecycle.
- * It orchestrates schema checks, data fetching, and data uploading,
- * reporting its status back to the parent hook via callbacks.
+ * A merge strategy for one-way refresh operations (e.g., real-time updates).
+ * This function treats the `remote` data as the source of truth for the existence of items.
+ * An item existing locally but not remotely is considered deleted.
+ * For items existing in both, the one with the later `updated_at` timestamp wins.
  */
-export const useSync = ({
-    user,
-    currentData,
-    onDataFetched,
-    onSyncStatusChange,
-    onSyncSuccess,
-    isOnline,
-    offlineMode,
-}: UseSyncProps) => {
-    const isSavingRef = React.useRef(false);
+const mergeForRefresh = <T extends { id: any; updated_at?: Date | string }>(local: T[], remote: T[]): T[] => {
+    const localMap = new Map<any, T>();
+    local.forEach(item => localMap.set(item.id, item));
+    
+    // The result will only contain items that exist in the remote data source.
+    return remote.map(remoteItem => {
+        const localItem = localMap.get(remoteItem.id);
+        
+        // If the item exists locally, compare timestamps to resolve conflicts.
+        if (localItem) {
+            const remoteDate = new Date(remoteItem.updated_at || 0);
+            const localDate = new Date(localItem.updated_at || 0);
+            // Keep the local item only if it's strictly newer than the remote one.
+            // Otherwise, the remote version takes precedence (it's the source of truth).
+            return localDate > remoteDate ? localItem : remoteItem;
+        }
+        
+        // If the item doesn't exist locally, it's a new item from the server.
+        return remoteItem;
+    });
+};
+
+
+// Helper to transform remote snake_case data to local camelCase format
+const transformRemoteToLocal = (remote: any): FlatData => ({
+    clients: remote.clients.map(({ contact_info, ...r }: any) => ({ ...r, contactInfo: contact_info })),
+    cases: remote.cases.map(({ client_name, opponent_name, fee_agreement, ...r }: any) => ({ ...r, clientName: client_name, opponentName: opponent_name, feeAgreement: fee_agreement })),
+    stages: remote.stages.map(({ case_number, first_session_date, decision_date, decision_number, decision_summary, decision_notes, ...r }: any) => ({ ...r, caseNumber: case_number, firstSessionDate: first_session_date, decisionDate: decision_date, decisionNumber: decision_number, decisionSummary: decision_summary, decisionNotes: decision_notes })),
+    sessions: remote.sessions.map(({ case_number, client_name, opponent_name, postponement_reason, next_postponement_reason, is_postponed, next_session_date, ...r }: any) => ({ ...r, caseNumber: case_number, clientName: client_name, opponentName: opponent_name, postponementReason: postponement_reason, nextPostponementReason: next_postponement_reason, isPostponed: is_postponed, nextSessionDate: next_session_date })),
+    admin_tasks: remote.admin_tasks.map(({ due_date, ...r }: any) => ({ ...r, dueDate: due_date })),
+    appointments: remote.appointments.map(({ reminder_time_in_minutes, ...r }: any) => ({ ...r, reminderTimeInMinutes: reminder_time_in_minutes })),
+    accounting_entries: remote.accounting_entries.map(({ client_id, case_id, client_name, ...r }: any) => ({ ...r, clientId: client_id, caseId: case_id, clientName: client_name })),
+    assistants: remote.assistants.map((a: any) => ({ name: a.name })),
+    invoices: remote.invoices.map(({ client_id, client_name, case_id, case_subject, issue_date, due_date, tax_rate, ...r }: any) => ({ ...r, clientId: client_id, clientName: client_name, caseId: case_id, caseSubject: case_subject, issueDate: issue_date, dueDate: due_date, taxRate: tax_rate })),
+    invoice_items: remote.invoice_items,
+});
+
+export const useSync = ({ user, localData, onDataSynced, onSyncStatusChange, isOnline, isAuthLoading }: UseSyncProps) => {
     const userRef = React.useRef(user);
     userRef.current = user;
 
@@ -37,97 +129,179 @@ export const useSync = ({
         onSyncStatusChange(status, error);
     };
 
-    const performCheckAndFetch = React.useCallback(async () => {
-        if (offlineMode || !isOnline) {
-            setStatus(offlineMode ? 'offline' : 'offline');
+    const manualSync = React.useCallback(async (isInitialPull: boolean = false) => {
+        if (isAuthLoading) {
+            console.log("Sync deferred: Authentication in progress.");
             return;
         }
-
+        const currentUser = userRef.current;
+        if (!isOnline || !currentUser) {
+            setStatus('error', isOnline ? 'يجب تسجيل الدخول للمزامنة.' : 'يجب أن تكون متصلاً بالإنترنت للمزامنة.');
+            return;
+        }
+    
+        setStatus('syncing', 'التحقق من الخادم...');
         const schemaCheck = await checkSupabaseSchema();
         if (!schemaCheck.success) {
-            if (schemaCheck.error === 'unconfigured') {
-                setStatus('unconfigured');
-            } else if (schemaCheck.error === 'uninitialized') {
-                setStatus('uninitialized', `قاعدة البيانات غير مهيأة بالكامل. ${schemaCheck.message} يرجى تشغيل شيفرة التهيئة.`);
-            } else if (schemaCheck.error === 'network') {
-                setStatus('error', `فشل الاتصال بالخادم. ${schemaCheck.message}`);
-            } else {
-                setStatus('error', `خطأ في التحقق من قاعدة البيانات: ${schemaCheck.message}`);
-            }
+            if (schemaCheck.error === 'unconfigured') setStatus('unconfigured');
+            else if (schemaCheck.error === 'uninitialized') setStatus('uninitialized', `قاعدة البيانات غير مهيأة: ${schemaCheck.message}`);
+            else setStatus('error', `فشل الاتصال: ${schemaCheck.message}`);
             return;
         }
+    
+        try {
+            setStatus('syncing', 'جاري جلب البيانات من السحابة...');
+            const remoteDataRaw = await fetchDataFromSupabase();
+            const remoteFlatData = transformRemoteToLocal(remoteDataRaw);
+
+            const isLocalEffectivelyEmpty = (
+                localData.clients.length === 0 && 
+                localData.adminTasks.length === 0 && 
+                localData.appointments.length === 0 && 
+                localData.accountingEntries.length === 0 && 
+                localData.invoices.length === 0
+            );
+            const isRemoteEffectivelyEmpty = remoteDataRaw.clients.length === 0 && remoteDataRaw.admin_tasks.length === 0;
+
+            if (isInitialPull || (isLocalEffectivelyEmpty && !isRemoteEffectivelyEmpty)) {
+                if (!isInitialPull) {
+                    console.warn("Safety Check Triggered: Local data is empty but remote is not. Aborting destructive sync and performing a safe refresh from remote instead.");
+                } else {
+                    console.log("Performing initial pull. Server is source of truth.");
+                }
+                const freshData = constructData(remoteFlatData);
+                onDataSynced(freshData);
+                setStatus('synced');
+                return;
+            }
+
+            const localFlatData = flattenData(localData);
+            
+            const flatDeletes: Partial<FlatData> = {};
+            const flatUpserts: Partial<FlatData> = {};
+            const mergedFlatData: Partial<FlatData> = {};
+
+            for (const key of Object.keys(localFlatData) as (keyof FlatData)[]) {
+                const localItems = (localFlatData as any)[key] as any[];
+                const remoteItems = (remoteFlatData as any)[key] as any[];
+                
+                const localMap = new Map(localItems.map(i => [i.id ?? i.name, i]));
+                const remoteMap = new Map(remoteItems.map(i => [i.id ?? i.name, i]));
+
+                const finalMergedItems = new Map<string, any>();
+                const itemsToUpsert: any[] = [];
+
+                // 1. Process local items to find updates and new local items
+                for (const localItem of localItems) {
+                    const id = localItem.id ?? localItem.name;
+                    const remoteItem = remoteMap.get(id);
+
+                    if (remoteItem) {
+                        // Item exists on both, resolve conflict based on timestamp
+                        const localDate = new Date(localItem.updated_at || 0).getTime();
+                        const remoteDate = new Date(remoteItem.updated_at || 0).getTime();
+
+                        if (localDate > remoteDate) {
+                            // Local is newer, upsert it and use it in final state
+                            itemsToUpsert.push(localItem);
+                            finalMergedItems.set(id, localItem);
+                        } else {
+                            // Remote is newer or same, use remote in final state
+                            finalMergedItems.set(id, remoteItem);
+                        }
+                    } else {
+                        // Item is only local, so it's new. Upsert it and add to final state.
+                        itemsToUpsert.push(localItem);
+                        finalMergedItems.set(id, localItem);
+                    }
+                }
+
+                // 2. Process remote items to find items that are new from the server
+                for (const remoteItem of remoteItems) {
+                    const id = remoteItem.id ?? remoteItem.name;
+                    if (!localMap.has(id)) {
+                        // Item is only on remote, it's new from another device. Add to final state.
+                        finalMergedItems.set(id, remoteItem);
+                    }
+                }
+                
+                // 3. IMPORTANT: Disable unsafe deletion logic.
+                // The previous logic incorrectly deleted new records from other devices.
+                // A proper deletion sync requires soft deletes (e.g., a `deleted_at` flag),
+                // which is a larger architectural change. For now, the most critical fix
+                // is to stop accidental data loss.
+                const itemsToDelete: any[] = []; // Intentionally empty.
+
+                (flatUpserts as any)[key] = itemsToUpsert;
+                (flatDeletes as any)[key] = itemsToDelete; // This will now be an empty array
+                (mergedFlatData as any)[key] = Array.from(finalMergedItems.values());
+            }
+
+            setStatus('syncing', 'جاري حذف البيانات من السحابة...');
+            await deleteDataFromSupabase(flatDeletes as FlatData, currentUser);
+
+            setStatus('syncing', 'جاري رفع البيانات إلى السحابة...');
+            await upsertDataToSupabase(flatUpserts as FlatData, currentUser);
+    
+            const finalMergedData = constructData(mergedFlatData as FlatData);
+            onDataSynced(finalMergedData);
+    
+            setStatus('synced');
+        } catch (err: any) {
+            console.error("Error during sync:", err);
+            let errorMessage = err.message || 'حدث خطأ غير متوقع.';
+            if (err.table) errorMessage = `[جدول: ${err.table}] ${errorMessage}`;
+            setStatus('error', `فشل المزامنة: ${errorMessage}`);
+        }
+    }, [localData, userRef, isOnline, onDataSynced, isAuthLoading]);
+
+    const fetchAndRefresh = React.useCallback(async () => {
+        if (isAuthLoading) {
+            console.log("Refresh deferred: Authentication in progress.");
+            return;
+        }
+        const currentUser = userRef.current;
+        if (!isOnline || !currentUser) {
+            return;
+        }
+
+        setStatus('syncing', 'جاري تحديث البيانات...');
         
-        const currentUser = userRef.current;
-        if (!currentUser) {
-            onDataFetched(null);
-            setStatus('synced');
-            return;
-        }
-
-        setStatus('syncing');
         try {
-            const remoteData = await fetchDataFromSupabase();
-            onDataFetched(remoteData);
-            onSyncSuccess();
+            const remoteDataRaw = await fetchDataFromSupabase();
+            const remoteFlatData = transformRemoteToLocal(remoteDataRaw);
+            
+            const localFlatData = flattenData(localData);
+            
+            const localAssistantNames = localFlatData.assistants.map(a => a.name);
+            const remoteAssistantNames = remoteFlatData.assistants.map(a => a.name);
+            const allAssistantNames = new Set([...localAssistantNames, ...remoteAssistantNames]);
+            const mergedAssistants = Array.from(allAssistantNames).map(name => ({ name }));
+
+            const mergedFlatData: FlatData = {
+                clients: mergeForRefresh(localFlatData.clients, remoteFlatData.clients),
+                cases: mergeForRefresh(localFlatData.cases, remoteFlatData.cases),
+                stages: mergeForRefresh(localFlatData.stages, remoteFlatData.stages),
+                sessions: mergeForRefresh(localFlatData.sessions, remoteFlatData.sessions),
+                admin_tasks: mergeForRefresh(localFlatData.admin_tasks, remoteFlatData.admin_tasks),
+                appointments: mergeForRefresh(localFlatData.appointments, remoteFlatData.appointments),
+                accounting_entries: mergeForRefresh(localFlatData.accounting_entries, remoteFlatData.accounting_entries),
+                assistants: mergedAssistants,
+                invoices: mergeForRefresh(localFlatData.invoices, remoteFlatData.invoices),
+                invoice_items: mergeForRefresh(localFlatData.invoice_items, remoteFlatData.invoice_items),
+            };
+
+            const mergedData = constructData(mergedFlatData);
+            onDataSynced(mergedData);
+            
             setStatus('synced');
         } catch (err: any) {
-            console.error("Error fetching data from Supabase:", err);
-            const message = String(err?.message || '').toLowerCase();
-            if (message.includes('failed to fetch')) {
-                 setStatus('error', 'فشل الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت وإعدادات CORS في لوحة تحكم Supabase.');
-            } else {
-                const errorMessage = err?.message ? String(err.message) : 'حدث خطأ غير معروف أثناء جلب البيانات.';
-                setStatus('error', `خطأ في المزامنة: ${errorMessage}`);
-            }
+            console.error("Error during realtime refresh:", err);
+            let errorMessage = err.message || 'حدث خطأ غير متوقع.';
+            setStatus('error', `فشل تحديث البيانات: ${errorMessage}`);
         }
-    }, [userRef, isOnline, offlineMode, onDataFetched, onSyncSuccess]);
+    }, [localData, userRef, isOnline, onDataSynced, isAuthLoading]);
 
-    const uploadData = React.useCallback(async () => {
-        const currentUser = userRef.current;
-        const supabase = getSupabaseClient();
-        if (offlineMode || !isOnline || !supabase || !currentUser) {
-            return false;
-        }
 
-        if (isSavingRef.current) return false;
-
-        isSavingRef.current = true;
-        setStatus('syncing');
-
-        try {
-            await uploadDataToSupabase(currentData, currentUser);
-            onSyncSuccess();
-            setStatus('synced');
-            return true;
-        } catch (err: any) {
-            console.error("Error saving to Supabase:", err);
-            let errorMessage = 'حدث خطأ غير معروف أثناء حفظ البيانات.';
-            if (err && err.message) {
-                errorMessage = err.message;
-                if ((err as any).table) errorMessage = `[جدول: ${(err as any).table}] ${errorMessage}`;
-                if ((err as any).details) errorMessage += ` | التفاصيل: ${(err as any).details}`;
-                if ((err as any).hint) errorMessage += ` | تلميح: ${(err as any).hint}`;
-            }
-            setStatus('error', `فشل رفع البيانات: ${errorMessage}`);
-            return false;
-        } finally {
-            isSavingRef.current = false;
-        }
-    }, [currentData, userRef, isOnline, offlineMode, onSyncSuccess]);
-
-    const manualSync = React.useCallback(async () => {
-        const uploadSuccessful = await uploadData();
-        if (uploadSuccessful) {
-            await performCheckAndFetch();
-        }
-    }, [uploadData, performCheckAndFetch]);
-
-    React.useEffect(() => {
-        performCheckAndFetch();
-    }, [performCheckAndFetch]);
-
-    return {
-        forceSync: performCheckAndFetch,
-        manualSync,
-    };
+    return { manualSync, fetchAndRefresh };
 };

@@ -56,6 +56,7 @@ const AccountingPage: React.FC = () => {
             date: new Date(formData.date!),
             clientName: selectedClient?.clientName || 'مصاريف عامة',
             clientId: selectedClient?.clientId || '',
+            updated_at: new Date(),
         } as Omit<AccountingEntry, 'id'>;
 
         if (modal.data) { // Editing

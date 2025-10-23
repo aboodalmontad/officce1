@@ -8,6 +8,7 @@ export interface Profile {
   subscription_end_date: string | null; // ISO string
   role: 'user' | 'admin';
   created_at?: string; // ISO string
+  updated_at?: Date;
 }
 
 
@@ -26,6 +27,7 @@ export interface Session {
   // For contextual rendering in flat lists
   stageId?: string;
   stageDecisionDate?: Date;
+  updated_at?: Date;
 }
 
 export interface Stage {
@@ -38,6 +40,7 @@ export interface Stage {
   decisionNumber?: string;
   decisionSummary?: string;
   decisionNotes?: string;
+  updated_at?: Date;
 }
 
 export interface Case {
@@ -48,6 +51,7 @@ export interface Case {
   stages: Stage[];
   feeAgreement: string;
   status: 'active' | 'closed' | 'on_hold';
+  updated_at?: Date;
 }
 
 export interface Client {
@@ -55,6 +59,7 @@ export interface Client {
   name: string;
   contactInfo: string;
   cases: Case[];
+  updated_at?: Date;
 }
 
 export interface AdminTask {
@@ -65,6 +70,7 @@ export interface AdminTask {
     importance: 'normal' | 'important' | 'urgent';
     assignee?: string;
     location?: string;
+    updated_at?: Date;
 }
 
 export interface Appointment {
@@ -76,6 +82,7 @@ export interface Appointment {
     notified?: boolean;
     reminderTimeInMinutes?: number;
     assignee?: string;
+    updated_at?: Date;
 }
 
 export interface AccountingEntry {
@@ -87,12 +94,14 @@ export interface AccountingEntry {
     clientId: string;
     caseId: string;
     clientName: string;
+    updated_at?: Date;
 }
 
 export interface InvoiceItem {
   id: string;
   description: string;
   amount: number;
+  updated_at?: Date;
 }
 
 export interface Invoice {
@@ -108,6 +117,7 @@ export interface Invoice {
   discount: number; // Fixed amount
   status: 'draft' | 'sent' | 'paid' | 'overdue';
   notes?: string;
+  updated_at?: Date;
 }
 
 // FIX: Define and export the SiteFinancialEntry interface to resolve the import error.
@@ -120,4 +130,5 @@ export interface SiteFinancialEntry {
   description: string | null;
   payment_method: string | null;
   profile_full_name?: string;
+  updated_at?: Date;
 }

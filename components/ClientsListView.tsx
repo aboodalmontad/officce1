@@ -39,7 +39,8 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
     const handleFeeChange = (caseId: string, newFee: string) => {
         props.setClients(clients => clients.map(c => c.id === client.id ? {
             ...c,
-            cases: c.cases.map(cs => cs.id === caseId ? {...cs, feeAgreement: newFee} : cs)
+            updated_at: new Date(),
+            cases: c.cases.map(cs => cs.id === caseId ? {...cs, feeAgreement: newFee, updated_at: new Date()} : cs)
         } : c));
     };
     

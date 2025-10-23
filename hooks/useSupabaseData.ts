@@ -1,9 +1,12 @@
+
+
 import * as React from 'react';
 import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem } from '../types';
 import { useOnlineStatus } from './useOnlineStatus';
 import { User } from '@supabase/supabase-js';
 import { AppData as OnlineAppData } from './useOnlineData';
 import { useSync, SyncStatus as SyncStatusType } from './useSync';
+import { getSupabaseClient } from '../supabaseClient';
 
 export const APP_DATA_KEY = 'lawyerBusinessManagementData';
 export type SyncStatus = SyncStatusType;
@@ -62,6 +65,7 @@ const validateAndHydrate = (data: any): AppData => {
         id: client.id || `client-${Date.now()}-${Math.random()}`,
         name: String(client.name || 'موكل غير مسمى'),
         contactInfo: String((client.contact_info ?? client.contactInfo) || ''),
+        updated_at: sanitizeOptionalDate(client.updated_at),
         cases: safeArray(client.cases, (caseItem: any): Case => ({
             id: caseItem.id || `case-${Date.now()}-${Math.random()}`,
             subject: String(caseItem.subject || 'قضية بدون موضوع'),
@@ -69,11 +73,13 @@ const validateAndHydrate = (data: any): AppData => {
             opponentName: sanitizeString(caseItem.opponent_name ?? caseItem.opponentName),
             feeAgreement: String((caseItem.fee_agreement ?? caseItem.feeAgreement) || ''),
             status: ['active', 'closed', 'on_hold'].includes(caseItem.status) ? caseItem.status : 'active',
+            updated_at: sanitizeOptionalDate(caseItem.updated_at),
             stages: safeArray(caseItem.stages, (stage: any): Stage => ({
                 id: stage.id || `stage-${Date.now()}-${Math.random()}`,
                 court: String(stage.court || 'محكمة غير محددة'),
                 caseNumber: sanitizeString(stage.case_number ?? stage.caseNumber),
                 firstSessionDate: sanitizeOptionalDate(stage.first_session_date ?? stage.firstSessionDate),
+                updated_at: sanitizeOptionalDate(stage.updated_at),
                 sessions: safeArray(stage.sessions, (session: any): Session | null => {
                     const sessionDate = session.date ? new Date(session.date) : null;
                     if (!sessionDate || isNaN(sessionDate.getTime())) {
@@ -92,6 +98,7 @@ const validateAndHydrate = (data: any): AppData => {
                         nextPostponementReason: sanitizeString(session.next_postponement_reason ?? session.nextPostponementReason),
                         nextSessionDate: sanitizeOptionalDate(session.next_session_date ?? session.nextSessionDate),
                         assignee: isValidAssistant(session.assignee) ? session.assignee : defaultAssignee,
+                        updated_at: sanitizeOptionalDate(session.updated_at),
                     };
                 }).filter((s): s is Session => s !== null),
                 decisionDate: sanitizeOptionalDate(stage.decision_date ?? stage.decisionDate),
@@ -116,6 +123,7 @@ const validateAndHydrate = (data: any): AppData => {
             importance: ['normal', 'important', 'urgent'].includes(task.importance) ? task.importance : 'normal',
             assignee: isValidAssistant(task.assignee) ? task.assignee : defaultAssignee,
             location: sanitizeString(task.location),
+            updated_at: sanitizeOptionalDate(task.updated_at),
         };
     }).filter((t): t is AdminTask => t !== null);
 
@@ -134,6 +142,7 @@ const validateAndHydrate = (data: any): AppData => {
             notified: typeof apt.notified === 'boolean' ? apt.notified : false,
             reminderTimeInMinutes: typeof (apt.reminder_time_in_minutes ?? apt.reminderTimeInMinutes) === 'number' ? (apt.reminder_time_in_minutes ?? apt.reminderTimeInMinutes) : undefined,
             assignee: isValidAssistant(apt.assignee) ? apt.assignee : defaultAssignee,
+            updated_at: sanitizeOptionalDate(apt.updated_at),
         };
     }).filter((a): a is Appointment => a !== null);
     
@@ -146,6 +155,7 @@ const validateAndHydrate = (data: any): AppData => {
         clientId: String((entry.client_id ?? entry.clientId) || ''),
         caseId: String((entry.case_id ?? entry.caseId) || ''),
         clientName: String((entry.client_name ?? entry.clientName) || ''),
+        updated_at: sanitizeOptionalDate(entry.updated_at),
     }));
 
     const validatedInvoices: Invoice[] = safeArray(data.invoices, (invoice: any): Invoice => ({
@@ -156,10 +166,12 @@ const validateAndHydrate = (data: any): AppData => {
         caseSubject: sanitizeString(invoice.case_subject ?? invoice.caseSubject),
         issueDate: (invoice.issue_date ?? invoice.issueDate) && !isNaN(new Date(invoice.issue_date ?? invoice.issueDate).getTime()) ? new Date(invoice.issue_date ?? invoice.issueDate) : new Date(),
         dueDate: (invoice.due_date ?? invoice.dueDate) && !isNaN(new Date(invoice.due_date ?? invoice.dueDate).getTime()) ? new Date(invoice.due_date ?? invoice.dueDate) : new Date(),
+        updated_at: sanitizeOptionalDate(invoice.updated_at),
         items: safeArray(invoice.invoice_items ?? invoice.items, (item: any): InvoiceItem => ({
             id: item.id || `item-${Date.now()}-${Math.random()}`,
             description: String(item.description || ''),
             amount: typeof item.amount === 'number' ? item.amount : 0,
+            updated_at: sanitizeOptionalDate(item.updated_at),
         })),
         taxRate: typeof (invoice.tax_rate ?? invoice.taxRate) === 'number' ? (invoice.tax_rate ?? invoice.taxRate) : 0,
         discount: typeof invoice.discount === 'number' ? invoice.discount : 0,
@@ -177,45 +189,39 @@ const validateAndHydrate = (data: any): AppData => {
     };
 };
 
-export const useSupabaseData = (offlineMode: boolean, user: User | null) => {
+function usePrevious<T>(value: T): T | undefined {
+  const ref = React.useRef<T>();
+  React.useEffect(() => {
+    ref.current = value;
+  });
+  return ref.current;
+}
+
+export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const getLocalStorageKey = () => user ? `${APP_DATA_KEY}_${user.id}` : APP_DATA_KEY;
     const userId = user?.id;
 
     const [data, setData] = React.useState<AppData>(getInitialData);
+    const dataRef = React.useRef(data);
+    dataRef.current = data;
+    
+    const [isDataLoading, setIsDataLoading] = React.useState(true);
     const [syncStatus, setSyncStatus] = React.useState<SyncStatus>('loading');
     const [lastSyncError, setLastSyncError] = React.useState<string | null>(null);
     const [isDirty, setIsDirty] = React.useState(false);
     
+    const hadCacheOnLoad = React.useRef(false);
+    
     const isOnline = useOnlineStatus();
+    const prevIsAuthLoading = usePrevious(isAuthLoading);
 
-    React.useEffect(() => {
-        if (!userId) {
-            setData(getInitialData());
-            setIsDirty(false);
-            return;
-        };
-        try {
-            const rawData = localStorage.getItem(getLocalStorageKey());
-            setData(rawData ? validateAndHydrate(JSON.parse(rawData)) : getInitialData());
-            setIsDirty(localStorage.getItem(`lawyerAppIsDirty_${userId}`) === 'true');
-        } catch (error) {
-            console.error("Failed to load or parse data from localStorage for user.", error);
-            setData(getInitialData());
-        }
-    }, [userId]);
-
-    const handleDataFetched = React.useCallback((fetchedData: any) => {
-        if (fetchedData === null) {
-            setData(getInitialData());
-            return;
-        }
-        const validatedData = validateAndHydrate({
-            ...fetchedData,
-            assistants: fetchedData.assistants.map((a: any) => a.name),
-        });
+    const handleDataSynced = React.useCallback((syncedData: AppData) => {
+        const validatedData = validateAndHydrate(syncedData);
         setData(validatedData);
         if (userId) {
             localStorage.setItem(`${APP_DATA_KEY}_${userId}`, JSON.stringify(validatedData));
+            setIsDirty(false);
+            localStorage.setItem(`lawyerAppIsDirty_${userId}`, 'false');
         }
     }, [userId]);
     
@@ -224,23 +230,158 @@ export const useSupabaseData = (offlineMode: boolean, user: User | null) => {
         setLastSyncError(error);
     }, []);
 
-    const handleSyncSuccess = React.useCallback(() => {
-        setIsDirty(false);
-        if (userId) {
-            localStorage.setItem(`lawyerAppIsDirty_${userId}`, 'false');
+    const { manualSync, fetchAndRefresh } = useSync({
+        user,
+        localData: data,
+        onDataSynced: handleDataSynced,
+        onSyncStatusChange: handleSyncStatusChange,
+        isOnline,
+        isAuthLoading,
+    });
+    
+    const manualSyncRef = React.useRef(manualSync);
+    const fetchAndRefreshRef = React.useRef(fetchAndRefresh);
+
+    React.useEffect(() => {
+        manualSyncRef.current = manualSync;
+        fetchAndRefreshRef.current = fetchAndRefresh;
+    }, [manualSync, fetchAndRefresh]);
+    
+    React.useEffect(() => {
+        // This effect handles loading from cache when the user changes.
+        // It's separate to ensure data is loaded before any sync logic runs.
+        if (!userId) {
+            // When there is no user, there is no data to load.
+            // Reset all state.
+            setData(getInitialData());
+            setIsDirty(false);
+            setSyncStatus('loading'); // Or another appropriate default state
+            setIsDataLoading(false); // Correctly reflect that no data is being loaded.
+            hadCacheOnLoad.current = false;
+            return;
+        }
+    
+        setIsDataLoading(true);
+        setSyncStatus('loading');
+        
+        try {
+            const rawData = localStorage.getItem(getLocalStorageKey());
+            if (rawData) {
+                const parsedData = JSON.parse(rawData);
+                const isEffectivelyEmpty =
+                    !parsedData ||
+                    (Array.isArray(parsedData.clients) && parsedData.clients.length === 0 &&
+                    Array.isArray(parsedData.adminTasks) && parsedData.adminTasks.length === 0 &&
+                    Array.isArray(parsedData.appointments) && parsedData.appointments.length === 0 &&
+                    Array.isArray(parsedData.accountingEntries) && parsedData.accountingEntries.length === 0 &&
+                    Array.isArray(parsedData.invoices) && parsedData.invoices.length === 0);
+    
+                if (isEffectivelyEmpty) {
+                    hadCacheOnLoad.current = false;
+                    console.log("Local cache found but is empty. Will perform initial pull.");
+                    setData(getInitialData()); // Ensure state is clean
+                } else {
+                    setData(validateAndHydrate(parsedData));
+                    const isLocallyDirty = localStorage.getItem(`lawyerAppIsDirty_${userId}`) === 'true';
+                    setIsDirty(isLocallyDirty);
+                    setSyncStatus('synced'); // Optimistic status
+                    hadCacheOnLoad.current = true;
+                    console.log("Hydrated state from local storage.");
+                }
+            } else {
+                hadCacheOnLoad.current = false;
+                console.log("No local cache found. Will perform initial pull.");
+            }
+        } catch (error) {
+            console.error("Error loading cached data:", error);
+            setSyncStatus('error');
+            setLastSyncError('خطأ في تحميل البيانات المحلية.');
+            hadCacheOnLoad.current = false;
+        } finally {
+            setIsDataLoading(false); // Signal that loading is complete
         }
     }, [userId]);
 
-    const { forceSync, manualSync } = useSync({
-        user,
-        currentData: data,
-        onDataFetched: handleDataFetched,
-        onSyncStatusChange: handleSyncStatusChange,
-        onSyncSuccess: handleSyncSuccess,
-        isOnline,
-        offlineMode,
-    });
+    React.useEffect(() => {
+        // This effect is the primary trigger for synchronization logic, specifically
+        // designed to handle the race condition on internet reconnection.
+
+        // We only want to act when authentication loading is complete.
+        if (isAuthLoading || isDataLoading || !userId) {
+            return;
+        }
+
+        // Condition 1: Authentication just finished (transitioned from true to false).
+        // This is the key to solving the race condition.
+        const authJustFinished = prevIsAuthLoading === true && isAuthLoading === false;
+
+        if (authJustFinished && isOnline) {
+            console.log("Authentication has just completed while online. Triggering sync.");
+            // We perform a full sync. If we started with no local data, treat it as an initial pull.
+            manualSyncRef.current(!hadCacheOnLoad.current);
+        } else if (!isOnline && !hadCacheOnLoad.current) {
+            // Condition 2: We are offline and started with no cached data. Show an error.
+            setSyncStatus('error');
+            setLastSyncError('أنت غير متصل ولا توجد بيانات محلية. يرجى الاتصال بالإنترنت للمزامنة الأولية.');
+        }
+    }, [isAuthLoading, prevIsAuthLoading, isOnline, isDataLoading, userId]);
     
+    React.useEffect(() => {
+        if (!isDirty || !isOnline || isDataLoading || isAuthLoading || syncStatus === 'syncing') {
+            return;
+        }
+
+        const syncTimeout = setTimeout(() => {
+            console.log('Debounced change detected, triggering auto-sync.');
+            manualSyncRef.current();
+        }, 1500);
+
+        return () => {
+            clearTimeout(syncTimeout);
+        };
+    }, [isDirty, isOnline, isDataLoading, isAuthLoading, syncStatus, data]);
+
+    const syncTimeoutRef = React.useRef<number>();
+
+    React.useEffect(() => {
+        if (!isOnline || !userId || isAuthLoading) return;
+
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+
+        const debouncedRefresh = () => {
+            clearTimeout(syncTimeoutRef.current);
+            syncTimeoutRef.current = window.setTimeout(() => {
+                console.log('Realtime change detected, triggering refresh.');
+                fetchAndRefreshRef.current();
+            }, 1500);
+        };
+
+        const channel = supabase.channel('public-data-changes')
+            .on('postgres_changes', 
+                { event: '*', schema: 'public' }, 
+                debouncedRefresh
+            )
+            .subscribe((status, err) => {
+                if (status === 'SUBSCRIBED') {
+                    console.log('Successfully subscribed to realtime changes.');
+                }
+                if (err) {
+                    console.error('Realtime subscription error:', err);
+                    handleSyncStatusChange('error', 'فشل الاتصال بالتحديثات الفورية.');
+                }
+            });
+
+        return () => {
+            console.log('Unsubscribing from realtime changes.');
+            clearTimeout(syncTimeoutRef.current);
+            if (channel) {
+                supabase.removeChannel(channel);
+            }
+        };
+    }, [isOnline, userId, isAuthLoading, handleSyncStatusChange]);
+
+
     React.useEffect(() => {
         if (!userId) return;
         try {
@@ -255,24 +396,103 @@ export const useSupabaseData = (offlineMode: boolean, user: User | null) => {
         }
     }, [data, userId, isDirty]);
 
-    const createSetter = <K extends keyof AppData>(key: K) => (updater: React.SetStateAction<AppData[K]>) => {
-        setData(prev => ({ ...prev, [key]: updater instanceof Function ? updater(prev[key]) : updater }));
+    // New useEffect for daily backup
+    React.useEffect(() => {
+        if (isDataLoading || !userId) {
+            return;
+        }
+
+        const performBackupCheck = () => {
+            const LAST_BACKUP_KEY = `lawyerAppLastBackupTimestamp_${userId}`;
+            const todayString = new Date().toISOString().split('T')[0];
+
+            try {
+                const lastBackupTimestamp = localStorage.getItem(LAST_BACKUP_KEY);
+                const lastBackupDateString = lastBackupTimestamp ? new Date(parseInt(lastBackupTimestamp, 10)).toISOString().split('T')[0] : null;
+
+                if (lastBackupDateString === todayString) {
+                    console.log('Daily backup already performed today.');
+                    return;
+                }
+
+                const currentData = dataRef.current; 
+
+                const isDataEffectivelyEmpty =
+                    !currentData ||
+                    (Array.isArray(currentData.clients) && currentData.clients.length === 0 &&
+                    Array.isArray(currentData.adminTasks) && currentData.adminTasks.length === 0 &&
+                    Array.isArray(currentData.appointments) && currentData.appointments.length === 0 &&
+                    Array.isArray(currentData.accountingEntries) && currentData.accountingEntries.length === 0 &&
+                    Array.isArray(currentData.invoices) && currentData.invoices.length === 0);
+
+                if (isDataEffectivelyEmpty) {
+                    console.log('No data to back up. Skipping daily backup.');
+                    localStorage.setItem(LAST_BACKUP_KEY, Date.now().toString());
+                    return;
+                }
+
+                console.log('Performing daily automatic backup...');
+
+                const dataToBackup = JSON.stringify(currentData, null, 2);
+                const blob = new Blob([dataToBackup], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `lawyer_app_backup_${todayString}.json`;
+                
+                document.body.appendChild(a);
+                a.click();
+                
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                localStorage.setItem(LAST_BACKUP_KEY, Date.now().toString());
+                console.log('Daily backup complete.');
+
+            } catch (error) {
+                console.error('Failed to perform daily automatic backup:', error);
+            }
+        };
+        
+        performBackupCheck();
+
+    }, [isDataLoading, userId]);
+
+    const setClients = React.useCallback((updater: React.SetStateAction<Client[]>) => {
+        setData(prev => ({ ...prev, clients: updater instanceof Function ? updater(prev.clients) : updater }));
         setIsDirty(true);
-    };
+    }, []);
 
-    const setClients = createSetter('clients');
-    const setAdminTasks = createSetter('adminTasks');
-    const setAppointments = createSetter('appointments');
-    const setAccountingEntries = createSetter('accountingEntries');
-    const setInvoices = createSetter('invoices');
-    const setAssistants = createSetter('assistants');
-
-    const setFullData = (newData: any) => {
-        const validatedData = validateAndHydrate(newData);
-        setData(validatedData);
+    const setAdminTasks = React.useCallback((updater: React.SetStateAction<AdminTask[]>) => {
+        setData(prev => ({ ...prev, adminTasks: updater instanceof Function ? updater(prev.adminTasks) : updater }));
         setIsDirty(true);
-    };
+    }, []);
 
+    const setAppointments = React.useCallback((updater: React.SetStateAction<Appointment[]>) => {
+        setData(prev => ({ ...prev, appointments: updater instanceof Function ? updater(prev.appointments) : updater }));
+        setIsDirty(true);
+    }, []);
+
+    const setAccountingEntries = React.useCallback((updater: React.SetStateAction<AccountingEntry[]>) => {
+        setData(prev => ({ ...prev, accountingEntries: updater instanceof Function ? updater(prev.accountingEntries) : updater }));
+        setIsDirty(true);
+    }, []);
+
+    const setInvoices = React.useCallback((updater: React.SetStateAction<Invoice[]>) => {
+        setData(prev => ({ ...prev, invoices: updater instanceof Function ? updater(prev.invoices) : updater }));
+        setIsDirty(true);
+    }, []);
+
+    const setAssistants = React.useCallback((updater: React.SetStateAction<string[]>) => {
+        setData(prev => ({ ...prev, assistants: updater instanceof Function ? updater(prev.assistants) : updater }));
+        setIsDirty(true);
+    }, []);
+
+    const setFullData = React.useCallback((fullData: AppData) => {
+        setData(validateAndHydrate(fullData));
+        setIsDirty(true);
+    }, []);
+    
     const allSessions = React.useMemo(() => {
         return data.clients.flatMap(client =>
             client.cases.flatMap(caseItem =>
@@ -284,7 +504,7 @@ export const useSupabaseData = (offlineMode: boolean, user: User | null) => {
                     }))
                 )
             )
-        );
+        ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     }, [data.clients]);
 
     return {
@@ -298,9 +518,10 @@ export const useSupabaseData = (offlineMode: boolean, user: User | null) => {
         allSessions,
         setFullData,
         syncStatus,
-        forceSync,
         manualSync,
         lastSyncError,
         isDirty,
+        userId,
+        isDataLoading,
     };
 };

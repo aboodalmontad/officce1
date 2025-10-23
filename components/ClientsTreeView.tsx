@@ -182,7 +182,8 @@ const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeVie
     const handleFeeChange = (newFee: string) => {
         props.setClients(clients => clients.map(c => c.id === client.id ? {
             ...c,
-            cases: c.cases.map(cs => cs.id === caseItem.id ? {...cs, feeAgreement: newFee} : cs)
+            updated_at: new Date(),
+            cases: c.cases.map(cs => cs.id === caseItem.id ? {...cs, feeAgreement: newFee, updated_at: new Date()} : cs)
         } : c));
     };
 

@@ -66,7 +66,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ initialInvoiceData, clearIn
                 dueDate: toInputDateString(dueDate) as any,
                 clientId: client?.id || '',
                 caseId: caseItem?.id || '',
-                items: [{ id: `item-${Date.now()}`, description: '', amount: 0 }],
+                items: [{ id: `item-${Date.now()}`, description: '', amount: 0, updated_at: new Date() }],
                 taxRate: 0,
                 discount: 0,
                 status: 'draft' as 'draft',
@@ -85,12 +85,14 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ initialInvoiceData, clearIn
 
     const handleItemChange = (index: number, field: keyof InvoiceItem, value: string | number) => {
         const newItems = [...formData.items];
+        const updatedItem = { ...newItems[index], updated_at: new Date() };
         // @ts-ignore
-        newItems[index][field] = field === 'amount' ? parseFloat(value as string) : value;
+        updatedItem[field] = field === 'amount' ? parseFloat(value as string) || 0 : value;
+        newItems[index] = updatedItem;
         setFormData(prev => ({ ...prev, items: newItems }));
     };
 
-    const handleAddItem = () => setFormData(prev => ({ ...prev, items: [...prev.items, { id: `item-${Date.now()}`, description: '', amount: 0 }] }));
+    const handleAddItem = () => setFormData(prev => ({ ...prev, items: [...prev.items, { id: `item-${Date.now()}`, description: '', amount: 0, updated_at: new Date() }] }));
     const handleRemoveItem = (index: number) => setFormData(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }));
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -113,6 +115,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ initialInvoiceData, clearIn
             discount: formData.discount || 0,
             status: formData.status!,
             notes: formData.notes,
+            updated_at: new Date(),
         };
 
         if (modal.data) { // Editing

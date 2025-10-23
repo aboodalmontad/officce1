@@ -18,7 +18,7 @@ interface ClientsPageProps {
 }
 
 const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminTaskModal, onCreateInvoice }) => {
-    const { clients, setClients, accountingEntries, setAccountingEntries, assistants, setFullData, invoices } = useData();
+    const { clients, setClients, accountingEntries, setAccountingEntries, assistants, setFullData, invoices, adminTasks, appointments } = useData();
     const [modal, setModal] = React.useState<{ type: 'client' | 'case' | 'stage' | 'session' | null, context?: any, isEditing: boolean }>({ type: null, isEditing: false });
     const [formData, setFormData] = React.useState<any>({});
     const [searchQuery, setSearchQuery] = React.useState('');
@@ -114,8 +114,10 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
         setClients(currentClients => {
             return currentClients.map(client => ({
                 ...client,
+                updated_at: new Date(),
                 cases: client.cases.map(caseItem => ({
                     ...caseItem,
+                    updated_at: new Date(),
                     stages: caseItem.stages.map(stage => {
                         const sessionIndex = stage.sessions.findIndex(s => s.id === sessionId);
                         if (sessionIndex === -1) {
@@ -137,6 +139,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                                     isPostponed: true,
                                     nextSessionDate: newSessionDate,
                                     nextPostponementReason: newPostponementReason,
+                                    updated_at: new Date(),
                                 };
                                 
                                 // Create the new session
@@ -148,15 +151,16 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                                     postponementReason: newPostponementReason, // The reason for this new session is the postponement of the old one
                                     nextSessionDate: undefined,
                                     nextPostponementReason: undefined,
+                                    updated_at: new Date(),
                                 };
                                 updatedSessions.push(newSession);
                             }
                         } else {
                              // Regular update
-                             updatedSessions[sessionIndex] = { ...currentSession, ...updatedFields };
+                             updatedSessions[sessionIndex] = { ...currentSession, ...updatedFields, updated_at: new Date() };
                         }
 
-                        return { ...stage, sessions: updatedSessions };
+                        return { ...stage, sessions: updatedSessions, updated_at: new Date() };
                     }),
                 })),
             }));
@@ -178,15 +182,10 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
             const foundClient = clients.find(c => c.name.trim().toLowerCase() === normalizedClientName);
 
             if (foundClient) {
-                // A client with this name exists. Check if it's a true duplicate.
-                
-                // Case 1: We are ADDING a new client. Any match is a duplicate.
                 if (!isEditing) {
                     alert(`تنبيه: الموكل "${clientName}" موجود بالفعل.`);
                     return;
                 }
-                
-                // Case 2: We are EDITING a client. It's a duplicate ONLY if the found client's ID is different from the one we are editing.
                 if (isEditing && context?.item?.id !== foundClient.id) {
                      alert(`تنبيه: الموكل "${clientName}" موجود بالفعل.`);
                      return;
@@ -195,14 +194,15 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
             
             if (isEditing) {
                  if (context?.item?.id) {
-                    setClients(prev => prev.map(c => c.id === context.item.id ? { ...c, ...formData, name: clientName } : c));
+                    setClients(prev => prev.map(c => c.id === context.item.id ? { ...c, ...formData, name: clientName, updated_at: new Date() } : c));
                 }
             } else {
                 const newClient: Client = { 
                     id: `client-${Date.now()}`, 
                     name: clientName, 
                     contactInfo: formData.contactInfo || '', 
-                    cases: [] 
+                    cases: [],
+                    updated_at: new Date(),
                 };
                 setClients(prev => [...prev, newClient]);
             }
@@ -210,7 +210,8 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
             if (isEditing) {
                 setClients(prev => prev.map(c => c.id === context.client.id ? {
                     ...c,
-                    cases: c.cases.map(cs => cs.id === context.item.id ? { ...cs, ...formData } : cs)
+                    updated_at: new Date(),
+                    cases: c.cases.map(cs => cs.id === context.item.id ? { ...cs, ...formData, updated_at: new Date() } : cs)
                 } : c));
             } else {
                 const clientForCase = clients.find(c => c.id === context.clientId);
@@ -222,7 +223,8 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                         feeAgreement: formData.feeAgreement || '',
                         status: formData.status || 'active',
                         clientName: clientForCase.name,
-                        stages: []
+                        stages: [],
+                        updated_at: new Date(),
                     };
         
                     const { court, caseNumber, firstSessionDate, firstSessionReason } = formData;
@@ -233,6 +235,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                             caseNumber: caseNumber || '',
                             firstSessionDate: firstSessionDate ? new Date(firstSessionDate) : undefined,
                             sessions: [],
+                            updated_at: new Date(),
                         };
         
                         if (firstSessionDate) {
@@ -245,7 +248,8 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                                 opponentName: newCase.opponentName,
                                 isPostponed: false,
                                 postponementReason: firstSessionReason || undefined,
-                                assignee: 'بدون تخصيص'
+                                assignee: 'بدون تخصيص',
+                                updated_at: new Date(),
                             };
                             newStage.sessions.push(newSession);
                         }
@@ -253,19 +257,21 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                         newCase.stages.push(newStage);
                     }
         
-                    setClients(prev => prev.map(c => c.id === context.clientId ? { ...c, cases: [...c.cases, newCase] } : c));
+                    setClients(prev => prev.map(c => c.id === context.clientId ? { ...c, updated_at: new Date(), cases: [...c.cases, newCase] } : c));
                 }
             }
         } else if (type === 'stage') {
             if (isEditing) {
-                const stageData = { ...formData };
+                const stageData = { ...formData, updated_at: new Date() };
                 stageData.firstSessionDate = stageData.firstSessionDate ? new Date(stageData.firstSessionDate) : undefined;
                 stageData.decisionDate = stageData.decisionDate ? new Date(stageData.decisionDate) : undefined;
                 
                 setClients(prev => prev.map(c => c.id === context.client.id ? {
                     ...c,
+                    updated_at: new Date(),
                     cases: c.cases.map(cs => cs.id === context.case.id ? {
                         ...cs,
+                        updated_at: new Date(),
                         stages: cs.stages.map(st => st.id === context.item.id ? { ...st, ...stageData } : st)
                     } : cs)
                 } : c));
@@ -277,6 +283,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                     caseNumber: stageData.caseNumber || '',
                     firstSessionDate: stageData.firstSessionDate ? new Date(stageData.firstSessionDate) : undefined,
                     sessions: [],
+                    updated_at: new Date(),
                 };
         
                 if (newStage.firstSessionDate) {
@@ -292,7 +299,8 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                             opponentName: caseItem.opponentName,
                             isPostponed: false,
                             postponementReason: stageData.postponementReason || undefined,
-                            assignee: 'بدون تخصيص'
+                            assignee: 'بدون تخصيص',
+                            updated_at: new Date(),
                         };
                         newStage.sessions.push(newSession);
                     }
@@ -300,7 +308,8 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
         
                 setClients(prev => prev.map(c => c.id === context.clientId ? {
                     ...c,
-                    cases: c.cases.map(cs => cs.id === context.caseId ? { ...cs, stages: [...cs.stages, newStage] } : cs)
+                    updated_at: new Date(),
+                    cases: c.cases.map(cs => cs.id === context.caseId ? { ...cs, updated_at: new Date(), stages: [...cs.stages, newStage] } : cs)
                 } : c));
             }
         } else if (type === 'session') {
@@ -318,11 +327,14 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                 } else { // Regular edit
                      setClients(prev => prev.map(c => c.id === context.client.id ? {
                          ...c,
+                         updated_at: new Date(),
                          cases: c.cases.map(cs => cs.id === context.case.id ? {
                              ...cs,
+                             updated_at: new Date(),
                              stages: cs.stages.map(st => st.id === context.stage.id ? {
                                  ...st,
-                                 sessions: st.sessions.map(s => s.id === context.item.id ? { ...s, ...sessionData } : s)
+                                 updated_at: new Date(),
+                                 sessions: st.sessions.map(s => s.id === context.item.id ? { ...s, ...sessionData, updated_at: new Date() } : s)
                              } : st)
                          } : cs)
                      } : c));
@@ -332,10 +344,12 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                     if (client.id !== context.clientId) return client;
                     return {
                         ...client,
+                        updated_at: new Date(),
                         cases: client.cases.map(caseItem => {
                             if (caseItem.id !== context.caseId) return caseItem;
                             return {
                                 ...caseItem,
+                                updated_at: new Date(),
                                 stages: caseItem.stages.map(stage => {
                                     if (stage.id !== context.stageId) return stage;
                                     
@@ -351,10 +365,12 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                                         postponementReason: sessionData.postponementReason,
                                         nextPostponementReason: undefined,
                                         nextSessionDate: undefined,
+                                        updated_at: new Date(),
                                     };
                                     
                                     return {
                                         ...stage,
+                                        updated_at: new Date(),
                                         sessions: [...stage.sessions, newSession]
                                     };
                                 })
@@ -414,7 +430,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
         setClients(prevClients =>
             prevClients.map(client =>
                 client.id === caseToDelete.clientId
-                    ? { ...client, cases: client.cases.filter(c => c.id !== caseToDelete.caseId) }
+                    ? { ...client, cases: client.cases.filter(c => c.id !== caseToDelete.caseId), updated_at: new Date() }
                     : client
             )
         );
@@ -450,8 +466,10 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
         const { stageId, caseId, clientId } = stageToDelete;
         setClients(prev => prev.map(c => c.id === clientId ? {
             ...c,
+            updated_at: new Date(),
             cases: c.cases.map(cs => cs.id === caseId ? {
                 ...cs,
+                updated_at: new Date(),
                 stages: cs.stages.filter(st => st.id !== stageId)
             } : cs)
         } : c));
@@ -487,10 +505,13 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
         const { sessionId, stageId, caseId, clientId } = sessionToDelete;
          setClients(prev => prev.map(c => c.id === clientId ? {
             ...c,
+            updated_at: new Date(),
             cases: c.cases.map(cs => cs.id === caseId ? {
                 ...cs,
+                updated_at: new Date(),
                 stages: cs.stages.map(st => st.id === stageId ? {
                     ...st,
+                    updated_at: new Date(),
                     sessions: st.sessions.filter(s => s.id !== sessionId)
                 } : st)
             } : cs)
@@ -582,8 +603,10 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
 
         setClients(currentClients => currentClients.map(client => ({
             ...client,
+            updated_at: new Date(),
             cases: client.cases.map(c => ({
                 ...c,
+                updated_at: new Date(),
                 stages: c.stages.map(st => {
                     if (st.id === stage.id) {
                         return {
@@ -592,6 +615,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                             decisionNumber: decideFormData.decisionNumber,
                             decisionSummary: decideFormData.decisionSummary,
                             decisionNotes: decideFormData.decisionNotes,
+                            updated_at: new Date(),
                         };
                     }
                     return st;
@@ -704,12 +728,27 @@ Important rules:
 
             const jsonStr = response.text.trim();
             const generatedData = JSON.parse(jsonStr);
+            
+            // Add `updated_at` timestamps to all generated data
+            const now = new Date();
+            const addTimestamp = (obj: any) => ({ ...obj, updated_at: now });
+            
+            const newClients = (generatedData.clients || []).map((client: any) => ({
+                ...addTimestamp(client),
+                cases: (client.cases || []).map((c: any) => ({
+                    ...addTimestamp(c),
+                    stages: (c.stages || []).map((s: any) => ({
+                        ...addTimestamp(s),
+                        sessions: (s.sessions || []).map(addTimestamp),
+                    })),
+                })),
+            }));
 
             const finalData = {
-                clients: [...clients, ...(generatedData.clients || [])],
-                adminTasks: [...accountingEntries, ...(generatedData.adminTasks || [])],
-                appointments: [...accountingEntries, ...(generatedData.appointments || [])],
-                accountingEntries: [...accountingEntries, ...(generatedData.accountingEntries || [])],
+                clients: [...clients, ...newClients],
+                adminTasks: [...adminTasks, ...(generatedData.adminTasks || []).map(addTimestamp)],
+                appointments: [...appointments, ...(generatedData.appointments || []).map(addTimestamp)],
+                accountingEntries: [...accountingEntries, ...(generatedData.accountingEntries || []).map(addTimestamp)],
                 invoices: invoices,
                 assistants: assistants,
             };

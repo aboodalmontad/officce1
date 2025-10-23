@@ -59,12 +59,13 @@ const CaseAccounting: React.FC<CaseAccountingProps> = ({ caseData, client, caseA
             clientId: client.id,
             caseId: caseData.id,
             clientName: client.name,
+            updated_at: new Date(),
         };
 
         if (modal.data) { // Editing
             setAccountingEntries(prev => prev.map(item => item.id === modal.data!.id ? { ...item, ...entryData } as AccountingEntry : item));
         } else { // Adding
-            setAccountingEntries(prev => [...prev, { ...entryData, id: `acc-${Date.now()}` }]);
+            setAccountingEntries(prev => [...prev, { ...entryData, id: `acc-${Date.now()}` } as AccountingEntry]);
         }
         handleCloseModal();
     };

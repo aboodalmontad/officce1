@@ -1,5 +1,5 @@
 import { getSupabaseClient } from '../supabaseClient';
-import { Client, AdminTask, Appointment, AccountingEntry, Invoice } from '../types';
+import { Client, AdminTask, Appointment, AccountingEntry, Invoice, InvoiceItem } from '../types';
 import { User } from '@supabase/supabase-js';
 
 // Define the core data structure for the application.
@@ -13,6 +13,20 @@ export type AppData = {
     assistants: string[];
 };
 
+export type FlatData = {
+    clients: Omit<Client, 'cases'>[];
+    cases: any[];
+    stages: any[];
+    sessions: any[];
+    admin_tasks: AdminTask[];
+    appointments: Appointment[];
+    accounting_entries: AccountingEntry[];
+    assistants: { name: string }[];
+    invoices: Omit<Invoice, 'items'>[];
+    invoice_items: InvoiceItem[];
+}
+
+
 /**
  * Checks if all required tables exist in the Supabase database schema.
  * This is crucial for ensuring the backend is properly configured before attempting data operations.
@@ -25,10 +39,10 @@ export const checkSupabaseSchema = async () => {
     }
 
     const tableChecks: { [key: string]: string } = {
-        'profiles': 'id', 'clients': 'id, cases(id)', 'cases': 'id, stages(id)',
-        'stages': 'id, sessions(id)', 'sessions': 'id', 'admin_tasks': 'id',
-        'appointments': 'id', 'accounting_entries': 'id', 'assistants': 'id',
-        'invoices': 'id, invoice_items(id)', 'invoice_items': 'id',
+        'profiles': 'id', 'clients': 'id', 'cases': 'id',
+        'stages': 'id', 'sessions': 'id', 'admin_tasks': 'id',
+        'appointments': 'id', 'accounting_entries': 'id', 'assistants': 'name',
+        'invoices': 'id', 'invoice_items': 'id',
     };
     
     const tableCheckPromises = Object.entries(tableChecks).map(([table, query]) =>
@@ -72,94 +86,143 @@ export const checkSupabaseSchema = async () => {
  * @returns A promise that resolves with the user's data.
  * @throws An error if the Supabase client is unavailable or if the fetch fails.
  */
-export const fetchDataFromSupabase = async (): Promise<Omit<AppData, 'assistants' | 'clients'> & { assistants: {name: string}[], clients: any[] }> => {
+// FIX: Complete the implementation of fetchDataFromSupabase to resolve the "must return a value" error.
+export const fetchDataFromSupabase = async (): Promise<FlatData> => {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase client not available.');
 
-    const clientsRes = await supabase.from('clients').select('*, cases(*, stages(*, sessions(*)))').order('name');
-    const adminTasksRes = await supabase.from('admin_tasks').select('*');
-    const appointmentsRes = await supabase.from('appointments').select('*');
-    const accountingEntriesRes = await supabase.from('accounting_entries').select('*');
-    const assistantsRes = await supabase.from('assistants').select('name');
-    const invoicesRes = await supabase.from('invoices').select('*, invoice_items(*)');
+    const [
+        clientsRes, adminTasksRes, appointmentsRes, accountingEntriesRes,
+        assistantsRes, invoicesRes, casesRes, stagesRes, sessionsRes, invoiceItemsRes
+    ] = await Promise.all([
+        supabase.from('clients').select('*'),
+        supabase.from('admin_tasks').select('*'),
+        supabase.from('appointments').select('*'),
+        supabase.from('accounting_entries').select('*'),
+        supabase.from('assistants').select('name'),
+        supabase.from('invoices').select('*'),
+        supabase.from('cases').select('*'),
+        supabase.from('stages').select('*'),
+        supabase.from('sessions').select('*'),
+        supabase.from('invoice_items').select('*'),
+    ]);
 
-    const allResults = [clientsRes, adminTasksRes, appointmentsRes, accountingEntriesRes, assistantsRes, invoicesRes];
-    const errors = allResults.map(res => res.error).filter(Boolean);
-    if (errors.length > 0) throw new Error(errors.map(e => e!.message).join(', '));
+    const results = [
+        { res: clientsRes, name: 'clients' },
+        { res: adminTasksRes, name: 'admin_tasks' },
+        { res: appointmentsRes, name: 'appointments' },
+        { res: accountingEntriesRes, name: 'accounting_entries' },
+        { res: assistantsRes, name: 'assistants' },
+        { res: invoicesRes, name: 'invoices' },
+        { res: casesRes, name: 'cases' },
+        { res: stagesRes, name: 'stages' },
+        { res: sessionsRes, name: 'sessions' },
+        { res: invoiceItemsRes, name: 'invoice_items' },
+    ];
+
+    for (const { res, name } of results) {
+        if (res.error) {
+            throw new Error(`Failed to fetch ${name}: ${res.error.message}`);
+        }
+    }
 
     return {
         clients: clientsRes.data || [],
-        adminTasks: adminTasksRes.data || [],
+        cases: casesRes.data || [],
+        stages: stagesRes.data || [],
+        sessions: sessionsRes.data || [],
+        admin_tasks: adminTasksRes.data || [],
         appointments: appointmentsRes.data || [],
-        accountingEntries: accountingEntriesRes.data || [],
+        accounting_entries: accountingEntriesRes.data || [],
         assistants: assistantsRes.data || [],
         invoices: invoicesRes.data || [],
+        invoice_items: invoiceItemsRes.data || [],
     };
 };
 
-/**
- * Replaces the current user's entire dataset in Supabase with the provided local data.
- * This function performs a destructive "delete all then insert all" operation for the user.
- * @param currentData The complete local data state to upload.
- * @param user The authenticated Supabase user object.
- * @throws An error if any step of the deletion or upsertion process fails.
- */
-export const uploadDataToSupabase = async (currentData: AppData, user: User) => {
+export const deleteDataFromSupabase = async (deletions: Partial<FlatData>, user: User) => {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase client not available.');
 
-    const toISOStringOrNull = (date: any): string | null => (date && !isNaN(new Date(date).getTime())) ? new Date(date).toISOString() : null;
-    const toISOStringOrNow = (date: any): string => (date && !isNaN(new Date(date).getTime())) ? new Date(date).toISOString() : new Date().toISOString();
-    const textToNull = (val: any): string | null => (val === undefined || val === null || String(val).trim() === '') ? null : String(val);
+    // Deletion order matters due to foreign keys. Children first.
+    const deletionOrder: (keyof FlatData)[] = [
+        'invoice_items', 'sessions', 'stages', 'cases', 'invoices', 
+        'admin_tasks', 'appointments', 'accounting_entries', 'assistants', 'clients'
+    ];
 
-    const clientsToUpsert = currentData.clients.map(({ cases, contactInfo, ...client }) => ({ ...client, contact_info: textToNull(contactInfo), user_id: user.id }));
-    const casesToUpsert = currentData.clients.flatMap(c => c.cases.map(({ stages, clientName, opponentName, feeAgreement, ...caseItem }) => ({ ...caseItem, client_id: c.id, client_name: clientName, opponent_name: textToNull(opponentName), fee_agreement: textToNull(feeAgreement), user_id: user.id })));
-    const stagesToUpsert = currentData.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.map(({ sessions, caseNumber, firstSessionDate, decisionDate, decisionNumber, decisionSummary, decisionNotes, ...stage }) => ({ ...stage, case_id: cs.id, case_number: textToNull(caseNumber), first_session_date: toISOStringOrNull(firstSessionDate), decision_date: toISOStringOrNull(decisionDate), decision_number: textToNull(decisionNumber), decision_summary: textToNull(decisionSummary), decision_notes: textToNull(decisionNotes), user_id: user.id }))));
-    const sessionsToUpsert = currentData.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.map(({ caseNumber, clientName, opponentName, postponementReason, isPostponed, nextSessionDate, nextPostponementReason, date, stageId, stageDecisionDate, ...session }) => ({ ...session, stage_id: st.id, case_number: textToNull(caseNumber), client_name: clientName, opponent_name: textToNull(opponentName), postponement_reason: textToNull(postponementReason), is_postponed: isPostponed, date: toISOStringOrNow(date), next_session_date: toISOStringOrNull(nextSessionDate), next_postponement_reason: textToNull(nextPostponementReason), user_id: user.id }))));
-    const adminTasksToUpsert = currentData.adminTasks.map(({ dueDate, location, ...task }) => ({ ...task, due_date: toISOStringOrNow(dueDate), location: textToNull(location), user_id: user.id }));
-    const appointmentsToUpsert = currentData.appointments.map(({ reminderTimeInMinutes, date, ...apt }) => ({ ...apt, date: toISOStringOrNow(date), reminder_time_in_minutes: reminderTimeInMinutes, user_id: user.id }));
-    const accountingEntriesToUpsert = currentData.accountingEntries.map(({ clientId, caseId, clientName, date, description, ...entry }) => ({ ...entry, date: toISOStringOrNow(date), description: textToNull(description), client_id: textToNull(clientId), case_id: textToNull(caseId), client_name: clientName, user_id: user.id }));
-    const assistantsToUpsert = currentData.assistants.map(name => ({ name, user_id: user.id }));
-    const invoicesToUpsert = currentData.invoices.map(({ items, clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, ...inv }) => ({ ...inv, client_id: clientId, client_name: clientName, case_id: textToNull(caseId), case_subject: textToNull(caseSubject), issue_date: toISOStringOrNow(issueDate), due_date: toISOStringOrNow(dueDate), tax_rate: taxRate, user_id: user.id }));
-    const invoiceItemsToUpsert = currentData.invoices.flatMap(inv => inv.items.map(item => ({ ...item, invoice_id: inv.id, user_id: user.id })));
-
-    // Deletion Phase
-    const topLevelTables = ['clients', 'admin_tasks', 'appointments', 'accounting_entries', 'assistants', 'invoices'];
-    const deletePromises = topLevelTables.map(table => supabase.from(table).delete().eq('user_id', user.id));
-    const deleteResults = await Promise.all(deletePromises);
-    for (const result of deleteResults) {
-        if (result.error) throw result.error;
-    }
-    
-    // Sequential Upsert Phase
-    const checkResults = (results: { error: any }[], tableNames: string[]) => {
-        results.forEach((result, index) => {
-            if (result.error) {
-                const error = { ...result.error, table: tableNames[index] };
-                throw error;
+    for (const table of deletionOrder) {
+        const itemsToDelete = (deletions as any)[table];
+        if (itemsToDelete && itemsToDelete.length > 0) {
+            const primaryKeyColumn = table === 'assistants' ? 'name' : 'id';
+            const ids = itemsToDelete.map((i: any) => i[primaryKeyColumn]);
+            
+            // For assistants, we need to also match the user_id for deletion.
+            let query = supabase.from(table).delete().in(primaryKeyColumn, ids);
+            if (table === 'assistants') {
+                query = query.eq('user_id', user.id);
             }
-        });
+            
+            const { error } = await query;
+            if (error) {
+                console.error(`Error deleting from ${table}:`, error);
+                const newError = new Error(error.message);
+                (newError as any).table = table;
+                throw newError;
+            }
+        }
+    }
+};
+
+// FIX: Replace the existing upsertDataToSupabase to correctly map application
+// camelCase property names to database snake_case column names before upserting.
+export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) => {
+    const supabase = getSupabaseClient();
+    if (!supabase) throw new Error('Supabase client not available.');
+
+    const userId = user.id;
+
+    // Map application data (camelCase) to database schema (snake_case)
+    // AND remove updated_at from the payload, as the database handles it via trigger.
+    const dataToUpsert = {
+        clients: data.clients?.map(({ contactInfo, updated_at, ...rest }) => ({ ...rest, user_id: userId, contact_info: contactInfo })),
+        cases: data.cases?.map(({ clientName, opponentName, feeAgreement, updated_at, ...rest }) => ({ ...rest, user_id: userId, client_name: clientName, opponent_name: opponentName, fee_agreement: feeAgreement })),
+        stages: data.stages?.map(({ caseNumber, firstSessionDate, decisionDate, decisionNumber, decisionSummary, decisionNotes, updated_at, ...rest }) => ({ ...rest, user_id: userId, case_number: caseNumber, first_session_date: firstSessionDate, decision_date: decisionDate, decision_number: decisionNumber, decision_summary: decisionSummary, decision_notes: decisionNotes })),
+        sessions: data.sessions?.map(({ caseNumber, clientName, opponentName, postponementReason, nextPostponementReason, isPostponed, nextSessionDate, updated_at, ...rest }) => ({ ...rest, user_id: userId, case_number: caseNumber, client_name: clientName, opponent_name: opponentName, postponement_reason: postponementReason, next_postponement_reason: nextPostponementReason, is_postponed: isPostponed, next_session_date: nextSessionDate })),
+        admin_tasks: data.admin_tasks?.map(({ dueDate, updated_at, ...rest }) => ({ ...rest, user_id: userId, due_date: dueDate })),
+        appointments: data.appointments?.map(({ reminderTimeInMinutes, updated_at, ...rest }) => ({ ...rest, user_id: userId, reminder_time_in_minutes: reminderTimeInMinutes })),
+        accounting_entries: data.accounting_entries?.map(({ clientId, caseId, clientName, updated_at, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, case_id: caseId, client_name: clientName })),
+        assistants: data.assistants?.map(item => ({ ...item, user_id: userId })),
+        invoices: data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, updated_at, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, client_name: clientName, case_id: caseId, case_subject: caseSubject, issue_date: issueDate, due_date: dueDate, tax_rate: taxRate })),
+        invoice_items: data.invoice_items?.map(({ updated_at, ...item }) => ({ ...item, user_id: userId })),
     };
+    
+    const upsertTable = async (table: string, records: any[] | undefined, options: { onConflict?: string } = {}) => {
+        if (!records || records.length === 0) return;
+        const { error } = await supabase.from(table).upsert(records, options);
+        if (error) {
+            console.error(`Error upserting to ${table}:`, error);
+            const newError = new Error(error.message);
+            (newError as any).table = table;
+            throw newError;
+        }
+    };
+    
+    // Upsert assistants with conflict resolution
+    await upsertTable('assistants', dataToUpsert.assistants, { onConflict: 'user_id,name' });
 
-    const level1Promises = [], level1Tables = [];
-    if (clientsToUpsert.length > 0) { level1Promises.push(supabase.from('clients').upsert(clientsToUpsert)); level1Tables.push('clients'); }
-    if (assistantsToUpsert.length > 0) { level1Promises.push(supabase.from('assistants').upsert(assistantsToUpsert)); level1Tables.push('assistants'); }
-    if (adminTasksToUpsert.length > 0) { level1Promises.push(supabase.from('admin_tasks').upsert(adminTasksToUpsert)); level1Tables.push('admin_tasks'); }
-    if (appointmentsToUpsert.length > 0) { level1Promises.push(supabase.from('appointments').upsert(appointmentsToUpsert)); level1Tables.push('appointments'); }
-    if (level1Promises.length > 0) checkResults(await Promise.all(level1Promises), level1Tables);
+    // Upsert independent tables in parallel
+    await Promise.all([
+        upsertTable('admin_tasks', dataToUpsert.admin_tasks),
+        upsertTable('appointments', dataToUpsert.appointments),
+        upsertTable('accounting_entries', dataToUpsert.accounting_entries),
+    ]);
 
-    const level2Promises = [], level2Tables = [];
-    if (casesToUpsert.length > 0) { level2Promises.push(supabase.from('cases').upsert(casesToUpsert)); level2Tables.push('cases'); }
-    if (accountingEntriesToUpsert.length > 0) { level2Promises.push(supabase.from('accounting_entries').upsert(accountingEntriesToUpsert)); level2Tables.push('accounting_entries'); }
-    if (level2Promises.length > 0) checkResults(await Promise.all(level2Promises), level2Tables);
-
-    const level3Promises = [], level3Tables = [];
-    if (stagesToUpsert.length > 0) { level3Promises.push(supabase.from('stages').upsert(stagesToUpsert)); level3Tables.push('stages'); }
-    if (invoicesToUpsert.length > 0) { level3Promises.push(supabase.from('invoices').upsert(invoicesToUpsert)); level3Tables.push('invoices'); }
-    if (level3Promises.length > 0) checkResults(await Promise.all(level3Promises), level3Tables);
-
-    const level4Promises = [], level4Tables = [];
-    if (sessionsToUpsert.length > 0) { level4Promises.push(supabase.from('sessions').upsert(sessionsToUpsert)); level4Tables.push('sessions'); }
-    if (invoiceItemsToUpsert.length > 0) { level4Promises.push(supabase.from('invoice_items').upsert(invoiceItemsToUpsert)); level4Tables.push('invoice_items'); }
-    if (level4Promises.length > 0) checkResults(await Promise.all(level4Promises), level4Tables);
+    // Upsert tables with dependencies in order
+    await upsertTable('clients', dataToUpsert.clients);
+    await upsertTable('cases', dataToUpsert.cases);
+    await upsertTable('stages', dataToUpsert.stages);
+    await upsertTable('sessions', dataToUpsert.sessions);
+    
+    await upsertTable('invoices', dataToUpsert.invoices);
+    await upsertTable('invoice_items', dataToUpsert.invoice_items);
 };

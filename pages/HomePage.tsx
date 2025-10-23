@@ -168,6 +168,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                 reminderTimeInMinutes: newAppointment.reminderTimeInMinutes,
                 assignee: newAppointment.assignee,
                 notified: false, // Reset notification status on edit
+                updated_at: new Date(),
             } : apt));
         } else {
             const newAppointmentObject: Appointment = {
@@ -179,6 +180,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                 reminderTimeInMinutes: newAppointment.reminderTimeInMinutes,
                 assignee: newAppointment.assignee,
                 notified: false,
+                updated_at: new Date(),
             };
             setAppointments(prevAppointments => [...prevAppointments, newAppointmentObject]);
         }
@@ -221,13 +223,13 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
     };
 
     const handleToggleTaskComplete = (id: string) => {
-        setAdminTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+        setAdminTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed, updated_at: new Date() } : t));
     };
 
     const handleAssigneeChange = (taskId: string, newAssignee: string) => {
         setAdminTasks(prevTasks =>
             prevTasks.map(t =>
-                t.id === taskId ? { ...t, assignee: newAssignee } : t
+                t.id === taskId ? { ...t, assignee: newAssignee, updated_at: new Date() } : t
             )
         );
         setEditingAssigneeTaskId(null); // Exit edit mode
@@ -276,7 +278,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
             const taskToMoveIndex = currentTasks.findIndex(t => t.id === draggedTaskId);
             if (taskToMoveIndex === -1) return currentTasks;
             
-            const taskToMove = { ...currentTasks[taskToMoveIndex], location: targetLocation };
+            const taskToMove = { ...currentTasks[taskToMoveIndex], location: targetLocation, updated_at: new Date() };
 
             const remainingTasks = currentTasks.filter(t => t.id !== draggedTaskId);
 
@@ -412,12 +414,15 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                 postponementReason: newReason,
                 nextPostponementReason: undefined,
                 nextSessionDate: undefined,
+                updated_at: new Date(),
             };
 
             return currentClients.map(client => ({
                 ...client,
+                updated_at: new Date(),
                 cases: client.cases.map(caseItem => ({
                     ...caseItem,
+                    updated_at: new Date(),
                     stages: caseItem.stages.map(stage => {
                         if (stage.id !== stageOfSession!.id) {
                             return stage;
@@ -425,10 +430,11 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                         
                         return {
                             ...stage,
+                            updated_at: new Date(),
                             sessions: [
                                 ...stage.sessions.map(s =>
                                     s.id === sessionId
-                                        ? { ...s, isPostponed: true, nextPostponementReason: newReason, nextSessionDate: newDate }
+                                        ? { ...s, isPostponed: true, nextPostponementReason: newReason, nextSessionDate: newDate, updated_at: new Date() }
                                         : s
                                 ),
                                 newSession,
@@ -444,8 +450,10 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
         setClients(currentClients => {
             return currentClients.map(client => ({
                 ...client,
+                updated_at: new Date(),
                 cases: client.cases.map(caseItem => ({
                     ...caseItem,
+                    updated_at: new Date(),
                     stages: caseItem.stages.map(stage => {
                         const sessionIndex = stage.sessions.findIndex(s => s.id === sessionId);
                         if (sessionIndex === -1) {
@@ -456,11 +464,13 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                         updatedSessions[sessionIndex] = {
                             ...updatedSessions[sessionIndex],
                             ...updatedFields,
+                            updated_at: new Date(),
                         };
 
                         return {
                             ...stage,
                             sessions: updatedSessions,
+                            updated_at: new Date(),
                         };
                     }),
                 })),
@@ -507,8 +517,10 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
 
         setClients(currentClients => currentClients.map(client => ({
             ...client,
+            updated_at: new Date(),
             cases: client.cases.map(c => ({
                 ...c,
+                updated_at: new Date(),
                 stages: c.stages.map(st => {
                     if (st.id === stage.id) {
                         return {
@@ -517,6 +529,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                             decisionNumber: decideFormData.decisionNumber,
                             decisionSummary: decideFormData.decisionSummary,
                             decisionNotes: decideFormData.decisionNotes,
+                            updated_at: new Date(),
                         };
                     }
                     return st;
