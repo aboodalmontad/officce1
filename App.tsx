@@ -1,5 +1,6 @@
 
 
+
 import * as React from 'react';
 import { Session as AuthSession, User } from '@supabase/supabase-js';
 
@@ -42,7 +43,6 @@ interface IDataContext extends AppData {
     isDirty: boolean;
     userId?: string;
     isDataLoading: boolean;
-    // FIX: Add isAuthLoading to the context type to match the value provided.
     isAuthLoading: boolean;
 }
 

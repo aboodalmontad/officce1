@@ -86,7 +86,6 @@ export const checkSupabaseSchema = async () => {
  * @returns A promise that resolves with the user's data.
  * @throws An error if the Supabase client is unavailable or if the fetch fails.
  */
-// FIX: Complete the implementation of fetchDataFromSupabase to resolve the "must return a value" error.
 export const fetchDataFromSupabase = async (): Promise<FlatData> => {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase client not available.');
@@ -173,8 +172,6 @@ export const deleteDataFromSupabase = async (deletions: Partial<FlatData>, user:
     }
 };
 
-// FIX: Replace the existing upsertDataToSupabase to correctly map application
-// camelCase property names to database snake_case column names before upserting.
 export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) => {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase client not available.');

@@ -120,7 +120,6 @@ export interface Invoice {
   updated_at?: Date;
 }
 
-// FIX: Define and export the SiteFinancialEntry interface to resolve the import error.
 export interface SiteFinancialEntry {
   id: number;
   user_id: string | null;

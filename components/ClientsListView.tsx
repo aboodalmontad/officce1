@@ -35,6 +35,9 @@ interface ClientsListViewProps {
 const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expanded: boolean; onToggle: () => void; }> = ({ client, props, expanded, onToggle }) => {
     const [expandedCaseId, setExpandedCaseId] = React.useState<string | null>(null);
     const [activeTab, setActiveTab] = React.useState<'stages' | 'accounting'>('stages');
+    const clientLongPressTimer = React.useRef<number>();
+    const caseLongPressTimer = React.useRef<number>();
+    const stageLongPressTimer = React.useRef<number>();
 
     const handleFeeChange = (caseId: string, newFee: string) => {
         props.setClients(clients => clients.map(c => c.id === client.id ? {
@@ -160,6 +163,16 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
         }];
         props.showContextMenu(event, menuItems);
     };
+    
+    // --- Long Press Handlers ---
+    const createTouchStartHandler = (timerRef: React.MutableRefObject<number | undefined>, callback: (e: React.TouchEvent) => void) => (e: React.TouchEvent) => {
+        timerRef.current = window.setTimeout(() => {
+            callback(e);
+        }, 500);
+    };
+    const createTouchEndHandler = (timerRef: React.MutableRefObject<number | undefined>) => () => {
+        clearTimeout(timerRef.current);
+    };
 
     return (
         <div className="bg-sky-50 border rounded-lg shadow-sm">
@@ -167,6 +180,13 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
                 className="flex justify-between items-center p-4 cursor-pointer bg-sky-100 hover:bg-sky-200 transition-colors"
                 onClick={onToggle}
                 onContextMenu={handleClientContextMenu}
+                onTouchStart={createTouchStartHandler(clientLongPressTimer, (e) => {
+                    const touch = e.touches[0];
+                    const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY };
+                    handleClientContextMenu(mockEvent as any);
+                })}
+                onTouchEnd={createTouchEndHandler(clientLongPressTimer)}
+                onTouchMove={createTouchEndHandler(clientLongPressTimer)}
             >
                 <div className="flex items-center gap-3">
                     <UserIcon className="w-6 h-6 text-sky-700" />
@@ -204,6 +224,13 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
                                     className="flex justify-between items-center p-3 bg-indigo-100 cursor-pointer hover:bg-indigo-200" 
                                     onClick={() => setExpandedCaseId(expandedCaseId === caseItem.id ? null : caseItem.id)}
                                     onContextMenu={(e) => handleCaseContextMenu(e, caseItem)}
+                                    onTouchStart={createTouchStartHandler(caseLongPressTimer, (e) => {
+                                        const touch = e.touches[0];
+                                        const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY };
+                                        handleCaseContextMenu(mockEvent as any, caseItem);
+                                    })}
+                                    onTouchEnd={createTouchEndHandler(caseLongPressTimer)}
+                                    onTouchMove={createTouchEndHandler(caseLongPressTimer)}
                                 >
                                     <div className="flex items-center gap-2 text-indigo-800 font-semibold">
                                         <FolderIcon className="w-5 h-5 text-indigo-600" />
@@ -234,6 +261,13 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
                                                         <div 
                                                             className="p-3 bg-yellow-100 flex justify-between items-center"
                                                             onContextMenu={(e) => handleStageContextMenu(e, stage, caseItem)}
+                                                            onTouchStart={createTouchStartHandler(stageLongPressTimer, (e) => {
+                                                                const touch = e.touches[0];
+                                                                const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY };
+                                                                handleStageContextMenu(mockEvent as any, stage, caseItem);
+                                                            })}
+                                                            onTouchEnd={createTouchEndHandler(stageLongPressTimer)}
+                                                            onTouchMove={createTouchEndHandler(stageLongPressTimer)}
                                                         >
                                                             <div className="flex items-center flex-wrap gap-x-3 gap-y-1">
                                                                 <p className="font-semibold text-sm text-yellow-800 flex items-center gap-2">

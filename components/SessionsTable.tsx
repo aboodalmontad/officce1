@@ -22,6 +22,20 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
     const [errors, setErrors] = React.useState<Record<string, string>>({});
     const [editingCell, setEditingCell] = React.useState<{ sessionId: string; field: keyof Session } | null>(null);
     const [editValue, setEditValue] = React.useState<string | number | undefined>('');
+    const longPressTimer = React.useRef<number>();
+
+    const handleTouchStart = (e: React.TouchEvent, session: Session) => {
+        if (!onContextMenu) return;
+        longPressTimer.current = window.setTimeout(() => {
+            const touch = e.touches[0];
+            const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY };
+            onContextMenu(mockEvent as any, session);
+        }, 500);
+    };
+
+    const handleTouchEnd = () => {
+        clearTimeout(longPressTimer.current);
+    };
 
     const handleInputChange = (sessionId: string, field: 'date' | 'reason', value: string) => {
         setPostponeData(prev => ({
@@ -101,7 +115,6 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
     const handleCellClick = (session: Session, field: keyof Session) => {
         if (!onUpdate) return;
         const value = session[field];
-        // FIX: Only allow editing for fields that are string, number or undefined to prevent type errors.
         if (typeof value === 'boolean' || value instanceof Date) {
             return;
         }
@@ -166,6 +179,9 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
                         <tr 
                             key={s.id} 
                             onContextMenu={(e) => onContextMenu && onContextMenu(e, s)}
+                            onTouchStart={(e) => handleTouchStart(e, s)}
+                            onTouchEnd={handleTouchEnd}
+                            onTouchMove={handleTouchEnd}
                             className={`bg-white border-b hover:bg-gray-50 ${editingCell?.sessionId === s.id ? 'bg-blue-50' : ''}`}
                         >
                             <td className={`px-2 sm:px-6 py-4 ${cellClasses}`} onClick={() => !isEditing('court') && handleCellClick(s, 'court')}>

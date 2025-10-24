@@ -3,7 +3,6 @@ import * as React from 'react';
 // Common props for all icons
 interface IconProps extends React.SVGProps<SVGSVGElement> {
     className?: string;
-    // FIX: Add optional title prop to allow tooltips on icons.
     title?: string;
 }
 

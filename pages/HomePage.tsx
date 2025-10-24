@@ -33,50 +33,72 @@ const formatTime = (time: string) => {
     return `${finalHours}:${minutes} ${ampm}`;
 };
 
-const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointment: () => void, onEdit: (appointment: Appointment) => void, onDelete: (appointment: Appointment) => void, onContextMenu: (event: React.MouseEvent, appointment: Appointment) => void }> = React.memo(({ appointments, onAddAppointment, onEdit, onDelete, onContextMenu }) => (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="flex justify-between items-center p-4 bg-gray-50 border-b">
-            <h3 className="text-lg font-bold">سجل المواعيد</h3>
-            <button onClick={onAddAppointment} className="no-print flex items-center gap-2 px-3 py-1 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
-                <PlusIcon className="w-4 h-4" />
-                <span>موعد جديد</span>
-            </button>
-        </div>
-        {appointments.length > 0 ? (
-             <div className="overflow-x-auto">
-                <table className="w-full text-sm text-right text-gray-600">
-                    <thead className="text-xs text-gray-700 uppercase bg-gray-100">
-                        <tr>
-                            <th className="px-6 py-3">الموعد</th>
-                            <th className="px-6 py-3">الوقت</th>
-                            <th className="px-6 py-3">الشخص المسؤول</th>
-                            <th className="px-6 py-3">الأهمية</th>
-                            <th className="px-6 py-3">إجراءات</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {appointments.map(a => (
-                            <tr key={a.id} onContextMenu={(e) => onContextMenu(e, a)} className="bg-white border-b hover:bg-gray-50">
-                                <td className="px-6 py-4">{a.title}</td>
-                                <td className="px-6 py-4">{formatTime(a.time)}</td>
-                                <td className="px-6 py-4">{a.assignee}</td>
-                                <td className="px-6 py-4">
-                                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${importanceMap[a.importance]?.className}`}>
-                                        {importanceMap[a.importance]?.text}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4 flex items-center gap-2">
-                                    <button onClick={() => onEdit(a)} className="p-2 text-gray-500 hover:text-blue-600" aria-label="تعديل"><PencilIcon className="w-4 h-4" /></button>
-                                    <button onClick={() => onDelete(a)} className="p-2 text-gray-500 hover:text-red-600" aria-label="حذف"><TrashIcon className="w-4 h-4" /></button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointment: () => void, onEdit: (appointment: Appointment) => void, onDelete: (appointment: Appointment) => void, onContextMenu: (event: React.MouseEvent, appointment: Appointment) => void }> = React.memo(({ appointments, onAddAppointment, onEdit, onDelete, onContextMenu }) => {
+    const longPressTimer = React.useRef<number>();
+
+    const handleTouchStart = (e: React.TouchEvent, appointment: Appointment) => {
+        longPressTimer.current = window.setTimeout(() => {
+            const touch = e.touches[0];
+            const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY };
+            onContextMenu(mockEvent as any, appointment);
+        }, 500);
+    };
+
+    const handleTouchEnd = () => {
+        clearTimeout(longPressTimer.current);
+    };
+
+    return (
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="flex justify-between items-center p-4 bg-gray-50 border-b">
+                <h3 className="text-lg font-bold">سجل المواعيد</h3>
+                <button onClick={onAddAppointment} className="no-print flex items-center gap-2 px-3 py-1 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                    <PlusIcon className="w-4 h-4" />
+                    <span>موعد جديد</span>
+                </button>
             </div>
-        ) : <p className="p-4 text-gray-500">لا توجد مواعيد لهذا اليوم.</p>}
-    </div>
-));
+            {appointments.length > 0 ? (
+                 <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-right text-gray-600">
+                        <thead className="text-xs text-gray-700 uppercase bg-gray-100">
+                            <tr>
+                                <th className="px-6 py-3">الموعد</th>
+                                <th className="px-6 py-3">الوقت</th>
+                                <th className="px-6 py-3">الشخص المسؤول</th>
+                                <th className="px-6 py-3">الأهمية</th>
+                                <th className="px-6 py-3">إجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {appointments.map(a => (
+                                <tr 
+                                    key={a.id} 
+                                    onContextMenu={(e) => onContextMenu(e, a)}
+                                    onTouchStart={(e) => handleTouchStart(e, a)}
+                                    onTouchEnd={handleTouchEnd}
+                                    onTouchMove={handleTouchEnd}
+                                    className="bg-white border-b hover:bg-gray-50">
+                                    <td className="px-6 py-4">{a.title}</td>
+                                    <td className="px-6 py-4">{formatTime(a.time)}</td>
+                                    <td className="px-6 py-4">{a.assignee}</td>
+                                    <td className="px-6 py-4">
+                                         <span className={`px-2 py-1 text-xs font-medium rounded-full ${importanceMap[a.importance]?.className}`}>
+                                            {importanceMap[a.importance]?.text}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 flex items-center gap-2">
+                                        <button onClick={() => onEdit(a)} className="p-2 text-gray-500 hover:text-blue-600" aria-label="تعديل"><PencilIcon className="w-4 h-4" /></button>
+                                        <button onClick={() => onDelete(a)} className="p-2 text-gray-500 hover:text-red-600" aria-label="حذف"><TrashIcon className="w-4 h-4" /></button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            ) : <p className="p-4 text-gray-500">لا توجد مواعيد لهذا اليوم.</p>}
+        </div>
+    );
+});
 
 interface HomePageProps {
     onOpenAdminTaskModal: (initialData?: any) => void;
@@ -713,6 +735,21 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
         showContextMenu(event, menuItems);
     };
 
+    // --- Long Press Handlers for Admin Tasks ---
+    const adminTaskLongPressTimer = React.useRef<number>();
+
+    const handleAdminTaskTouchStart = (e: React.TouchEvent, task: AdminTask) => {
+        adminTaskLongPressTimer.current = window.setTimeout(() => {
+            const touch = e.touches[0];
+            const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY };
+            handleAdminTaskContextMenu(mockEvent as any, task);
+        }, 500);
+    };
+
+    const handleAdminTaskTouchEnd = () => {
+        clearTimeout(adminTaskLongPressTimer.current);
+    };
+
 
     return (
         <div className="space-y-6">
@@ -886,6 +923,9 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                                                 handleTaskDrop(task.id, location, position);
                                                             }}
                                                             onContextMenu={(e) => handleAdminTaskContextMenu(e, task)}
+                                                            onTouchStart={(e) => handleAdminTaskTouchStart(e, task)}
+                                                            onTouchEnd={handleAdminTaskTouchEnd}
+                                                            onTouchMove={handleAdminTaskTouchEnd}
                                                             className={`border-b transition-opacity ${draggedTaskId === task.id ? 'opacity-40' : ''} ${task.completed ? 'bg-green-50' : 'bg-white hover:bg-gray-50'} ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`}
                                                         >
                                                             <td className="px-2 sm:px-4 py-4 text-center">

@@ -35,7 +35,8 @@ interface ClientsTreeViewProps {
 }
 
 const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props: ClientsTreeViewProps; expanded: boolean; onToggle: () => void }> = ({ stage, caseItem, client, props, expanded, onToggle }) => {
-    
+    const longPressTimer = React.useRef<number>();
+
     const handleContextMenu = (event: React.MouseEvent) => {
         const menuItems: MenuItem[] = [{
             label: 'إرسال إلى المهام الإدارية',
@@ -61,6 +62,19 @@ const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props:
         }];
         props.showContextMenu(event, menuItems);
     };
+    
+    const handleTouchStart = (e: React.TouchEvent) => {
+        longPressTimer.current = window.setTimeout(() => {
+            const touch = e.touches[0];
+            const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY };
+            handleContextMenu(mockEvent as any);
+        }, 500);
+    };
+
+    const handleTouchEnd = () => {
+        clearTimeout(longPressTimer.current);
+    };
+
 
     const handleSessionContextMenu = (event: React.MouseEvent, session: Session) => {
         const menuItems: MenuItem[] = [{
@@ -99,6 +113,9 @@ const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props:
                 className="flex justify-between items-start p-3 hover:bg-yellow-100 cursor-pointer" 
                 onClick={onToggle}
                 onContextMenu={handleContextMenu}
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+                onTouchMove={handleTouchEnd}
             >
                 <div className="flex-grow">
                     <div className="flex items-center flex-wrap gap-x-3 gap-y-1 font-semibold text-yellow-800">
@@ -178,6 +195,7 @@ const StageItemContainer: React.FC<{ stage: Stage; caseItem: Case; client: Clien
 const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeViewProps; expanded: boolean; onToggle: () => void }> = ({ caseItem, client, props, expanded, onToggle }) => {
     const [activeTab, setActiveTab] = React.useState<'stages' | 'accounting'>('stages');
     const caseAccountingEntries = props.accountingEntries.filter(e => e.caseId === caseItem.id);
+    const longPressTimer = React.useRef<number>();
 
     const handleFeeChange = (newFee: string) => {
         props.setClients(clients => clients.map(c => c.id === client.id ? {
@@ -219,6 +237,19 @@ const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeVie
         }];
         props.showContextMenu(event, menuItems);
     };
+    
+    const handleTouchStart = (e: React.TouchEvent) => {
+        longPressTimer.current = window.setTimeout(() => {
+            const touch = e.touches[0];
+            const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY };
+            handleContextMenu(mockEvent as any);
+        }, 500);
+    };
+
+    const handleTouchEnd = () => {
+        clearTimeout(longPressTimer.current);
+    };
+
 
     return (
         <div className="border rounded-lg mb-2 bg-indigo-50 overflow-hidden">
@@ -226,6 +257,9 @@ const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeVie
                 className="flex justify-between items-center p-3 hover:bg-indigo-100 cursor-pointer" 
                 onClick={onToggle}
                 onContextMenu={handleContextMenu}
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+                onTouchMove={handleTouchEnd}
             >
                 <div className="flex items-center gap-3 font-semibold text-indigo-800">
                     <FolderIcon className="w-5 h-5 text-indigo-600" />
@@ -274,6 +308,7 @@ const CaseItemContainer: React.FC<{ caseItem: Case; client: Client; props: Clien
 }
 
 const ClientItem: React.FC<{ client: Client; props: ClientsTreeViewProps; expanded: boolean; onToggle: () => void; }> = ({ client, props, expanded, onToggle }) => {
+    const longPressTimer = React.useRef<number>();
     
     const handleContextMenu = (event: React.MouseEvent) => {
         const menuItems: MenuItem[] = [{
@@ -301,12 +336,27 @@ const ClientItem: React.FC<{ client: Client; props: ClientsTreeViewProps; expand
         props.showContextMenu(event, menuItems);
     };
 
+    const handleTouchStart = (e: React.TouchEvent) => {
+        longPressTimer.current = window.setTimeout(() => {
+            const touch = e.touches[0];
+            const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY };
+            handleContextMenu(mockEvent as any);
+        }, 500);
+    };
+
+    const handleTouchEnd = () => {
+        clearTimeout(longPressTimer.current);
+    };
+
     return (
         <div className="bg-sky-50 border rounded-lg shadow-sm">
             <header 
                 className="flex justify-between items-center p-4 cursor-pointer bg-sky-100 hover:bg-sky-200"
                 onClick={onToggle}
                 onContextMenu={handleContextMenu}
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+                onTouchMove={handleTouchEnd}
             >
                 <div className="flex items-center gap-3">
                     <UserIcon className="w-6 h-6 text-sky-700" />

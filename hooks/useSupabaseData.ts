@@ -59,33 +59,37 @@ const validateAndHydrate = (data: any): AppData => {
     const defaultAssignee = 'بدون تخصيص';
     const sanitizeString = (str: any): string => (str === null || str === undefined) ? '' : String(str);
 
-    const validatedClients: Client[] = safeArray(data.clients, (client: any): Client => ({
-        id: client.id || `client-${Date.now()}-${Math.random()}`,
+    // FIX: Add index to callback to satisfy safeArray signature and improve key generation.
+    const validatedClients: Client[] = safeArray(data.clients, (client: any, index: number): Client => ({
+        id: client.id || `client-${Date.now()}-${index}`,
         name: String(client.name || 'موكل غير مسمى'),
         contactInfo: String((client.contact_info ?? client.contactInfo) || ''),
         updated_at: sanitizeOptionalDate(client.updated_at),
-        cases: safeArray(client.cases, (caseItem: any): Case => ({
-            id: caseItem.id || `case-${Date.now()}-${Math.random()}`,
+        // FIX: Add index to callback to satisfy safeArray signature and improve key generation.
+        cases: safeArray(client.cases, (caseItem: any, caseIndex: number): Case => ({
+            id: caseItem.id || `case-${Date.now()}-${caseIndex}`,
             subject: String(caseItem.subject || 'قضية بدون موضوع'),
             clientName: String((caseItem.client_name ?? caseItem.clientName) || client.name || 'موكل غير مسمى'),
             opponentName: sanitizeString(caseItem.opponent_name ?? caseItem.opponentName),
             feeAgreement: String((caseItem.fee_agreement ?? caseItem.feeAgreement) || ''),
             status: ['active', 'closed', 'on_hold'].includes(caseItem.status) ? caseItem.status : 'active',
             updated_at: sanitizeOptionalDate(caseItem.updated_at),
-            stages: safeArray(caseItem.stages, (stage: any): Stage => ({
-                id: stage.id || `stage-${Date.now()}-${Math.random()}`,
+            // FIX: Add index to callback to satisfy safeArray signature and improve key generation.
+            stages: safeArray(caseItem.stages, (stage: any, stageIndex: number): Stage => ({
+                id: stage.id || `stage-${Date.now()}-${stageIndex}`,
                 court: String(stage.court || 'محكمة غير محددة'),
                 caseNumber: sanitizeString(stage.case_number ?? stage.caseNumber),
                 firstSessionDate: sanitizeOptionalDate(stage.first_session_date ?? stage.firstSessionDate),
                 updated_at: sanitizeOptionalDate(stage.updated_at),
-                sessions: safeArray(stage.sessions, (session: any): Session | null => {
+                // FIX: Add index to callback to satisfy safeArray signature and improve key generation.
+                sessions: safeArray(stage.sessions, (session: any, sessionIndex: number): Session | null => {
                     const sessionDate = session.date ? new Date(session.date) : null;
                     if (!sessionDate || isNaN(sessionDate.getTime())) {
                         console.warn('Filtering out session with invalid date:', session);
                         return null;
                     }
                     return {
-                        id: session.id || `session-${Date.now()}-${Math.random()}`,
+                        id: session.id || `session-${Date.now()}-${sessionIndex}`,
                         court: String(session.court || stage.court || 'محكمة غير محددة'),
                         caseNumber: ('case_number' in session || 'caseNumber' in session) ? sanitizeString(session.case_number ?? session.caseNumber) : sanitizeString(stage.case_number ?? stage.caseNumber),
                         date: sessionDate,
@@ -107,14 +111,15 @@ const validateAndHydrate = (data: any): AppData => {
         })),
     }));
 
-    const validatedAdminTasks: AdminTask[] = safeArray(data.adminTasks, (task: any): AdminTask | null => {
+    // FIX: Add index to callback to satisfy safeArray signature and improve key generation.
+    const validatedAdminTasks: AdminTask[] = safeArray(data.adminTasks, (task: any, index: number): AdminTask | null => {
         const dueDate = (task.due_date ?? task.dueDate) ? new Date(task.due_date ?? task.dueDate) : null;
         if (!dueDate || isNaN(dueDate.getTime())) {
             console.warn('Filtering out admin task with invalid due date:', task);
             return null;
         }
         return {
-            id: task.id || `task-${Date.now()}-${Math.random()}`,
+            id: task.id || `task-${Date.now()}-${index}`,
             task: String(task.task || 'مهمة بدون عنوان'),
             dueDate: dueDate,
             completed: typeof task.completed === 'boolean' ? task.completed : false,
@@ -125,14 +130,15 @@ const validateAndHydrate = (data: any): AppData => {
         };
     }).filter((t): t is AdminTask => t !== null);
 
-    const validatedAppointments: Appointment[] = safeArray(data.appointments, (apt: any): Appointment | null => {
+    // FIX: Add index to callback to satisfy safeArray signature and improve key generation.
+    const validatedAppointments: Appointment[] = safeArray(data.appointments, (apt: any, index: number): Appointment | null => {
         const aptDate = apt.date ? new Date(apt.date) : null;
         if (!aptDate || isNaN(aptDate.getTime())) {
             console.warn('Filtering out appointment with invalid date:', apt);
             return null;
         }
         return {
-            id: apt.id || `apt-${Date.now()}`,
+            id: apt.id || `apt-${Date.now()}-${index}`,
             title: String(apt.title || 'موعد بدون عنوان'),
             time: typeof apt.time === 'string' && /^\d{2}:\d{2}$/.test(apt.time) ? apt.time : '00:00',
             date: aptDate,
@@ -144,15 +150,15 @@ const validateAndHydrate = (data: any): AppData => {
         };
     }).filter((a): a is Appointment => a !== null);
     
-    // FIX: Refactor date sanitization to filter out entries with invalid dates for consistency and robustness.
-    const validatedAccountingEntries: AccountingEntry[] = safeArray(data.accountingEntries, (entry: any): AccountingEntry | null => {
+    // FIX: Add index to callback to satisfy safeArray signature and improve key generation.
+    const validatedAccountingEntries: AccountingEntry[] = safeArray(data.accountingEntries, (entry: any, index: number): AccountingEntry | null => {
         const entryDate = sanitizeOptionalDate(entry.date);
         if (!entryDate) {
             console.warn('Filtering out accounting entry with invalid date:', entry);
             return null;
         }
         return {
-            id: entry.id || `acc-${Date.now()}`,
+            id: entry.id || `acc-${Date.now()}-${index}`,
             type: ['income', 'expense'].includes(entry.type) ? entry.type : 'income',
             amount: typeof entry.amount === 'number' ? entry.amount : 0,
             date: entryDate,
@@ -164,8 +170,8 @@ const validateAndHydrate = (data: any): AppData => {
         };
     }).filter((e): e is AccountingEntry => e !== null);
 
-    // FIX: Refactor date sanitization to filter out invoices with invalid issue or due dates.
-    const validatedInvoices: Invoice[] = safeArray(data.invoices, (invoice: any): Invoice | null => {
+    // FIX: Add index to callback to satisfy safeArray signature and improve key generation.
+    const validatedInvoices: Invoice[] = safeArray(data.invoices, (invoice: any, index: number): Invoice | null => {
         const issueDate = sanitizeOptionalDate(invoice.issue_date ?? invoice.issueDate);
         const dueDate = sanitizeOptionalDate(invoice.due_date ?? invoice.dueDate);
 
@@ -175,7 +181,7 @@ const validateAndHydrate = (data: any): AppData => {
         }
 
         return {
-            id: invoice.id || `inv-${Date.now()}-${Math.random()}`,
+            id: invoice.id || `inv-${Date.now()}-${index}`,
             clientId: String((invoice.client_id ?? invoice.clientId) || ''),
             clientName: String((invoice.client_name ?? invoice.clientName) || ''),
             caseId: sanitizeString(invoice.case_id ?? invoice.caseId),
@@ -183,8 +189,9 @@ const validateAndHydrate = (data: any): AppData => {
             issueDate: issueDate,
             dueDate: dueDate,
             updated_at: sanitizeOptionalDate(invoice.updated_at),
-            items: safeArray(invoice.invoice_items ?? invoice.items, (item: any): InvoiceItem => ({
-                id: item.id || `item-${Date.now()}-${Math.random()}`,
+            // FIX: Add index to callback to satisfy safeArray signature and improve key generation.
+            items: safeArray(invoice.invoice_items ?? invoice.items, (item: any, itemIndex: number): InvoiceItem => ({
+                id: item.id || `item-${Date.now()}-${itemIndex}`,
                 description: String(item.description || ''),
                 amount: typeof item.amount === 'number' ? item.amount : 0,
                 updated_at: sanitizeOptionalDate(item.updated_at),
@@ -215,7 +222,6 @@ function usePrevious<T>(value: T): T | undefined {
 }
 
 export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
-    // FIX: Memoize getLocalStorageKey with useCallback to prevent stale closures.
     const getLocalStorageKey = React.useCallback(() => user ? `${APP_DATA_KEY}_${user.id}` : APP_DATA_KEY, [user]);
     const userId = user?.id;
 
@@ -249,8 +255,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const handleSyncStatusChange = React.useCallback((status: SyncStatus, error: string | null) => {
         setSyncStatus(status);
         setLastSyncError(error);
-    // FIX: Add stable dependencies to useCallback hooks to prevent stale closures.
-    // FIX: Add missing dependencies to useCallback.
     }, [setSyncStatus, setLastSyncError]);
 
     const { manualSync, fetchAndRefresh } = useSync({
@@ -322,7 +326,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         } finally {
             setIsDataLoading(false); // Signal that loading is complete
         }
-        // FIX: Add getLocalStorageKey to the dependency array to prevent stale closures.
     }, [userId, getLocalStorageKey]);
 
     React.useEffect(() => {
@@ -436,7 +439,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         } catch (e) {
             console.error("Failed to save data to localStorage:", e);
         }
-        // FIX: Add getLocalStorageKey to the dependency array.
     }, [data, userId, isDirty, getLocalStorageKey]);
 
     // New useEffect for daily backup
@@ -451,7 +453,9 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
             try {
                 const lastBackupTimestamp = localStorage.getItem(LAST_BACKUP_KEY);
-                const lastBackupDateString = lastBackupTimestamp ? new Date(parseInt(lastBackupTimestamp, 10)).toISOString().split('T')[0] : null;
+                // FIX: Corrected parseInt call which was missing arguments.
+                const parsedTimestamp = lastBackupTimestamp ? parseInt(lastBackupTimestamp, 10) : NaN;
+                const lastBackupDateString = !isNaN(parsedTimestamp) ? new Date(parsedTimestamp).toISOString().split('T')[0] : null;
 
                 if (lastBackupDateString === todayString) {
                     console.log('Daily backup already performed today.');
@@ -501,43 +505,40 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
     }, [isDataLoading, userId]);
 
-    // FIX: Add stable dependencies to useCallback hooks to prevent stale closures.
     const setClients = React.useCallback((updater: React.SetStateAction<Client[]>) => {
         setData(prev => ({ ...prev, clients: updater instanceof Function ? updater(prev.clients) : updater }));
         setIsDirty(true);
-    }, []);
+    }, [setData, setIsDirty]);
 
     const setAdminTasks = React.useCallback((updater: React.SetStateAction<AdminTask[]>) => {
         setData(prev => ({ ...prev, adminTasks: updater instanceof Function ? updater(prev.adminTasks) : updater }));
         setIsDirty(true);
-    }, []);
+    }, [setData, setIsDirty]);
 
     const setAppointments = React.useCallback((updater: React.SetStateAction<Appointment[]>) => {
         setData(prev => ({ ...prev, appointments: updater instanceof Function ? updater(prev.appointments) : updater }));
         setIsDirty(true);
-    }, []);
+    }, [setData, setIsDirty]);
 
     const setAccountingEntries = React.useCallback((updater: React.SetStateAction<AccountingEntry[]>) => {
         setData(prev => ({ ...prev, accountingEntries: updater instanceof Function ? updater(prev.accountingEntries) : updater }));
         setIsDirty(true);
-    }, []);
+    }, [setData, setIsDirty]);
 
     const setInvoices = React.useCallback((updater: React.SetStateAction<Invoice[]>) => {
         setData(prev => ({ ...prev, invoices: updater instanceof Function ? updater(prev.invoices) : updater }));
         setIsDirty(true);
-    }, []);
+    }, [setData, setIsDirty]);
 
     const setAssistants = React.useCallback((updater: React.SetStateAction<string[]>) => {
         setData(prev => ({ ...prev, assistants: updater instanceof Function ? updater(prev.assistants) : updater }));
         setIsDirty(true);
-    }, []);
+    }, [setData, setIsDirty]);
 
     const setFullData = React.useCallback((fullData: AppData) => {
         setData(validateAndHydrate(fullData));
         setIsDirty(true);
-    // FIX: Add stable dependencies to the useCallback hook to align with best practices and resolve linter warnings.
-    // FIX: Add missing dependencies to useCallback.
-    }, []);
+    }, [setData, setIsDirty]);
     
     const allSessions = React.useMemo(() => {
         return data.clients.flatMap(client =>
