@@ -1,6 +1,3 @@
-
-
-
 import * as React from 'react';
 import { Session as AuthSession, User } from '@supabase/supabase-js';
 
@@ -44,6 +41,17 @@ interface IDataContext extends AppData {
     userId?: string;
     isDataLoading: boolean;
     isAuthLoading: boolean;
+    isAutoSyncEnabled: boolean;
+    setAutoSyncEnabled: (enabled: boolean) => void;
+    deleteClient: (clientId: string) => void;
+    deleteCase: (caseId: string, clientId: string) => void;
+    deleteStage: (stageId: string, caseId: string, clientId: string) => void;
+    deleteSession: (sessionId: string, stageId: string, caseId: string, clientId: string) => void;
+    deleteAdminTask: (taskId: string) => void;
+    deleteAppointment: (appointmentId: string) => void;
+    deleteAccountingEntry: (entryId: string) => void;
+    deleteInvoice: (invoiceId: string) => void;
+    deleteAssistant: (name: string) => void;
 }
 
 const DataContext = React.createContext<IDataContext | null>(null);
@@ -62,7 +70,7 @@ interface AppProps {
     onRefresh: () => void;
 }
 
-const SyncStatusIndicator: React.FC<{ status: SyncStatus, lastError: string | null, isDirty: boolean, isOnline: boolean, onManualSync: () => void }> = ({ status, lastError, isDirty, isOnline, onManualSync }) => {
+const SyncStatusIndicator: React.FC<{ status: SyncStatus, lastError: string | null, isDirty: boolean, isOnline: boolean, onManualSync: () => void, isAutoSyncEnabled: boolean }> = ({ status, lastError, isDirty, isOnline, onManualSync, isAutoSyncEnabled }) => {
     
     let displayStatus;
     if (!isOnline) {
@@ -71,6 +79,13 @@ const SyncStatusIndicator: React.FC<{ status: SyncStatus, lastError: string | nu
             text: 'غير متصل',
             className: 'text-gray-500',
             title: 'أنت غير متصل بالإنترنت. التغييرات محفوظة محلياً.'
+        };
+    } else if (!isAutoSyncEnabled && isDirty) {
+        displayStatus = {
+            icon: <CloudArrowUpIcon className="w-5 h-5 text-yellow-600 animate-pulse" />,
+            text: 'مزامنة يدوية مطلوبة',
+            className: 'text-yellow-600',
+            title: 'المزامنة التلقائية متوقفة. اضغط للمزامنة الآن.'
         };
     } else if (status === 'unconfigured' || status === 'uninitialized') {
          displayStatus = {
@@ -141,7 +156,8 @@ const Navbar: React.FC<{
     isOnline: boolean;
     onManualSync: () => void;
     profile: Profile | null;
-}> = ({ currentPage, onNavigate, onLogout, syncStatus, lastSyncError, isDirty, isOnline, onManualSync, profile }) => {
+    isAutoSyncEnabled: boolean;
+}> = ({ currentPage, onNavigate, onLogout, syncStatus, lastSyncError, isDirty, isOnline, onManualSync, profile, isAutoSyncEnabled }) => {
     
     const navItems = [
         { id: 'home', label: 'الرئيسية', icon: HomeIcon },
@@ -153,7 +169,7 @@ const Navbar: React.FC<{
     ];
     
     return (
-        <header className="bg-white shadow-md p-2 sm:p-4 flex justify-between items-center no-print">
+        <header className="bg-white shadow-md p-2 sm:p-4 flex justify-between items-center no-print sticky top-0 z-30">
             <nav className="flex items-center gap-1 sm:gap-4 flex-wrap">
                 <h1 className="text-xl font-bold text-gray-800 hidden md:block">مكتب المحامي</h1>
                  <div className="flex items-center gap-1 sm:gap-2">
@@ -182,6 +198,7 @@ const Navbar: React.FC<{
                     isDirty={isDirty} 
                     isOnline={isOnline}
                     onManualSync={onManualSync}
+                    isAutoSyncEnabled={isAutoSyncEnabled}
                 />
                 <button onClick={onLogout} className="p-2 text-gray-500 hover:bg-red-100 hover:text-red-600 rounded-full transition-colors" title="تسجيل الخروج">
                     <PowerIcon className="w-5 h-5" />
@@ -466,6 +483,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     isDirty={supabaseData.isDirty}
                     isOnline={isOnline}
                     onManualSync={supabaseData.manualSync}
+                    isAutoSyncEnabled={supabaseData.isAutoSyncEnabled}
                 />
                 <main className="flex-grow p-4 sm:p-6">
                     <React.Suspense fallback={<FullScreenLoader />}>

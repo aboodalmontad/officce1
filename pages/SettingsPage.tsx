@@ -7,7 +7,7 @@ import { useData } from '../App';
 interface SettingsPageProps {}
 
 const SettingsPage: React.FC<SettingsPageProps> = () => {
-    const { setFullData, assistants, setAssistants, userId } = useData();
+    const { setFullData, assistants, setAssistants, userId, isAutoSyncEnabled, setAutoSyncEnabled, deleteAssistant } = useData();
     const [feedback, setFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = React.useState(false);
     const [isDeleteAssistantModalOpen, setIsDeleteAssistantModalOpen] = React.useState(false);
@@ -99,12 +99,35 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
 
     const handleConfirmDeleteAssistant = () => {
         if (assistantToDelete) {
-            setAssistants(prev => prev.filter(a => a !== assistantToDelete));
+            deleteAssistant(assistantToDelete);
             showFeedback(`تم حذف المساعد "${assistantToDelete}" بنجاح.`, 'success');
         }
         setIsDeleteAssistantModalOpen(false);
         setAssistantToDelete(null);
     };
+    
+    const ToggleSwitch: React.FC<{ enabled: boolean; onChange: (enabled: boolean) => void; label: string }> = ({ enabled, onChange, label }) => (
+        <div className="flex items-center">
+            <span className="text-gray-700 me-3 font-medium">{label}</span>
+            <button
+                type="button"
+                className={`${
+                    enabled ? 'bg-blue-600' : 'bg-gray-200'
+                } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
+                role="switch"
+                aria-checked={enabled}
+                onClick={() => onChange(!enabled)}
+            >
+                <span
+                    aria-hidden="true"
+                    className={`${
+                        enabled ? 'translate-x-5' : 'translate-x-0'
+                    } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+                />
+            </button>
+        </div>
+    );
+
 
     return (
         <div className="space-y-6">
@@ -115,6 +138,20 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
                     <span>{feedback.message}</span>
                 </div>
             )}
+            
+             <div className="bg-white p-6 rounded-lg shadow space-y-4">
+                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">إعدادات المزامنة</h2>
+                 <p className="text-gray-600 text-sm">
+                    عند تفعيله، يتم مزامنة البيانات تلقائيًا مع السحابة عند حدوث تغييرات أو عند الاتصال بالإنترنت. عند إيقافه، يجب إجراء المزامنة يدويًا.
+                </p>
+                <div className="pt-2">
+                    <ToggleSwitch 
+                        label="المزامنة التلقائية"
+                        enabled={isAutoSyncEnabled}
+                        onChange={setAutoSyncEnabled}
+                    />
+                </div>
+            </div>
 
             <div className="bg-white p-6 rounded-lg shadow space-y-4">
                 <h2 className="text-xl font-bold text-gray-800 border-b pb-3">حفظ ونقل البيانات</h2>

@@ -3,13 +3,16 @@ import { User } from '@supabase/supabase-js';
 import { AppData, checkSupabaseSchema, fetchDataFromSupabase, upsertDataToSupabase, FlatData, deleteDataFromSupabase } from './useOnlineData';
 import { getSupabaseClient } from '../supabaseClient';
 import { Client, Case, Stage, Session } from '../types';
+import { DeletedIds } from './useSupabaseData';
 
 export type SyncStatus = 'loading' | 'syncing' | 'synced' | 'error' | 'unconfigured' | 'uninitialized';
 
 interface UseSyncProps {
     user: User | null;
     localData: AppData;
+    deletedIds: DeletedIds;
     onDataSynced: (mergedData: AppData) => void;
+    onDeletionsSynced: (syncedDeletions: Partial<DeletedIds>) => void;
     onSyncStatusChange: (status: SyncStatus, error: string | null) => void;
     isOnline: boolean;
     isAuthLoading: boolean;
@@ -121,7 +124,7 @@ const transformRemoteToLocal = (remote: any): FlatData => ({
     invoice_items: remote.invoice_items,
 });
 
-export const useSync = ({ user, localData, onDataSynced, onSyncStatusChange, isOnline, isAuthLoading }: UseSyncProps) => {
+export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletionsSynced, onSyncStatusChange, isOnline, isAuthLoading }: UseSyncProps) => {
     const userRef = React.useRef(user);
     userRef.current = user;
 
@@ -177,9 +180,21 @@ export const useSync = ({ user, localData, onDataSynced, onSyncStatusChange, isO
 
             const localFlatData = flattenData(localData);
             
-            const flatDeletes: Partial<FlatData> = {};
             const flatUpserts: Partial<FlatData> = {};
             const mergedFlatData: Partial<FlatData> = {};
+
+            const deletedIdsSets = {
+                clients: new Set(deletedIds.clients),
+                cases: new Set(deletedIds.cases),
+                stages: new Set(deletedIds.stages),
+                sessions: new Set(deletedIds.sessions),
+                adminTasks: new Set(deletedIds.adminTasks),
+                appointments: new Set(deletedIds.appointments),
+                accountingEntries: new Set(deletedIds.accountingEntries),
+                invoices: new Set(deletedIds.invoices),
+                invoiceItems: new Set(deletedIds.invoiceItems),
+                assistants: new Set(deletedIds.assistants),
+            };
 
             for (const key of Object.keys(localFlatData) as (keyof FlatData)[]) {
                 const localItems = (localFlatData as any)[key] as any[];
@@ -197,48 +212,60 @@ export const useSync = ({ user, localData, onDataSynced, onSyncStatusChange, isO
                     const remoteItem = remoteMap.get(id);
 
                     if (remoteItem) {
-                        // Item exists on both, resolve conflict based on timestamp
                         const localDate = new Date(localItem.updated_at || 0).getTime();
                         const remoteDate = new Date(remoteItem.updated_at || 0).getTime();
 
                         if (localDate > remoteDate) {
-                            // Local is newer, upsert it and use it in final state
                             itemsToUpsert.push(localItem);
                             finalMergedItems.set(id, localItem);
                         } else {
-                            // Remote is newer or same, use remote in final state
                             finalMergedItems.set(id, remoteItem);
                         }
                     } else {
-                        // Item is only local, so it's new. Upsert it and add to final state.
                         itemsToUpsert.push(localItem);
                         finalMergedItems.set(id, localItem);
                     }
                 }
 
-                // 2. Process remote items to find items that are new from the server
+                // 2. Process remote items to find new items from server, ignoring deleted ones
                 for (const remoteItem of remoteItems) {
                     const id = remoteItem.id ?? remoteItem.name;
                     if (!localMap.has(id)) {
-                        // Item is only on remote, it's new from another device. Add to final state.
-                        finalMergedItems.set(id, remoteItem);
+                        let isDeleted = false;
+                        const entityKey = key === 'admin_tasks' ? 'adminTasks' : key === 'accounting_entries' ? 'accountingEntries' : key === 'invoice_items' ? 'invoiceItems' : key;
+                        const deletedSet = (deletedIdsSets as any)[entityKey];
+                        if (deletedSet) {
+                           isDeleted = deletedSet.has(id);
+                        }
+
+                        if (!isDeleted) {
+                            finalMergedItems.set(id, remoteItem);
+                        }
                     }
                 }
                 
-                // 3. IMPORTANT: Disable unsafe deletion logic.
-                // The previous logic incorrectly deleted new records from other devices.
-                // A proper deletion sync requires soft deletes (e.g., a `deleted_at` flag),
-                // which is a larger architectural change. For now, the most critical fix
-                // is to stop accidental data loss.
-                const itemsToDelete: any[] = []; // Intentionally empty.
-
                 (flatUpserts as any)[key] = itemsToUpsert;
-                (flatDeletes as any)[key] = itemsToDelete; // This will now be an empty array
                 (mergedFlatData as any)[key] = Array.from(finalMergedItems.values());
             }
+            
+            const flatDeletes: FlatData = {
+                clients: deletedIds.clients.map(id => ({ id })),
+                cases: deletedIds.cases.map(id => ({ id })),
+                stages: deletedIds.stages.map(id => ({ id })),
+                sessions: deletedIds.sessions.map(id => ({ id })),
+                admin_tasks: deletedIds.adminTasks.map(id => ({ id })),
+                appointments: deletedIds.appointments.map(id => ({ id })),
+                accounting_entries: deletedIds.accountingEntries.map(id => ({ id })),
+                assistants: deletedIds.assistants.map(name => ({ name })),
+                invoices: deletedIds.invoices.map(id => ({ id })),
+                invoice_items: deletedIds.invoiceItems.map(id => ({ id })),
+            } as any;
 
-            setStatus('syncing', 'جاري حذف البيانات من السحابة...');
-            await deleteDataFromSupabase(flatDeletes as FlatData, currentUser);
+            if (Object.values(flatDeletes).some(arr => arr && arr.length > 0)) {
+                setStatus('syncing', 'جاري حذف البيانات من السحابة...');
+                await deleteDataFromSupabase(flatDeletes, currentUser);
+                onDeletionsSynced(deletedIds);
+            }
 
             setStatus('syncing', 'جاري رفع البيانات إلى السحابة...');
             await upsertDataToSupabase(flatUpserts as FlatData, currentUser);
@@ -253,7 +280,7 @@ export const useSync = ({ user, localData, onDataSynced, onSyncStatusChange, isO
             if (err.table) errorMessage = `[جدول: ${err.table}] ${errorMessage}`;
             setStatus('error', `فشل المزامنة: ${errorMessage}`);
         }
-    }, [localData, userRef, isOnline, onDataSynced, isAuthLoading]);
+    }, [localData, userRef, isOnline, onDataSynced, deletedIds, onDeletionsSynced, isAuthLoading]);
 
     const fetchAndRefresh = React.useCallback(async () => {
         if (isAuthLoading) {

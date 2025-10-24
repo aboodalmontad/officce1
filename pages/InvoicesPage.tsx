@@ -21,7 +21,7 @@ const getStatusStyles = (status: Invoice['status']) => {
 };
 
 const InvoicesPage: React.FC<InvoicesPageProps> = ({ initialInvoiceData, clearInitialInvoiceData }) => {
-    const { invoices, setInvoices, clients } = useData();
+    const { invoices, setInvoices, clients, deleteInvoice } = useData();
     const [modal, setModal] = React.useState<{ isOpen: boolean; data?: Invoice }>({ isOpen: false });
     const [formData, setFormData] = React.useState<Partial<Invoice> & { items: InvoiceItem[] }>({ items: [] });
     const [searchQuery, setSearchQuery] = React.useState('');
@@ -133,7 +133,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ initialInvoiceData, clearIn
 
     const handleConfirmDelete = () => {
         if (entryToDelete) {
-            setInvoices(prev => prev.filter(item => item.id !== entryToDelete.id));
+            deleteInvoice(entryToDelete.id);
         }
         setIsDeleteModalOpen(false);
         setEntryToDelete(null);

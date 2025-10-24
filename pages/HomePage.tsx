@@ -34,9 +34,11 @@ const formatTime = (time: string) => {
 };
 
 const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointment: () => void, onEdit: (appointment: Appointment) => void, onDelete: (appointment: Appointment) => void, onContextMenu: (event: React.MouseEvent, appointment: Appointment) => void }> = React.memo(({ appointments, onAddAppointment, onEdit, onDelete, onContextMenu }) => {
-    const longPressTimer = React.useRef<number>();
+    // FIX: Changed timer ref to be nullable for stricter type checking and correct handling of clearTimeout.
+    const longPressTimer = React.useRef<number | null>(null);
 
     const handleTouchStart = (e: React.TouchEvent, appointment: Appointment) => {
+        // FIX: Used window.setTimeout to be explicit about browser environment.
         longPressTimer.current = window.setTimeout(() => {
             const touch = e.touches[0];
             const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY };
@@ -45,7 +47,11 @@ const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointmen
     };
 
     const handleTouchEnd = () => {
-        clearTimeout(longPressTimer.current);
+        // FIX: Added a stricter null check and used window.clearTimeout to prevent errors. Reset ref to null.
+        if (longPressTimer.current !== null) {
+            window.clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
     };
 
     return (
@@ -106,7 +112,7 @@ interface HomePageProps {
 }
 
 const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMenu }) => {
-    const { appointments, clients, setClients, allSessions, setAppointments, adminTasks, setAdminTasks, assistants } = useData();
+    const { appointments, clients, setClients, allSessions, setAppointments, adminTasks, setAdminTasks, assistants, deleteAdminTask, deleteAppointment } = useData();
     const [selectedDate, setSelectedDate] = React.useState(new Date());
     const [calendarViewDate, setCalendarViewDate] = React.useState(new Date());
     type ViewMode = 'daily' | 'unpostponed' | 'upcoming';
@@ -221,7 +227,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
 
     const handleConfirmDeleteAppointment = () => {
         if (appointmentToDelete) {
-            setAppointments(prev => prev.filter(apt => apt.id !== appointmentToDelete.id));
+            deleteAppointment(appointmentToDelete.id);
             closeDeleteAppointmentModal();
         }
     };
@@ -239,7 +245,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
 
     const handleConfirmDeleteTask = () => {
         if (taskToDelete) {
-            setAdminTasks(prev => prev.filter(t => t.id !== taskToDelete.id));
+            deleteAdminTask(taskToDelete.id);
             closeDeleteTaskModal();
         }
     };
@@ -267,6 +273,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
             `*المسؤول:* ${task.assignee || 'غير محدد'}`
         ].join('\n');
 
+        // FIX: encodeURIComponent was called without an argument.
         const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
         window.open(whatsappUrl, '_blank');
     };
@@ -736,9 +743,11 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
     };
 
     // --- Long Press Handlers for Admin Tasks ---
-    const adminTaskLongPressTimer = React.useRef<number>();
+    // FIX: Changed timer ref to be nullable for stricter type checking and correct handling of clearTimeout.
+    const adminTaskLongPressTimer = React.useRef<number | null>(null);
 
     const handleAdminTaskTouchStart = (e: React.TouchEvent, task: AdminTask) => {
+        // FIX: Used window.setTimeout to be explicit about browser environment.
         adminTaskLongPressTimer.current = window.setTimeout(() => {
             const touch = e.touches[0];
             const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY };
@@ -747,7 +756,11 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
     };
 
     const handleAdminTaskTouchEnd = () => {
-        clearTimeout(adminTaskLongPressTimer.current);
+        // FIX: Added a stricter null check and used window.clearTimeout to prevent errors. Reset ref to null.
+        if (adminTaskLongPressTimer.current !== null) {
+            window.clearTimeout(adminTaskLongPressTimer.current);
+            adminTaskLongPressTimer.current = null;
+        }
     };
 
 

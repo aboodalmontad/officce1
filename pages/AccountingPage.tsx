@@ -5,7 +5,7 @@ import { PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon } 
 import { useData } from '../App';
 
 const AccountingPage: React.FC = () => {
-    const { accountingEntries, setAccountingEntries, clients } = useData();
+    const { accountingEntries, setAccountingEntries, clients, deleteAccountingEntry } = useData();
     const [modal, setModal] = React.useState<{ isOpen: boolean; data?: AccountingEntry }>({ isOpen: false });
     const [formData, setFormData] = React.useState<Partial<AccountingEntry>>({});
     const [searchQuery, setSearchQuery] = React.useState('');
@@ -79,7 +79,7 @@ const AccountingPage: React.FC = () => {
 
     const handleConfirmDelete = () => {
         if (entryToDelete) {
-            setAccountingEntries(prev => prev.filter(item => item.id !== entryToDelete.id));
+            deleteAccountingEntry(entryToDelete.id);
             closeDeleteModal();
         }
     };
