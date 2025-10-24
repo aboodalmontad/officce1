@@ -126,7 +126,7 @@ const SyncStatusIndicator: React.FC<{ status: SyncStatus, lastError: string | nu
             title={displayStatus.title}
         >
             {displayStatus.icon}
-            <span className={displayStatus.className}>{displayStatus.text}</span>
+            <span className={`${displayStatus.className} hidden sm:inline`}>{displayStatus.text}</span>
         </button>
     );
 };
@@ -153,15 +153,15 @@ const Navbar: React.FC<{
     ];
     
     return (
-        <header className="bg-white shadow-md p-4 flex justify-between items-center no-print">
-            <nav className="flex items-center gap-4">
+        <header className="bg-white shadow-md p-2 sm:p-4 flex justify-between items-center no-print">
+            <nav className="flex items-center gap-1 sm:gap-4 flex-wrap">
                 <h1 className="text-xl font-bold text-gray-800 hidden md:block">مكتب المحامي</h1>
-                 <div className="flex items-center gap-2">
+                 <div className="flex items-center gap-1 sm:gap-2">
                     {navItems.map(item => (
                         <button
                             key={item.id}
                             onClick={() => onNavigate(item.id as Page)}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${currentPage === item.id ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
+                            className={`flex items-center gap-2 px-2 sm:px-3 py-2 rounded-md text-sm font-medium transition-colors ${currentPage === item.id ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
                         >
                             <item.icon className="w-5 h-5" />
                             <span className="hidden sm:inline">{item.label}</span>
@@ -169,9 +169,9 @@ const Navbar: React.FC<{
                     ))}
                 </div>
             </nav>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
                  {profile && (
-                    <div className="text-right">
+                    <div className="text-right hidden sm:block">
                         <p className="font-semibold text-sm text-gray-800">{profile.full_name}</p>
                         <p className="text-xs text-gray-500">{profile.role === 'admin' ? 'مدير' : 'مستخدم'}</p>
                     </div>
@@ -467,7 +467,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     isOnline={isOnline}
                     onManualSync={supabaseData.manualSync}
                 />
-                <main className="flex-grow p-6">
+                <main className="flex-grow p-4 sm:p-6">
                     <React.Suspense fallback={<FullScreenLoader />}>
                         {renderPage()}
                     </React.Suspense>

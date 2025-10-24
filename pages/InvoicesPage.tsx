@@ -220,10 +220,10 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ initialInvoiceData, clearIn
                             {/* Items */}
                             <div className="border-t pt-4">
                                 {formData.items.map((item, index) => (
-                                    <div key={item.id} className="flex items-center gap-2 mb-2">
+                                    <div key={item.id} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-2">
                                         <input type="text" placeholder="البيان" value={item.description} onChange={e => handleItemChange(index, 'description', e.target.value)} className="w-full p-2 border rounded"/>
-                                        <input type="number" placeholder="المبلغ" value={item.amount} onChange={e => handleItemChange(index, 'amount', e.target.value)} className="w-48 p-2 border rounded"/>
-                                        <button type="button" onClick={() => handleRemoveItem(index)} className="p-2 text-red-500 hover:bg-red-100 rounded-full"><TrashIcon className="w-5 h-5"/></button>
+                                        <input type="number" placeholder="المبلغ" value={item.amount} onChange={e => handleItemChange(index, 'amount', e.target.value)} className="w-full sm:w-48 p-2 border rounded"/>
+                                        <button type="button" onClick={() => handleRemoveItem(index)} className="p-2 text-red-500 hover:bg-red-100 rounded-full self-end sm:self-center"><TrashIcon className="w-5 h-5"/></button>
                                     </div>
                                 ))}
                                 <button type="button" onClick={handleAddItem} className="text-sm text-blue-600 font-semibold">+ إضافة بند</button>

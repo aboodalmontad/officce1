@@ -702,6 +702,17 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
         showContextMenu(event, menuItems);
     }
 
+    const handleAdminTaskContextMenu = (event: React.MouseEvent, task: AdminTask) => {
+        const menuItems: MenuItem[] = [
+            {
+                label: 'مشاركة عبر واتساب',
+                icon: <ShareIcon className="w-4 h-4" />,
+                onClick: () => handleShareTask(task),
+            },
+        ];
+        showContextMenu(event, menuItems);
+    };
+
 
     return (
         <div className="space-y-6">
@@ -785,7 +796,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                 </div>
             </div>
 
-            <div className="mt-8 bg-white p-6 rounded-lg shadow space-y-4 no-print">
+            <div className="mt-8 bg-white p-4 sm:p-6 rounded-lg shadow space-y-4 no-print">
                 <div className="flex justify-between items-center flex-wrap gap-4 border-b pb-3">
                     <h2 className="text-2xl font-semibold">المهام الإدارية</h2>
                     <div className="flex items-center gap-4">
@@ -846,12 +857,12 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                         <table className="w-full text-sm text-right text-gray-600">
                                             <thead className="text-xs text-gray-700 uppercase bg-gray-50">
                                                 <tr>
-                                                    <th className="px-4 py-3 w-12">إنجاز</th>
-                                                    <th className="px-6 py-3">المهمة</th>
-                                                    <th className="px-6 py-3">المسؤول</th>
-                                                    <th className="px-6 py-3">تاريخ الاستحقاق</th>
-                                                    <th className="px-6 py-3">الأهمية</th>
-                                                    <th className="px-6 py-3">إجراءات</th>
+                                                    <th className="px-2 sm:px-4 py-3 w-12">إنجاز</th>
+                                                    <th className="px-2 sm:px-6 py-3">المهمة</th>
+                                                    <th className="px-2 sm:px-6 py-3">المسؤول</th>
+                                                    <th className="px-2 sm:px-6 py-3">تاريخ الاستحقاق</th>
+                                                    <th className="px-2 sm:px-6 py-3">الأهمية</th>
+                                                    <th className="px-2 sm:px-6 py-3">إجراءات</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -874,9 +885,10 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                                                 const position = e.clientY < midpoint ? 'before' : 'after';
                                                                 handleTaskDrop(task.id, location, position);
                                                             }}
+                                                            onContextMenu={(e) => handleAdminTaskContextMenu(e, task)}
                                                             className={`border-b transition-opacity ${draggedTaskId === task.id ? 'opacity-40' : ''} ${task.completed ? 'bg-green-50' : 'bg-white hover:bg-gray-50'} ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`}
                                                         >
-                                                            <td className="px-4 py-4 text-center">
+                                                            <td className="px-2 sm:px-4 py-4 text-center">
                                                                 <input
                                                                     type="checkbox"
                                                                     checked={task.completed}
@@ -884,8 +896,8 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                                                     className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
                                                                 />
                                                             </td>
-                                                            <td className={`px-6 py-4 font-medium ${task.completed ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.task}</td>
-                                                            <td className="px-6 py-4 text-gray-500" onClick={() => activeTaskTab === 'pending' && setEditingAssigneeTaskId(task.id)}>
+                                                            <td className={`px-2 sm:px-6 py-4 font-medium ${task.completed ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.task}</td>
+                                                            <td className="px-2 sm:px-6 py-4 text-gray-500" onClick={() => activeTaskTab === 'pending' && setEditingAssigneeTaskId(task.id)}>
                                                                 {editingAssigneeTaskId === task.id ? (
                                                                     <select
                                                                         value={task.assignee}
@@ -906,13 +918,13 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                                                     </span>
                                                                 )}
                                                             </td>
-                                                            <td className="px-6 py-4">{formatDate(task.dueDate)}</td>
-                                                            <td className="px-6 py-4">
+                                                            <td className="px-2 sm:px-6 py-4">{formatDate(task.dueDate)}</td>
+                                                            <td className="px-2 sm:px-6 py-4">
                                                                 <span className={`px-2 py-1 text-xs font-medium rounded-full ${importanceMapAdminTasks[task.importance]?.className}`}>
                                                                     {importanceMapAdminTasks[task.importance]?.text}
                                                                 </span>
                                                             </td>
-                                                            <td className="px-6 py-4 flex items-center gap-2">
+                                                            <td className="px-2 sm:px-6 py-4 flex items-center gap-2">
                                                                 <button onClick={() => handleShareTask(task)} className="p-2 text-gray-500 hover:text-green-600" title="مشاركة عبر واتساب"><ShareIcon className="w-4 h-4" /></button>
                                                                 <button onClick={() => onOpenAdminTaskModal(task)} className="p-2 text-gray-500 hover:text-blue-600"><PencilIcon className="w-4 h-4" /></button>
                                                                 <button onClick={() => openDeleteTaskModal(task)} className="p-2 text-gray-500 hover:text-red-600"><TrashIcon className="w-4 h-4" /></button>

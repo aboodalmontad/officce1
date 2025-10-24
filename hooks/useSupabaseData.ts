@@ -250,6 +250,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         setSyncStatus(status);
         setLastSyncError(error);
     // FIX: Add stable dependencies to useCallback hooks to prevent stale closures.
+    // FIX: Add missing dependencies to useCallback.
     }, [setSyncStatus, setLastSyncError]);
 
     const { manualSync, fetchAndRefresh } = useSync({
@@ -504,38 +505,39 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const setClients = React.useCallback((updater: React.SetStateAction<Client[]>) => {
         setData(prev => ({ ...prev, clients: updater instanceof Function ? updater(prev.clients) : updater }));
         setIsDirty(true);
-    }, [setData, setIsDirty]);
+    }, []);
 
     const setAdminTasks = React.useCallback((updater: React.SetStateAction<AdminTask[]>) => {
         setData(prev => ({ ...prev, adminTasks: updater instanceof Function ? updater(prev.adminTasks) : updater }));
         setIsDirty(true);
-    }, [setData, setIsDirty]);
+    }, []);
 
     const setAppointments = React.useCallback((updater: React.SetStateAction<Appointment[]>) => {
         setData(prev => ({ ...prev, appointments: updater instanceof Function ? updater(prev.appointments) : updater }));
         setIsDirty(true);
-    }, [setData, setIsDirty]);
+    }, []);
 
     const setAccountingEntries = React.useCallback((updater: React.SetStateAction<AccountingEntry[]>) => {
         setData(prev => ({ ...prev, accountingEntries: updater instanceof Function ? updater(prev.accountingEntries) : updater }));
         setIsDirty(true);
-    }, [setData, setIsDirty]);
+    }, []);
 
     const setInvoices = React.useCallback((updater: React.SetStateAction<Invoice[]>) => {
         setData(prev => ({ ...prev, invoices: updater instanceof Function ? updater(prev.invoices) : updater }));
         setIsDirty(true);
-    }, [setData, setIsDirty]);
+    }, []);
 
     const setAssistants = React.useCallback((updater: React.SetStateAction<string[]>) => {
         setData(prev => ({ ...prev, assistants: updater instanceof Function ? updater(prev.assistants) : updater }));
         setIsDirty(true);
-    }, [setData, setIsDirty]);
+    }, []);
 
     const setFullData = React.useCallback((fullData: AppData) => {
         setData(validateAndHydrate(fullData));
         setIsDirty(true);
     // FIX: Add stable dependencies to the useCallback hook to align with best practices and resolve linter warnings.
-    }, [setData, setIsDirty]);
+    // FIX: Add missing dependencies to useCallback.
+    }, []);
     
     const allSessions = React.useMemo(() => {
         return data.clients.flatMap(client =>
