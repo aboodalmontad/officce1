@@ -3,6 +3,8 @@ import * as React from 'react';
 // Common props for all icons
 interface IconProps extends React.SVGProps<SVGSVGElement> {
     className?: string;
+    // FIX: Add optional title prop to allow tooltips on icons.
+    title?: string;
 }
 
 export const EyeIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props }) => (

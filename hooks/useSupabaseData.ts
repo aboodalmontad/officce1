@@ -1,5 +1,3 @@
-
-
 import * as React from 'react';
 import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem } from '../types';
 import { useOnlineStatus } from './useOnlineStatus';
@@ -146,38 +144,57 @@ const validateAndHydrate = (data: any): AppData => {
         };
     }).filter((a): a is Appointment => a !== null);
     
-    const validatedAccountingEntries: AccountingEntry[] = safeArray(data.accountingEntries, (entry: any): AccountingEntry => ({
-        id: entry.id || `acc-${Date.now()}`,
-        type: ['income', 'expense'].includes(entry.type) ? entry.type : 'income',
-        amount: typeof entry.amount === 'number' ? entry.amount : 0,
-        date: entry.date && !isNaN(new Date(entry.date).getTime()) ? new Date(entry.date) : new Date(),
-        description: String(entry.description || ''),
-        clientId: String((entry.client_id ?? entry.clientId) || ''),
-        caseId: String((entry.case_id ?? entry.caseId) || ''),
-        clientName: String((entry.client_name ?? entry.clientName) || ''),
-        updated_at: sanitizeOptionalDate(entry.updated_at),
-    }));
+    // FIX: Refactor date sanitization to filter out entries with invalid dates for consistency and robustness.
+    const validatedAccountingEntries: AccountingEntry[] = safeArray(data.accountingEntries, (entry: any): AccountingEntry | null => {
+        const entryDate = sanitizeOptionalDate(entry.date);
+        if (!entryDate) {
+            console.warn('Filtering out accounting entry with invalid date:', entry);
+            return null;
+        }
+        return {
+            id: entry.id || `acc-${Date.now()}`,
+            type: ['income', 'expense'].includes(entry.type) ? entry.type : 'income',
+            amount: typeof entry.amount === 'number' ? entry.amount : 0,
+            date: entryDate,
+            description: String(entry.description || ''),
+            clientId: String((entry.client_id ?? entry.clientId) || ''),
+            caseId: String((entry.case_id ?? entry.caseId) || ''),
+            clientName: String((entry.client_name ?? entry.clientName) || ''),
+            updated_at: sanitizeOptionalDate(entry.updated_at),
+        };
+    }).filter((e): e is AccountingEntry => e !== null);
 
-    const validatedInvoices: Invoice[] = safeArray(data.invoices, (invoice: any): Invoice => ({
-        id: invoice.id || `inv-${Date.now()}-${Math.random()}`,
-        clientId: String((invoice.client_id ?? invoice.clientId) || ''),
-        clientName: String((invoice.client_name ?? invoice.clientName) || ''),
-        caseId: sanitizeString(invoice.case_id ?? invoice.caseId),
-        caseSubject: sanitizeString(invoice.case_subject ?? invoice.caseSubject),
-        issueDate: (invoice.issue_date ?? invoice.issueDate) && !isNaN(new Date(invoice.issue_date ?? invoice.issueDate).getTime()) ? new Date(invoice.issue_date ?? invoice.issueDate) : new Date(),
-        dueDate: (invoice.due_date ?? invoice.dueDate) && !isNaN(new Date(invoice.due_date ?? invoice.dueDate).getTime()) ? new Date(invoice.due_date ?? invoice.dueDate) : new Date(),
-        updated_at: sanitizeOptionalDate(invoice.updated_at),
-        items: safeArray(invoice.invoice_items ?? invoice.items, (item: any): InvoiceItem => ({
-            id: item.id || `item-${Date.now()}-${Math.random()}`,
-            description: String(item.description || ''),
-            amount: typeof item.amount === 'number' ? item.amount : 0,
-            updated_at: sanitizeOptionalDate(item.updated_at),
-        })),
-        taxRate: typeof (invoice.tax_rate ?? invoice.taxRate) === 'number' ? (invoice.tax_rate ?? invoice.taxRate) : 0,
-        discount: typeof invoice.discount === 'number' ? invoice.discount : 0,
-        status: ['draft', 'sent', 'paid', 'overdue'].includes(invoice.status) ? invoice.status : 'draft',
-        notes: sanitizeString(invoice.notes),
-    }));
+    // FIX: Refactor date sanitization to filter out invoices with invalid issue or due dates.
+    const validatedInvoices: Invoice[] = safeArray(data.invoices, (invoice: any): Invoice | null => {
+        const issueDate = sanitizeOptionalDate(invoice.issue_date ?? invoice.issueDate);
+        const dueDate = sanitizeOptionalDate(invoice.due_date ?? invoice.dueDate);
+
+        if (!issueDate || !dueDate) {
+            console.warn('Filtering out invoice with invalid date(s):', invoice);
+            return null;
+        }
+
+        return {
+            id: invoice.id || `inv-${Date.now()}-${Math.random()}`,
+            clientId: String((invoice.client_id ?? invoice.clientId) || ''),
+            clientName: String((invoice.client_name ?? invoice.clientName) || ''),
+            caseId: sanitizeString(invoice.case_id ?? invoice.caseId),
+            caseSubject: sanitizeString(invoice.case_subject ?? invoice.caseSubject),
+            issueDate: issueDate,
+            dueDate: dueDate,
+            updated_at: sanitizeOptionalDate(invoice.updated_at),
+            items: safeArray(invoice.invoice_items ?? invoice.items, (item: any): InvoiceItem => ({
+                id: item.id || `item-${Date.now()}-${Math.random()}`,
+                description: String(item.description || ''),
+                amount: typeof item.amount === 'number' ? item.amount : 0,
+                updated_at: sanitizeOptionalDate(item.updated_at),
+            })),
+            taxRate: typeof (invoice.tax_rate ?? invoice.taxRate) === 'number' ? (invoice.tax_rate ?? invoice.taxRate) : 0,
+            discount: typeof invoice.discount === 'number' ? invoice.discount : 0,
+            status: ['draft', 'sent', 'paid', 'overdue'].includes(invoice.status) ? invoice.status : 'draft',
+            notes: sanitizeString(invoice.notes),
+        };
+    }).filter((i): i is Invoice => i !== null);
 
     return { 
         clients: validatedClients, 
@@ -198,10 +215,13 @@ function usePrevious<T>(value: T): T | undefined {
 }
 
 export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
-    const getLocalStorageKey = () => user ? `${APP_DATA_KEY}_${user.id}` : APP_DATA_KEY;
+    // FIX: Memoize getLocalStorageKey with useCallback to prevent stale closures.
+    const getLocalStorageKey = React.useCallback(() => user ? `${APP_DATA_KEY}_${user.id}` : APP_DATA_KEY, [user]);
     const userId = user?.id;
 
-    const [data, setData] = React.useState<AppData>(getInitialData);
+    // Initialize state by calling the function to get the initial data object.
+    // This ensures we start with a fresh object and avoids potential issues with React's functional updates.
+    const [data, setData] = React.useState<AppData>(getInitialData());
     const dataRef = React.useRef(data);
     dataRef.current = data;
     
@@ -213,6 +233,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const hadCacheOnLoad = React.useRef(false);
     
     const isOnline = useOnlineStatus();
+    const prevIsOnline = usePrevious(isOnline);
     const prevIsAuthLoading = usePrevious(isAuthLoading);
 
     const handleDataSynced = React.useCallback((syncedData: AppData) => {
@@ -228,7 +249,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const handleSyncStatusChange = React.useCallback((status: SyncStatus, error: string | null) => {
         setSyncStatus(status);
         setLastSyncError(error);
-    }, []);
+    // FIX: Add stable dependencies to useCallback hooks to prevent stale closures.
+    }, [setSyncStatus, setLastSyncError]);
 
     const { manualSync, fetchAndRefresh } = useSync({
         user,
@@ -251,8 +273,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         // This effect handles loading from cache when the user changes.
         // It's separate to ensure data is loaded before any sync logic runs.
         if (!userId) {
-            // When there is no user, there is no data to load.
-            // Reset all state.
+            // When there's no user, reset to a clean initial state.
             setData(getInitialData());
             setIsDirty(false);
             setSyncStatus('loading'); // Or another appropriate default state
@@ -300,7 +321,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         } finally {
             setIsDataLoading(false); // Signal that loading is complete
         }
-    }, [userId]);
+        // FIX: Add getLocalStorageKey to the dependency array to prevent stale closures.
+    }, [userId, getLocalStorageKey]);
 
     React.useEffect(() => {
         // This effect is the primary trigger for synchronization logic, specifically
@@ -325,6 +347,25 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             setLastSyncError('أنت غير متصل ولا توجد بيانات محلية. يرجى الاتصال بالإنترنت للمزامنة الأولية.');
         }
     }, [isAuthLoading, prevIsAuthLoading, isOnline, isDataLoading, userId]);
+
+    React.useEffect(() => {
+        // This effect specifically handles the app reconnecting to the internet.
+        const justCameOnline = prevIsOnline === false && isOnline === true;
+
+        if (justCameOnline && userId && !isAuthLoading && !isDataLoading) {
+            console.log('Application reconnected to the internet. Checking for updates.');
+            
+            // If there are local changes, perform a full two-way sync to push them.
+            if (isDirty) {
+                console.log('Local changes detected. Performing full sync on reconnection.');
+                manualSyncRef.current();
+            } else {
+                // If there are no local changes, just fetch the latest from the server.
+                console.log('No local changes. Performing a safe refresh from server on reconnection.');
+                fetchAndRefreshRef.current();
+            }
+        }
+    }, [isOnline, prevIsOnline, userId, isAuthLoading, isDataLoading, isDirty]);
     
     React.useEffect(() => {
         if (!isDirty || !isOnline || isDataLoading || isAuthLoading || syncStatus === 'syncing') {
@@ -394,7 +435,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         } catch (e) {
             console.error("Failed to save data to localStorage:", e);
         }
-    }, [data, userId, isDirty]);
+        // FIX: Add getLocalStorageKey to the dependency array.
+    }, [data, userId, isDirty, getLocalStorageKey]);
 
     // New useEffect for daily backup
     React.useEffect(() => {
@@ -458,40 +500,42 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
     }, [isDataLoading, userId]);
 
+    // FIX: Add stable dependencies to useCallback hooks to prevent stale closures.
     const setClients = React.useCallback((updater: React.SetStateAction<Client[]>) => {
         setData(prev => ({ ...prev, clients: updater instanceof Function ? updater(prev.clients) : updater }));
         setIsDirty(true);
-    }, []);
+    }, [setData, setIsDirty]);
 
     const setAdminTasks = React.useCallback((updater: React.SetStateAction<AdminTask[]>) => {
         setData(prev => ({ ...prev, adminTasks: updater instanceof Function ? updater(prev.adminTasks) : updater }));
         setIsDirty(true);
-    }, []);
+    }, [setData, setIsDirty]);
 
     const setAppointments = React.useCallback((updater: React.SetStateAction<Appointment[]>) => {
         setData(prev => ({ ...prev, appointments: updater instanceof Function ? updater(prev.appointments) : updater }));
         setIsDirty(true);
-    }, []);
+    }, [setData, setIsDirty]);
 
     const setAccountingEntries = React.useCallback((updater: React.SetStateAction<AccountingEntry[]>) => {
         setData(prev => ({ ...prev, accountingEntries: updater instanceof Function ? updater(prev.accountingEntries) : updater }));
         setIsDirty(true);
-    }, []);
+    }, [setData, setIsDirty]);
 
     const setInvoices = React.useCallback((updater: React.SetStateAction<Invoice[]>) => {
         setData(prev => ({ ...prev, invoices: updater instanceof Function ? updater(prev.invoices) : updater }));
         setIsDirty(true);
-    }, []);
+    }, [setData, setIsDirty]);
 
     const setAssistants = React.useCallback((updater: React.SetStateAction<string[]>) => {
         setData(prev => ({ ...prev, assistants: updater instanceof Function ? updater(prev.assistants) : updater }));
         setIsDirty(true);
-    }, []);
+    }, [setData, setIsDirty]);
 
     const setFullData = React.useCallback((fullData: AppData) => {
         setData(validateAndHydrate(fullData));
         setIsDirty(true);
-    }, []);
+    // FIX: Add stable dependencies to the useCallback hook to align with best practices and resolve linter warnings.
+    }, [setData, setIsDirty]);
     
     const allSessions = React.useMemo(() => {
         return data.clients.flatMap(client =>

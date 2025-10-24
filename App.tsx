@@ -1,4 +1,5 @@
 
+
 import * as React from 'react';
 import { Session as AuthSession, User } from '@supabase/supabase-js';
 
@@ -41,6 +42,8 @@ interface IDataContext extends AppData {
     isDirty: boolean;
     userId?: string;
     isDataLoading: boolean;
+    // FIX: Add isAuthLoading to the context type to match the value provided.
+    isAuthLoading: boolean;
 }
 
 const DataContext = React.createContext<IDataContext | null>(null);
@@ -209,8 +212,6 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const supabase = getSupabaseClient();
     const supabaseData = useSupabaseData(session?.user ?? null, isAuthLoading);
 
-    const sessionUserIdRef = React.useRef<string | undefined>();
-
     React.useEffect(() => {
         if (supabaseData.syncStatus === 'unconfigured' || supabaseData.syncStatus === 'uninitialized') {
             setShowConfigModal(true);
@@ -219,161 +220,144 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         }
     }, [supabaseData.syncStatus]);
     
+    // This effect runs once to get the initial session state from Supabase.
     React.useEffect(() => {
-        // This effect runs only once to set up the authentication listener.
         if (!supabase) {
             setIsAuthLoading(false);
             return;
         }
-    
-        // Set initial auth loading to false after the first check.
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            sessionUserIdRef.current = session?.user?.id;
-            setSession(session);
-            setIsAuthLoading(false);
+        setIsAuthLoading(true);
+        supabase.auth.getSession()
+            .then(({ data: { session: initialSession }, error }) => {
+                if (error) {
+                    // This is expected when offline and the token needs to be refreshed.
+                    console.warn("Initial getSession() failed, likely offline. This is okay.", error.message);
+                }
+                setSession(initialSession);
+            })
+            .catch(err => {
+                // This catches unexpected errors in the client library itself.
+                console.error("A critical error occurred during initial session retrieval:", err);
+                setSession(null);
+            });
+    }, [supabase]); // IMPORTANT: Runs only once when the supabase client is initialized.
+
+    // This effect subscribes to all subsequent auth state changes.
+    React.useEffect(() => {
+        if (!supabase) return;
+        
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+            // Using a functional update for setSession avoids needing `session` in the dependency array.
+            // This prevents re-subscribing on every session change.
+            // We also check if the user or token has actually changed to prevent re-renders on token refresh events.
+            setSession(currentSession => {
+                const hasChanged = newSession?.user.id !== currentSession?.user.id || newSession?.access_token !== currentSession?.access_token;
+                return hasChanged ? newSession : currentSession;
+            });
         });
         
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            // A user change is a login (null -> user) or logout (user -> null).
-            // A token refresh will have the same user ID.
-            if (session?.user?.id !== sessionUserIdRef.current) {
-                setIsAuthLoading(true); // Show loading screen for user change
-                setProfile(null);      // Clear old profile data
-            }
-            
-            // Update ref and state for the next check
-            sessionUserIdRef.current = session?.user?.id;
-            setSession(session);
-    
-            if (_event === "SIGNED_IN" && session?.user) {
-               localStorage.setItem(LAST_USER_CACHE_KEY, JSON.stringify(session.user));
-            }
-        });
-    
         return () => {
             subscription.unsubscribe();
         };
     }, [supabase]);
 
+
+    // This effect handles fetching the user profile and managing auth state.
     React.useEffect(() => {
-        // This effect handles fetching and setting the user profile whenever the session changes or network status changes.
         const fetchAndSetProfile = async () => {
+            // If there's no session, we're logged out. Clear data and stop loading.
+            if (!session) {
+                setProfile(null);
+                setAuthError(null);
+                setIsAuthLoading(false);
+                return;
+            }
+
+            // A session exists. Start the verification/loading process.
+            setAuthError(null);
+            const userId = session.user.id;
+            const PROFILE_CACHE_KEY = `lawyerAppProfile_${userId}`;
+
             try {
-                // If there's no user, clean up and finish.
-                if (!session?.user) {
-                    setProfile(null);
-                    setAuthError(null);
-                    return;
-                }
-    
-                const PROFILE_CACHE_KEY = `lawyerAppProfile_${session.user.id}`;
+                // 1. Try to load profile from local cache first for a faster UI.
                 let profileFromCache: Profile | null = null;
-    
-                // 1. Try to load from cache
                 try {
-                    const cachedData = localStorage.getItem(PROFILE_CACHE_KEY);
-                    if (cachedData) {
-                        const parsed = JSON.parse(cachedData);
-                        // Basic validation to prevent loading corrupted data
-                        if (parsed && typeof parsed === 'object' && 'id' in parsed) {
-                            profileFromCache = parsed;
-                        } else {
-                            throw new Error("Invalid cached profile format.");
-                        }
+                    const cachedProfileRaw = localStorage.getItem(PROFILE_CACHE_KEY);
+                    if (cachedProfileRaw) {
+                        profileFromCache = JSON.parse(cachedProfileRaw);
+                        // If we have a cached profile, show it immediately.
+                        setProfile(profileFromCache);
                     }
                 } catch (e) {
-                    console.error("Failed to load or parse profile from cache. Deleting it.", e);
-                    localStorage.removeItem(PROFILE_CACHE_KEY); // Clear bad data
+                    console.error("Failed to parse cached profile. Clearing cache.", e);
+                    localStorage.removeItem(PROFILE_CACHE_KEY); // Clear corrupted data
                 }
                 
-                // 2. Optimistically set profile from cache for faster UI response
-                if (profileFromCache) {
-                    setProfile(profileFromCache);
-                }
-                
-                // 3. If online, try to fetch the latest profile from the server.
+                // 2. If online, attempt to fetch the latest profile from the server.
                 if (isOnline) {
-                    try {
-                        const { data, error, status } = await supabase!.from('profiles').select('*').eq('id', session.user.id).single();
-    
-                        if (data) {
-                            // Success! Update state and cache.
-                            setProfile(data);
-                            localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(data));
-                            setAuthError(null); // Clear any previous auth error.
-                        } else if (error && status !== 406) { // 406 means no row found, which is handled below.
-                            // A real network or DB error occurred.
-                            console.error("Error fetching profile from Supabase:", error);
-                            // If we don't have a cached profile, we must show an error.
-                            if (!profileFromCache) {
-                                setAuthError('فشل الاتصال بالخادم لجلب ملفك الشخصي. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.');
-                            }
-                            // Otherwise, we just fall back to the cached version, and the sync indicator will show the error.
-                        } else if (!profileFromCache) {
-                            // No error, but no data returned, and no cache. Critical state.
-                            setAuthError("User is authenticated, but no profile was found.");
+                    setIsAuthLoading(true); // Set loading true only when fetching from network
+                    const { data, error, status } = await supabase!.from('profiles').select('*').eq('id', userId).single();
+                    
+                    if (data) {
+                        // Success: update state and cache.
+                        setProfile(data);
+                        localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(data));
+                        // Save user object for offline login profile creation
+                        localStorage.setItem(LAST_USER_CACHE_KEY, JSON.stringify(session.user));
+                    } else if (error && status !== 406) {
+                        // A real error occurred, and we have no cached data to fall back on.
+                        if (!profileFromCache) {
+                            throw new Error('فشل الاتصال بالخادم لجلب ملفك الشخصي. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.');
+                        } else {
+                            // We have a cache, so we can continue. Log the error for debugging.
+                            console.warn("Failed to refresh profile, using cached version. Error:", error.message);
                         }
-                    } catch (err) {
-                         console.error("Error fetching profile:", err);
-                         if (!profileFromCache) {
-                            setAuthError('فشل الاتصال بالخادم لجلب ملفك الشخصي. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.');
-                        }
+                    } else if (!data && !profileFromCache) {
+                        // Authenticated but no profile found and nothing in cache. This is a critical error.
+                         throw new Error("User is authenticated, but no profile was found.");
                     }
-                } else { // 4. We are offline.
-                    // If we're offline and have no cached profile, create a temporary one.
-                    if (!profileFromCache) {
-                        console.log("Offline and no cached profile. Creating temporary profile.");
-                        const tempProfile: Profile = {
-                            id: session.user.id,
-                            full_name: 'مستخدم غير متصل',
-                            role: 'user',
-                            is_approved: true,
-                            is_active: true,
-                            subscription_start_date: new Date().toISOString(),
-                            subscription_end_date: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString(),
-                            mobile_number: '',
-                        };
-                        setProfile(tempProfile);
-                        localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(tempProfile));
-                    }
+                } else if (!profileFromCache) {
+                    // Offline and no cached profile.
+                    throw new Error("أنت غير متصل ولا توجد بيانات محفوظة على هذا الجهاز. يرجى الاتصال بالإنترنت.");
                 }
-            } catch (e) {
-                console.error("Unexpected error in profile fetch logic:", e);
-                setAuthError("An unexpected error occurred while loading your profile.");
+
+            } catch (e: any) {
+                console.error("Error in profile loading sequence:", e);
+                setAuthError(e.message);
+                setProfile(null); // Clear profile on critical error
             } finally {
-                // Always ensure the loading state is turned off after attempting to get a profile.
-                setIsAuthLoading(false);
+                setIsAuthLoading(false); // Always stop the main "Checking identity" loader.
             }
         };
-    
+
         fetchAndSetProfile();
     }, [session, isOnline, supabase]);
 
     const handleLogout = async () => {
-        const userId = session?.user?.id;
+        setCurrentPage('home');
         if (supabase) {
+            // Attempt to sign out from the server, but don't let it block the UI.
             const { error } = await supabase.auth.signOut();
-            // The onAuthStateChange listener will handle setting the session to null.
-            // But if signOut fails (e.g. offline), we force it.
             if (error) {
-                console.error('Logout error, likely offline. Forcing local logout.', error.message);
-                setSession(null);
+                 console.error('Supabase signOut error (likely offline, this is okay):', error.message);
             }
-        } else {
-            // Fallback for when supabase client is not available
-            setSession(null);
         }
-        
-        // Clearing local state should happen after the auth state has been changed
-        setCurrentPage('home'); 
-        if (userId) {
-            localStorage.removeItem(`lawyerAppIsDirty_${userId}`);
-        }
+        // Manually clear local state for immediate feedback & reliable offline logout.
+        // The onAuthStateChange listener will also catch this if online.
+        setSession(null);
     };
     
     const handleLoginSuccess = (user: User) => {
-        setIsAuthLoading(true);
-        setSession({ user, access_token: '', token_type: '', refresh_token: '' } as AuthSession);
+        // Cache the user object to enable temporary profile creation if needed.
+        localStorage.setItem(LAST_USER_CACHE_KEY, JSON.stringify(user));
+        // Trigger the authentication flow by setting a session-like object.
+        setSession({
+            user,
+            access_token: 'local-session', // Placeholder for local/offline auth
+            token_type: 'bearer',
+            refresh_token: 'local-session',
+            expires_at: Math.floor(Date.now() / 1000) + 3600,
+        } as AuthSession);
     };
 
     const handleOpenAdminTaskModal = (initialData: any = null) => {
@@ -448,11 +432,11 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         return <AuthErrorScreen message={authError} onRetry={onRefresh} onLogout={handleLogout} />;
     }
 
-    if (!session?.user) {
+    if (!session || !profile) {
         return <LoginPage onForceSetup={() => setShowConfigModal(true)} onLoginSuccess={handleLoginSuccess} />;
     }
     
-    if (supabaseData.isDataLoading || !profile) {
+    if (supabaseData.isDataLoading) {
         return <FullScreenLoader text="جاري تحميل بيانات المكتب..." />;
     }
     
@@ -477,8 +461,11 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     onNavigate={setCurrentPage}
                     onLogout={handleLogout}
                     profile={profile}
-                    {...supabaseData}
+                    syncStatus={supabaseData.syncStatus}
+                    lastSyncError={supabaseData.lastSyncError}
+                    isDirty={supabaseData.isDirty}
                     isOnline={isOnline}
+                    onManualSync={supabaseData.manualSync}
                 />
                 <main className="flex-grow p-6">
                     <React.Suspense fallback={<FullScreenLoader />}>

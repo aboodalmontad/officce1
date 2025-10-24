@@ -3,9 +3,9 @@ import { ClipboardDocumentCheckIcon, ClipboardDocumentIcon } from './icons';
 
 const unifiedScript = `
 -- =================================================================
--- السكربت الشامل والنهائي (الإصدار 28.0)
+-- السكربت الشامل والنهائي (الإصدار 29.0)
 -- =================================================================
--- هذا السكربت يقوم بإعداد قاعدة البيانات بالكامل وإنشاء حساب مدير تلقائياً.
+-- هذا السكربت يقوم بإعداد قاعدة البيانات بالكامل، تفعيل المزامنة الفورية، وإنشاء حساب مدير تلقائياً.
 -- انسخ هذا السكربت بالكامل وشغّله مرة واحدة فقط في Supabase SQL Editor.
 -- !! هام: عدّل رقم هاتف وكلمة مرور المدير في نهاية السكربت قبل التشغيل !!
 
@@ -160,8 +160,23 @@ BEGIN
     END LOOP;
 END$$;
 
+-- 6. REALTIME: Enable real-time updates for all user data tables.
+-- This is crucial for multi-user collaboration.
+ALTER PUBLICATION supabase_realtime ADD TABLE
+    public.profiles,
+    public.assistants,
+    public.clients,
+    public.cases,
+    public.stages,
+    public.sessions,
+    public.admin_tasks,
+    public.appointments,
+    public.accounting_entries,
+    public.invoices,
+    public.invoice_items,
+    public.site_finances;
 
--- 6. AUTOMATION: Trigger function to auto-update 'updated_at' columns.
+-- 7. AUTOMATION: Trigger function to auto-update 'updated_at' columns.
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -191,14 +206,14 @@ BEGIN
 END$$;
 
 
--- 7. PERMISSIONS
+-- 8. PERMISSIONS
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;
 GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 
 -- =================================================================
--- 8. إنشاء حساب المدير تلقائياً وتصحيحه
+-- 9. إنشاء حساب المدير تلقائياً وتصحيحه
 -- =================================================================
 -- !! هام: عدّل البيانات التالية قبل تشغيل السكربت !!
 DO $$
@@ -252,76 +267,132 @@ BEGIN
 END $$;
 `;
 
-const ConfigurationModal: React.FC<{ onRetry: () => void }> = ({ onRetry }) => {
+const realtimeScript = `
+-- =================================================================
+-- سكربت تفعيل المزامنة الفورية (Real-time)
+-- =================================================================
+-- هذا السكربت يقوم بتفعيل خاصية المزامنة الفورية لجميع جداول البيانات.
+-- شغله فقط إذا كانت ميزة التحديث الفوري بين المستخدمين لا تعمل.
+
+-- 6. REALTIME: Enable real-time updates for all user data tables.
+-- This is crucial for multi-user collaboration.
+ALTER PUBLICATION supabase_realtime ADD TABLE
+    public.profiles,
+    public.assistants,
+    public.clients,
+    public.cases,
+    public.stages,
+    public.sessions,
+    public.admin_tasks,
+    public.appointments,
+    public.accounting_entries,
+    public.invoices,
+    public.invoice_items,
+    public.site_finances;
+`;
+
+
+const ScriptDisplay: React.FC<{ script: string }> = ({ script }) => {
     const [copied, setCopied] = React.useState(false);
 
     const handleCopy = () => {
-        navigator.clipboard.writeText(unifiedScript.trim()).then(() => {
+        navigator.clipboard.writeText(script.trim()).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         });
     };
 
     return (
+        <div className="relative bg-gray-800 text-white p-4 rounded-md max-h-[40vh] overflow-y-auto">
+            <pre className="text-sm whitespace-pre-wrap">
+                <code>{script.trim()}</code>
+            </pre>
+            <button
+                onClick={handleCopy}
+                className="sticky bottom-2 right-2 flex items-center gap-2 px-3 py-1 bg-gray-600 text-white text-xs rounded-md hover:bg-gray-500"
+            >
+                {copied ? <ClipboardDocumentCheckIcon className="w-4 h-4 text-green-400"/> : <ClipboardDocumentIcon className="w-4 h-4"/>}
+                {copied ? 'تم النسخ' : 'نسخ السكربت'}
+            </button>
+        </div>
+    );
+}
+
+const ConfigurationModal: React.FC<{ onRetry: () => void }> = ({ onRetry }) => {
+    const [view, setView] = React.useState<'setup' | 'realtime'>('setup');
+
+    return (
         <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4" dir="rtl">
             <div className="w-full max-w-4xl p-8 space-y-6 bg-white rounded-lg shadow-md">
                 <div className="text-center">
-                    <h1 className="text-3xl font-bold text-gray-800">إعداد قاعدة البيانات لأول مرة</h1>
-                    <p className="mt-2 text-gray-600">يبدو أن قاعدة البيانات غير مهيأة. يرجى اتباع الخطوات التالية لإعداد التطبيق.</p>
-                </div>
-
-                <div className="space-y-4">
-                    <h2 className="text-xl font-semibold">الخطوة 1: اذهب إلى لوحة تحكم Supabase</h2>
-                    <ol className="list-decimal list-inside space-y-2 text-gray-700">
-                        <li>اذهب إلى لوحة تحكم مشروعك في <a href="https://supabase.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Supabase</a>.</li>
-                    </ol>
-                </div>
-
-                <div className="space-y-4">
-                    <h2 className="text-xl font-semibold">الخطوة 2: تفعيل المزامنة الفورية (Real-time)</h2>
-                    <p className="text-sm text-gray-600">
-                        هذه الخطوة <strong className="text-red-600">ضرورية جداً</strong> لكي تعمل المزامنة التلقائية بين الأجهزة المختلفة.
+                    <h1 className="text-3xl font-bold text-gray-800">إعداد قاعدة البيانات</h1>
+                     <p className="mt-2 text-gray-600">
+                        {view === 'setup' 
+                            ? "يبدو أن قاعدة البيانات غير مهيأة. يرجى اتباع الخطوات التالية لإعداد التطبيق." 
+                            : "استخدم هذا القسم لتفعيل المزامنة الفورية إذا توقفت عن العمل."}
                     </p>
-                    <ol className="list-decimal list-inside space-y-2 text-gray-700">
-                        <li>من القائمة الجانبية، اختر <strong className="font-semibold">Database</strong> ثم <strong className="font-semibold">Replication</strong>.</li>
-                        <li>سترى قسماً بعنوان <strong className="font-semibold">Source Changes</strong>. اضغط على الرابط الذي يبدو كهذا: "<strong className="text-blue-600">0 tables</strong>".</li>
-                        <li>في النافذة التي ستظهر، حدد <strong className="font-semibold">جميع الجداول</strong> بالضغط على مربع الاختيار في الأعلى.</li>
-                        <li>اضغط على زر <strong className="font-semibold text-green-600">Save</strong>.</li>
-                    </ol>
                 </div>
 
-
-                <div className="space-y-4">
-                    <h2 className="text-xl font-semibold">الخطوة 3: نسخ وتشغيل السكربت الشامل</h2>
-                    <p className="text-sm text-gray-600">
-                        السكربت التالي سيقوم بإعداد الجداول والصلاحيات اللازمة في قاعدة البيانات.
-                        <strong className="text-red-600"> هام: </strong> يجب تعديل رقم هاتف وكلمة مرور المدير داخل السكربت قبل تشغيله.
-                    </p>
-                    <div className="relative bg-gray-800 text-white p-4 rounded-md max-h-[40vh] overflow-y-auto">
-                        <pre className="text-sm whitespace-pre-wrap">
-                            <code>{unifiedScript.trim()}</code>
-                        </pre>
-                        <button 
-                            onClick={handleCopy}
-                            className="sticky bottom-2 right-2 flex items-center gap-2 px-3 py-1 bg-gray-600 text-white text-xs rounded-md hover:bg-gray-500"
+                <div className="border-b border-gray-200">
+                    <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+                        <button
+                            onClick={() => setView('setup')}
+                            className={`${view === 'setup' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
                         >
-                            {copied ? <ClipboardDocumentCheckIcon className="w-4 h-4 text-green-400"/> : <ClipboardDocumentIcon className="w-4 h-4"/>}
-                            {copied ? 'تم النسخ' : 'نسخ السكربت'}
+                            الإعداد الكامل
                         </button>
-                    </div>
-                     <ol className="list-decimal list-inside space-y-2 text-gray-700">
-                        <li>من القائمة الجانبية، اختر <strong className="font-semibold">SQL Editor</strong>.</li>
-                        <li>اضغط على <strong className="font-semibold">+ New query</strong>.</li>
-                        <li>الصق السكربت الذي نسخته في محرر الأكواد.</li>
-                        <li>
-                            <strong className="text-red-600">تأكد من تعديل رقم هاتف وكلمة مرور المدير</strong> في نهاية السكربت (القسم 8).
-                        </li>
-                        <li>اضغط على زر <strong className="font-semibold text-green-600">RUN</strong> لتنفيذ السكربت.</li>
-                    </ol>
+                        <button
+                            onClick={() => setView('realtime')}
+                            className={`${view === 'realtime' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                        >
+                            تفعيل المزامنة الفورية
+                        </button>
+                    </nav>
                 </div>
+
+                {view === 'setup' && (
+                    <div className="space-y-4 animate-fade-in">
+                        <h2 className="text-xl font-semibold">الخطوة 1: اذهب إلى لوحة تحكم Supabase</h2>
+                        <ol className="list-decimal list-inside space-y-2 text-gray-700">
+                            <li>اذهب إلى لوحة تحكم مشروعك في <a href="https://supabase.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Supabase</a>.</li>
+                        </ol>
+
+                        <h2 className="text-xl font-semibold">الخطوة 2: نسخ وتشغيل السكربت الشامل</h2>
+                        <p className="text-sm text-gray-600">
+                            السكربت التالي سيقوم بإعداد الجداول والصلاحيات وتفعيل المزامنة الفورية تلقائياً.
+                            <strong className="text-red-600"> هام: </strong> يجب تعديل رقم هاتف وكلمة مرور المدير داخل السكربت قبل تشغيله.
+                        </p>
+                        <ScriptDisplay script={unifiedScript} />
+                         <ol className="list-decimal list-inside space-y-2 text-gray-700">
+                            <li>من القائمة الجانبية، اختر <strong className="font-semibold">SQL Editor</strong>.</li>
+                            <li>اضغط على <strong className="font-semibold">+ New query</strong>.</li>
+                            <li>الصق السكربت الذي نسخته في محرر الأكواد.</li>
+                            <li>
+                                <strong className="text-red-600">تأكد من تعديل رقم هاتف وكلمة مرور المدير</strong> في نهاية السكربت (القسم 9).
+                            </li>
+                            <li>اضغط على زر <strong className="font-semibold text-green-600">RUN</strong> لتنفيذ السكربت.</li>
+                        </ol>
+                    </div>
+                )}
+                
+                {view === 'realtime' && (
+                    <div className="space-y-4 animate-fade-in">
+                        <h2 className="text-xl font-semibold">تفعيل المزامنة الفورية (Real-time)</h2>
+                        <p className="text-sm text-gray-600">
+                            إذا لم تعمل ميزة التحديث الفوري بين المستخدمين، قد تحتاج إلى تشغيل هذا السكربت يدوياً. هذا السكربت يقوم بتفعيل خاصية المزامنة الفورية لجميع جداول البيانات.
+                        </p>
+                        <ScriptDisplay script={realtimeScript} />
+                         <ol className="list-decimal list-inside space-y-2 text-gray-700">
+                            <li>من القائمة الجانبية في لوحة تحكم Supabase، اختر <strong className="font-semibold">SQL Editor</strong>.</li>
+                            <li>اضغط على <strong className="font-semibold">+ New query</strong>.</li>
+                            <li>الصق السكربت الذي نسخته في محرر الأكواد.</li>
+                            <li>اضغط على زر <strong className="font-semibold text-green-600">RUN</strong> لتنفيذ السكربت.</li>
+                        </ol>
+                    </div>
+                )}
 
                 <div className="text-center border-t pt-6">
-                    <p className="text-gray-600 mb-4">بعد التأكد من نجاح تنفيذ الخطوات السابقة، اضغط على الزر أدناه لإعادة محاولة الاتصال.</p>
+                    <p className="text-gray-600 mb-4">بعد التأكد من نجاح تنفيذ الخطوات، اضغط على الزر أدناه لإعادة محاولة الاتصال.</p>
                     <button 
                         onClick={onRetry}
                         className="px-8 py-3 text-white bg-blue-600 rounded-lg hover:bg-blue-700 font-semibold"

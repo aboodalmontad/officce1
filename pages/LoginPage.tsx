@@ -46,8 +46,9 @@ const CopyButton: React.FC<{ textToCopy: string }> = ({ textToCopy }) => {
     );
 };
 
-const DatabaseIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+// FIX: Update DatabaseIcon to accept and apply className prop.
+const DatabaseIcon: React.FC<{ className?: string }> = ({ className = "w-6 h-6" }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
     </svg>
 );
@@ -363,6 +364,16 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                             {isLoginView ? 'أنشئ حساباً جديداً' : 'سجل الدخول'}
                         </a>
                     </p>
+                    
+                    <div className="mt-4 pt-4 border-t text-center">
+                        <button 
+                            onClick={onForceSetup}
+                            className="inline-flex items-center gap-2 text-xs text-gray-500 hover:text-blue-600"
+                        >
+                            <DatabaseIcon className="w-4 h-4" />
+                            <span className="hover:underline">هل تواجه مشكلة في الإعداد؟ افتح معالج قاعدة البيانات</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

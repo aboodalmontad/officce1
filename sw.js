@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lawyer-app-cache-v10';
+const CACHE_NAME = 'lawyer-app-cache-v11';
 // The list of URLs to cache has been expanded to include all critical,
 // external dependencies. This ensures the app is fully functional offline
 // immediately after the service worker is installed, preventing failures
@@ -6,7 +6,7 @@ const CACHE_NAME = 'lawyer-app-cache-v10';
 const urlsToCache = [
   './',
   './index.html',
-  './index.tsx',
+  './index.js',
   './manifest.json',
   './icon.svg',
   'https://cdn.tailwindcss.com',
