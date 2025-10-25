@@ -1,16 +1,17 @@
 import * as React from 'react';
 import AdminPage from './AdminPage';
-import { PowerIcon, UserGroupIcon, ChartPieIcon, Bars3Icon, XMarkIcon } from '../components/icons';
+import { PowerIcon, UserGroupIcon, ChartPieIcon, Bars3Icon, XMarkIcon, CurrencyDollarIcon } from '../components/icons';
 import { getSupabaseClient } from '../supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
 const AdminAnalyticsPage = React.lazy(() => import('./AdminAnalyticsPage'));
+const SiteFinancesPage = React.lazy(() => import('./SiteFinancesPage'));
 
 interface AdminDashboardProps {
     onLogout: () => void;
 }
 
-type AdminView = 'analytics' | 'users';
+type AdminView = 'analytics' | 'users' | 'finances';
 
 const NavLink: React.FC<{
     label: string;
@@ -99,6 +100,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                 return <React.Suspense fallback={<div className="text-center p-8">جاري تحميل التحليلات...</div>}><AdminAnalyticsPage /></React.Suspense>;
             case 'users':
                 return <AdminPage />;
+            case 'finances':
+                return <React.Suspense fallback={<div className="text-center p-8">جاري تحميل صفحة المحاسبة...</div>}><SiteFinancesPage /></React.Suspense>;
             default:
                 return <React.Suspense fallback={<div className="text-center p-8">جاري تحميل التحليلات...</div>}><AdminAnalyticsPage /></React.Suspense>;
         }
@@ -126,6 +129,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                     isActive={view === 'users'}
                     onClick={() => { setView('users'); setIsSidebarOpen(false); }}
                     badgeCount={pendingUsersCount}
+                />
+                 <NavLink
+                    label="المحاسبة المالية"
+                    icon={<CurrencyDollarIcon className="w-6 h-6" />}
+                    isActive={view === 'finances'}
+                    onClick={() => { setView('finances'); setIsSidebarOpen(false); }}
                 />
             </nav>
             <div className="mt-auto">

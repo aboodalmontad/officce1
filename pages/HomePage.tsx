@@ -273,7 +273,6 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
             `*المسؤول:* ${task.assignee || 'غير محدد'}`
         ].join('\n');
 
-        // FIX: encodeURIComponent was called without an argument.
         const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
         window.open(whatsappUrl, '_blank');
     };

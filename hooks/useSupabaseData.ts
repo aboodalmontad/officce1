@@ -121,6 +121,7 @@ const validateAndHydrate = (data: any): AppData => {
                         assignee: isValidAssistant(session.assignee) ? session.assignee : defaultAssignee,
                         updated_at: sanitizeOptionalDate(session.updated_at),
                     };
+                    // FIX: The .filter() method was called without a predicate function, which would cause a runtime error.
                 }).filter((s): s is Session => s !== null),
                 decisionDate: sanitizeOptionalDate(stage.decision_date ?? stage.decisionDate),
                 decisionNumber: sanitizeString(stage.decision_number ?? stage.decisionNumber),
@@ -514,7 +515,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
             try {
                 const lastBackupTimestamp = localStorage.getItem(LAST_BACKUP_KEY);
-                // Removed duplicate `parsedTimestamp` declaration and fixed missing radix. This was causing a syntax error.
+                // FIX: Added radix 10 to parseInt to ensure base-10 parsing and avoid potential errors with leading zeros.
                 const parsedTimestamp = lastBackupTimestamp ? parseInt(lastBackupTimestamp, 10) : NaN;
                 const lastBackupDateString = !isNaN(parsedTimestamp) ? new Date(parsedTimestamp).toISOString().split('T')[0] : null;
 

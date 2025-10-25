@@ -18,7 +18,7 @@ interface ClientsPageProps {
 }
 
 const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminTaskModal, onCreateInvoice }) => {
-    // Fix: Destructured `setAccountingEntries` from `useData` to pass it down to child components.
+    // FIX: Destructured `setAccountingEntries` from `useData` to pass it down to child components.
     const { clients, setClients, accountingEntries, setAccountingEntries, assistants, setFullData, invoices, adminTasks, appointments, deleteClient, deleteCase, deleteStage, deleteSession } = useData();
     const [modal, setModal] = React.useState<{ type: 'client' | 'case' | 'stage' | 'session' | null, context?: any, isEditing: boolean }>({ type: null, isEditing: false });
     const [formData, setFormData] = React.useState<any>({});

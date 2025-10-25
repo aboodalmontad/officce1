@@ -128,6 +128,7 @@ export interface SiteFinancialEntry {
   amount: number;
   description: string | null;
   payment_method: string | null;
+  category?: string | null;
   profile_full_name?: string;
   updated_at?: Date;
 }
