@@ -133,12 +133,13 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
         props.showContextMenu(event, menuItems);
     };
 
-    const handleSessionContextMenu = (event: React.MouseEvent, session: Session, caseItem: Case) => {
+    const handleSessionContextMenu = (event: React.MouseEvent, session: Session, caseItem: Case, stage: Stage) => {
+        const statusMap: Record<Case['status'], string> = { active: 'نشطة', closed: 'مغلقة', on_hold: 'معلقة'};
         const menuItems: MenuItem[] = [{
             label: 'إرسال إلى المهام الإدارية',
             icon: <BuildingLibraryIcon className="w-4 h-4" />,
             onClick: () => {
-                const description = `متابعة جلسة قضية (${session.clientName} ضد ${session.opponentName}) يوم ${formatDate(session.date)} في محكمة ${session.court} (أساس: ${session.caseNumber}).\nسبب التأجيل السابق: ${session.postponementReason || 'لا يوجد'}.\nالمكلف بالحضور: ${session.assignee}.`;
+                const description = `متابعة جلسة يوم ${formatDate(session.date)}:\n- الموكل: ${client.name}\n- القضية: ${caseItem.subject} (ضد: ${caseItem.opponentName})\n- المحكمة: ${stage.court} (أساس: ${stage.caseNumber})\n- سبب التأجيل السابق: ${session.postponementReason || 'لا يوجد'}\n- المكلف بالحضور: ${session.assignee || 'غير محدد'}`;
                 props.onOpenAdminTaskModal({ 
                     task: description,
                     assignee: session.assignee,
@@ -150,11 +151,19 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
             icon: <ShareIcon className="w-4 h-4" />,
             onClick: () => {
                 const message = [
-                    `*جلسة قضائية:*`,
-                    `*القضية:* ${session.clientName} ضد ${session.opponentName}`,
-                    `*المحكمة:* ${session.court} (أساس: ${session.caseNumber})`,
+                    `*ملخص جلسة قضائية:*`,
+                    `*الموكل:* ${client.name}`,
+                    `*القضية:* ${caseItem.subject}`,
+                    `*الخصم:* ${caseItem.opponentName}`,
+                    `*حالة القضية:* ${statusMap[caseItem.status]}`,
+                    `---`,
+                    `*المرحلة:*`,
+                    `*المحكمة:* ${stage.court}`,
+                    `*رقم الأساس:* ${stage.caseNumber}`,
+                    `---`,
+                    `*الجلسة:*`,
                     `*التاريخ:* ${formatDate(session.date)}`,
-                    `*المسؤول:* ${session.assignee || 'غير محدد'}`,
+                    `*المكلف بالحضور:* ${session.assignee || 'غير محدد'}`,
                     `*سبب التأجيل السابق:* ${session.postponementReason || 'لا يوجد'}`
                 ].join('\n');
                 const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
@@ -328,7 +337,7 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
                                                                 onDecide={props.onDecide}
                                                                 stage={stage}
                                                                 showSessionDate={true}
-                                                                onContextMenu={(e, session) => handleSessionContextMenu(e, session, caseItem)}
+                                                                onContextMenu={(e, session) => handleSessionContextMenu(e, session, caseItem, stage)}
                                                             />
                                                         </div>
                                                     </div>
