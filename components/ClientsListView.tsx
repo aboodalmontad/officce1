@@ -35,7 +35,6 @@ interface ClientsListViewProps {
 const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expanded: boolean; onToggle: () => void; }> = ({ client, props, expanded, onToggle }) => {
     const [expandedCaseId, setExpandedCaseId] = React.useState<string | null>(null);
     const [activeTab, setActiveTab] = React.useState<'stages' | 'accounting'>('stages');
-    // FIX: Changed timer ref to be nullable for stricter type checking and correct handling of clearTimeout.
     const clientLongPressTimer = React.useRef<number | null>(null);
     const caseLongPressTimer = React.useRef<number | null>(null);
     const stageLongPressTimer = React.useRef<number | null>(null);
@@ -166,14 +165,11 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
     };
     
     // --- Long Press Handlers ---
-    // FIX: Changed timer ref signature to be nullable for stricter type checking.
     const createTouchStartHandler = (timerRef: React.MutableRefObject<number | null>, callback: (e: React.TouchEvent) => void) => (e: React.TouchEvent) => {
-        // FIX: Used window.setTimeout to be explicit about browser environment.
         timerRef.current = window.setTimeout(() => {
             callback(e);
         }, 500);
     };
-    // FIX: Changed timer ref signature to be nullable and added a stricter null check with window.clearTimeout.
     const createTouchEndHandler = (timerRef: React.MutableRefObject<number | null>) => () => {
         if (timerRef.current !== null) {
             window.clearTimeout(timerRef.current);

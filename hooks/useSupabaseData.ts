@@ -56,10 +56,9 @@ const validateAssistantsList = (list: any): string[] => {
     return Array.from(uniqueAssistants);
 };
 
-// Fix: Update mapFn signature to include index.
 const safeArray = <T, U>(arr: any, mapFn: (item: T, index: number) => U): U[] => {
     if (!Array.isArray(arr)) return [];
-    return arr.filter(item => item && typeof item === 'object').map(mapFn as any);
+    return arr.filter(item => item && typeof item === 'object').map(mapFn);
 };
 
 const sanitizeOptionalDate = (date: any): Date | undefined => {
@@ -77,14 +76,11 @@ const validateAndHydrate = (data: any): AppData => {
     const defaultAssignee = 'بدون تخصيص';
     const sanitizeString = (str: any): string => (str === null || str === undefined) ? '' : String(str);
 
-    // Fix: Add index to callback to satisfy safeArray signature and improve key generation.
     const validatedClients: Client[] = safeArray(data.clients, (client: any, index: number): Client => ({
         id: client.id || `client-${Date.now()}-${index}`,
         name: String(client.name || 'موكل غير مسمى'),
         contactInfo: String((client.contact_info ?? client.contactInfo) || ''),
         updated_at: sanitizeOptionalDate(client.updated_at),
-        // Fix: Add index to callback to satisfy safeArray signature and improve key generation.
-        // Corrected a call to `safeArray` which was missing the index parameter in its callback, causing a type mismatch.
         cases: safeArray(client.cases, (caseItem: any, caseIndex: number): Case => ({
             id: caseItem.id || `case-${Date.now()}-${caseIndex}`,
             subject: String(caseItem.subject || 'قضية بدون موضوع'),
@@ -93,14 +89,12 @@ const validateAndHydrate = (data: any): AppData => {
             feeAgreement: String((caseItem.fee_agreement ?? caseItem.feeAgreement) || ''),
             status: ['active', 'closed', 'on_hold'].includes(caseItem.status) ? caseItem.status : 'active',
             updated_at: sanitizeOptionalDate(caseItem.updated_at),
-            // Fix: Add index to callback to satisfy safeArray signature and improve key generation.
             stages: safeArray(caseItem.stages, (stage: any, stageIndex: number): Stage => ({
                 id: stage.id || `stage-${Date.now()}-${stageIndex}`,
                 court: String(stage.court || 'محكمة غير محددة'),
                 caseNumber: sanitizeString(stage.case_number ?? stage.caseNumber),
                 firstSessionDate: sanitizeOptionalDate(stage.first_session_date ?? stage.firstSessionDate),
                 updated_at: sanitizeOptionalDate(stage.updated_at),
-                // Fix: Add index to callback to satisfy safeArray signature and improve key generation.
                 sessions: safeArray(stage.sessions, (session: any, sessionIndex: number): Session | null => {
                     const sessionDate = session.date ? new Date(session.date) : null;
                     if (!sessionDate || isNaN(sessionDate.getTime())) {
@@ -121,7 +115,6 @@ const validateAndHydrate = (data: any): AppData => {
                         assignee: isValidAssistant(session.assignee) ? session.assignee : defaultAssignee,
                         updated_at: sanitizeOptionalDate(session.updated_at),
                     };
-                    // FIX: The .filter() method was called without a predicate function, which would cause a runtime error.
                 }).filter((s): s is Session => s !== null),
                 decisionDate: sanitizeOptionalDate(stage.decision_date ?? stage.decisionDate),
                 decisionNumber: sanitizeString(stage.decision_number ?? stage.decisionNumber),
@@ -131,7 +124,6 @@ const validateAndHydrate = (data: any): AppData => {
         })),
     }));
 
-    // Fix: Add index to callback to satisfy safeArray signature and improve key generation.
     const validatedAdminTasks: AdminTask[] = safeArray(data.adminTasks, (task: any, index: number): AdminTask | null => {
         const dueDate = (task.due_date ?? task.dueDate) ? new Date(task.due_date ?? task.dueDate) : null;
         if (!dueDate || isNaN(dueDate.getTime())) {
@@ -150,7 +142,6 @@ const validateAndHydrate = (data: any): AppData => {
         };
     }).filter((t): t is AdminTask => t !== null);
 
-    // Fix: Add index to callback to satisfy safeArray signature and improve key generation.
     const validatedAppointments: Appointment[] = safeArray(data.appointments, (apt: any, index: number): Appointment | null => {
         const aptDate = apt.date ? new Date(apt.date) : null;
         if (!aptDate || isNaN(aptDate.getTime())) {
@@ -170,7 +161,6 @@ const validateAndHydrate = (data: any): AppData => {
         };
     }).filter((a): a is Appointment => a !== null);
     
-    // Fix: Add index to callback to satisfy safeArray signature and improve key generation.
     const validatedAccountingEntries: AccountingEntry[] = safeArray(data.accountingEntries, (entry: any, index: number): AccountingEntry | null => {
         const entryDate = sanitizeOptionalDate(entry.date);
         if (!entryDate) {
@@ -190,7 +180,6 @@ const validateAndHydrate = (data: any): AppData => {
         };
     }).filter((e): e is AccountingEntry => e !== null);
 
-    // Fix: Add index to callback to satisfy safeArray signature and improve key generation.
     const validatedInvoices: Invoice[] = safeArray(data.invoices, (invoice: any, index: number): Invoice | null => {
         const issueDate = sanitizeOptionalDate(invoice.issue_date ?? invoice.issueDate);
         const dueDate = sanitizeOptionalDate(invoice.due_date ?? invoice.dueDate);
@@ -209,7 +198,6 @@ const validateAndHydrate = (data: any): AppData => {
             issueDate: issueDate,
             dueDate: dueDate,
             updated_at: sanitizeOptionalDate(invoice.updated_at),
-            // Fix: Add index to callback to satisfy safeArray signature and improve key generation.
             items: safeArray(invoice.invoice_items ?? invoice.items, (item: any, itemIndex: number): InvoiceItem => ({
                 id: item.id || `item-${Date.now()}-${itemIndex}`,
                 description: String(item.description || ''),
@@ -234,7 +222,9 @@ const validateAndHydrate = (data: any): AppData => {
 };
 
 function usePrevious<T>(value: T): T | undefined {
-  const ref = React.useRef<T>();
+  // FIX: Explicitly provide `undefined` as the initial value to `useRef` and type the ref to allow `undefined`.
+  // This resolves the "Expected 1 arguments, but got 0" error which can occur with older React type definitions.
+  const ref = React.useRef<T | undefined>(undefined);
   React.useEffect(() => {
     ref.current = value;
   });
@@ -423,21 +413,18 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             return;
         }
 
-        // FIX: Used window.setTimeout to be explicit about browser environment.
         const syncTimeout = window.setTimeout(() => {
             console.log('Debounced change detected, triggering auto-sync.');
             manualSyncRef.current();
         }, 1500);
 
         return () => {
-            // FIX: Added a check to ensure clearTimeout is called with a valid timer ID.
             if (syncTimeout) {
                 window.clearTimeout(syncTimeout);
             }
         };
     }, [isDirty, isOnline, isDataLoading, isAuthLoading, syncStatus, data, isAutoSyncEnabled]);
 
-    // FIX: Changed timer ref to be nullable for stricter type checking and correct handling of clearTimeout.
     const syncTimeoutRef = React.useRef<number | null>(null);
 
     React.useEffect(() => {
@@ -447,11 +434,9 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         if (!supabase) return;
 
         const debouncedRefresh = () => {
-            // FIX: Added a stricter null check and used window.clearTimeout to prevent errors.
             if (syncTimeoutRef.current !== null) {
                 window.clearTimeout(syncTimeoutRef.current);
             }
-            // FIX: Used window.setTimeout to be explicit about browser environment.
             syncTimeoutRef.current = window.setTimeout(() => {
                 console.log('Realtime change detected, triggering refresh.');
                 fetchAndRefreshRef.current();
@@ -475,7 +460,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
         return () => {
             console.log('Unsubscribing from realtime changes.');
-            // FIX: Added a stricter null check and used window.clearTimeout to prevent errors. Reset ref to null.
             if (syncTimeoutRef.current !== null) {
                 window.clearTimeout(syncTimeoutRef.current);
                 syncTimeoutRef.current = null;
@@ -515,7 +499,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
             try {
                 const lastBackupTimestamp = localStorage.getItem(LAST_BACKUP_KEY);
-                // FIX: Added radix 10 to parseInt to ensure base-10 parsing and avoid potential errors with leading zeros.
                 const parsedTimestamp = lastBackupTimestamp ? parseInt(lastBackupTimestamp, 10) : NaN;
                 const lastBackupDateString = !isNaN(parsedTimestamp) ? new Date(parsedTimestamp).toISOString().split('T')[0] : null;
 

@@ -22,12 +22,10 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
     const [errors, setErrors] = React.useState<Record<string, string>>({});
     const [editingCell, setEditingCell] = React.useState<{ sessionId: string; field: keyof Session } | null>(null);
     const [editValue, setEditValue] = React.useState<string | number | undefined>('');
-    // FIX: Changed timer ref to be nullable for stricter type checking and correct handling of clearTimeout.
     const longPressTimer = React.useRef<number | null>(null);
 
     const handleTouchStart = (e: React.TouchEvent, session: Session) => {
         if (!onContextMenu) return;
-        // FIX: Used window.setTimeout to be explicit about browser environment.
         longPressTimer.current = window.setTimeout(() => {
             const touch = e.touches[0];
             const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY };
@@ -36,7 +34,6 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
     };
 
     const handleTouchEnd = () => {
-        // FIX: Added a stricter null check and used window.clearTimeout to prevent errors. Reset ref to null.
         if (longPressTimer.current !== null) {
             window.clearTimeout(longPressTimer.current);
             longPressTimer.current = null;

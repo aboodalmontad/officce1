@@ -18,7 +18,6 @@ interface ClientsPageProps {
 }
 
 const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminTaskModal, onCreateInvoice }) => {
-    // FIX: Destructured `setAccountingEntries` from `useData` to pass it down to child components.
     const { clients, setClients, accountingEntries, setAccountingEntries, assistants, setFullData, invoices, adminTasks, appointments, deleteClient, deleteCase, deleteStage, deleteSession } = useData();
     const [modal, setModal] = React.useState<{ type: 'client' | 'case' | 'stage' | 'session' | null, context?: any, isEditing: boolean }>({ type: null, isEditing: false });
     const [formData, setFormData] = React.useState<any>({});
@@ -670,7 +669,6 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
             </div>
 
             {/* Modals are placed here */}
-            {/* Fix: Changed modal.isOpen to modal.type to correctly check if the modal should be displayed. */}
             {modal.type && (
                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={handleCloseModal}>
                     <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>

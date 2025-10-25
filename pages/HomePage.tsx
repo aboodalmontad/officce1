@@ -34,11 +34,9 @@ const formatTime = (time: string) => {
 };
 
 const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointment: () => void, onEdit: (appointment: Appointment) => void, onDelete: (appointment: Appointment) => void, onContextMenu: (event: React.MouseEvent, appointment: Appointment) => void }> = React.memo(({ appointments, onAddAppointment, onEdit, onDelete, onContextMenu }) => {
-    // FIX: Changed timer ref to be nullable for stricter type checking and correct handling of clearTimeout.
     const longPressTimer = React.useRef<number | null>(null);
 
     const handleTouchStart = (e: React.TouchEvent, appointment: Appointment) => {
-        // FIX: Used window.setTimeout to be explicit about browser environment.
         longPressTimer.current = window.setTimeout(() => {
             const touch = e.touches[0];
             const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY };
@@ -47,7 +45,6 @@ const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointmen
     };
 
     const handleTouchEnd = () => {
-        // FIX: Added a stricter null check and used window.clearTimeout to prevent errors. Reset ref to null.
         if (longPressTimer.current !== null) {
             window.clearTimeout(longPressTimer.current);
             longPressTimer.current = null;
@@ -130,6 +127,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
     const [taskToDelete, setTaskToDelete] = React.useState<AdminTask | null>(null);
     const [isPrintModalOpen, setIsPrintModalOpen] = React.useState(false);
     const [isPrintAssigneeModalOpen, setIsPrintAssigneeModalOpen] = React.useState(false);
+    const [isShareAssigneeModalOpen, setIsShareAssigneeModalOpen] = React.useState(false);
     const [printableReportData, setPrintableReportData] = React.useState<any | null>(null);
     const printReportRef = React.useRef<HTMLDivElement>(null);
     
@@ -407,6 +405,95 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
         setIsPrintModalOpen(true);
     };
 
+    // WhatsApp Sharing Logic
+    const handleShareAssigneeReport = (assignee: string | null) => {
+        const dailyAppointments = appointments
+            .filter(a => isSameDay(a.date, selectedDate))
+            .sort((a, b) => a.time.localeCompare(b.time));
+
+        const dailySessions = allSessions.filter(s => isSameDay(s.date, selectedDate));
+
+        const allUncompletedTasks = adminTasks.filter(t => !t.completed);
+        const filteredForAssigneeTasks = assignee ? allUncompletedTasks.filter(t => t.assignee === assignee) : allUncompletedTasks;
+
+        const groupedAndSortedTasks = filteredForAssigneeTasks.reduce((acc, task) => {
+            const location = task.location || 'غير محدد';
+            if (!acc[location]) acc[location] = [];
+            acc[location].push(task);
+            return acc;
+        }, {} as Record<string, AdminTask[]>);
+        
+        const importanceOrder = { 'urgent': 3, 'important': 2, 'normal': 1 };
+        for (const location in groupedAndSortedTasks) {
+            groupedAndSortedTasks[location].sort((a, b) => {
+                const importanceA = importanceOrder[a.importance];
+                const importanceB = importanceOrder[b.importance];
+                if (importanceA !== importanceB) return importanceB - importanceA;
+                const dateA = new Date(a.dueDate).getTime();
+                const dateB = new Date(b.dueDate).getTime();
+                if (dateA !== dateB) return dateA - dateB;
+                return a.task.localeCompare(b.task, 'ar');
+            });
+        }
+
+        const filteredAppointments = assignee ? dailyAppointments.filter(a => a.assignee === assignee) : dailyAppointments;
+        const filteredSessions = assignee ? dailySessions.filter(s => s.assignee === assignee) : dailySessions;
+
+        // --- Start Formatting the message ---
+        let message = `*جدول أعمال مكتب المحامي*\n`;
+        message += `*التاريخ:* ${formatDate(selectedDate)}\n`;
+        message += `*لـِ:* ${assignee || 'الجميع'}\n\n`;
+
+        if (filteredSessions.length > 0) {
+            message += `*القسم الأول: الجلسات (${filteredSessions.length})*\n`;
+            filteredSessions.forEach(s => {
+                message += `- (${s.court}) قضية ${s.clientName} ضد ${s.opponentName} (أساس: ${s.caseNumber}).\n`;
+                if (s.postponementReason) {
+                    message += `  سبب التأجيل السابق: ${s.postponementReason}\n`;
+                }
+            });
+            message += `\n`;
+        }
+
+        if (filteredAppointments.length > 0) {
+            message += `*القسم الثاني: المواعيد (${filteredAppointments.length})*\n`;
+            filteredAppointments.forEach(a => {
+                message += `- (${formatTime(a.time)}) ${a.title}`;
+                if (a.importance !== 'normal') {
+                    message += ` (${importanceMap[a.importance]?.text})`;
+                }
+                message += `\n`;
+            });
+            message += `\n`;
+        }
+        
+        const taskLocations = Object.keys(groupedAndSortedTasks);
+        if (taskLocations.length > 0) {
+            message += `*القسم الثالث: المهام الإدارية (غير منجزة)*\n`;
+            taskLocations.forEach(location => {
+                const tasks = groupedAndSortedTasks[location];
+                if (tasks.length > 0) {
+                    message += `*المكان: ${location}*\n`;
+                    tasks.forEach(t => {
+                        let importanceText = '';
+                        if (t.importance === 'urgent') importanceText = '[عاجل] ';
+                        if (t.importance === 'important') importanceText = '[مهم] ';
+                        message += `- ${importanceText}${t.task} - تاريخ الاستحقاق: ${formatDate(t.dueDate)}\n`;
+                    });
+                }
+            });
+        }
+
+        if (filteredSessions.length === 0 && filteredAppointments.length === 0 && taskLocations.length === 0) {
+            message += "لا توجد بنود في جدول الأعمال لهذا اليوم.";
+        }
+        // --- End Formatting ---
+        
+        const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+        window.open(whatsappUrl, '_blank');
+
+        setIsShareAssigneeModalOpen(false);
+    };
 
     // Session Handlers
     const handlePostponeSession = (sessionId: string, newDate: Date, newReason: string) => {
@@ -742,11 +829,9 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
     };
 
     // --- Long Press Handlers for Admin Tasks ---
-    // FIX: Changed timer ref to be nullable for stricter type checking and correct handling of clearTimeout.
     const adminTaskLongPressTimer = React.useRef<number | null>(null);
 
     const handleAdminTaskTouchStart = (e: React.TouchEvent, task: AdminTask) => {
-        // FIX: Used window.setTimeout to be explicit about browser environment.
         adminTaskLongPressTimer.current = window.setTimeout(() => {
             const touch = e.touches[0];
             const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY };
@@ -755,7 +840,6 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
     };
 
     const handleAdminTaskTouchEnd = () => {
-        // FIX: Added a stricter null check and used window.clearTimeout to prevent errors. Reset ref to null.
         if (adminTaskLongPressTimer.current !== null) {
             window.clearTimeout(adminTaskLongPressTimer.current);
             adminTaskLongPressTimer.current = null;
@@ -767,10 +851,16 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
         <div className="space-y-6">
             <div className="no-print flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <h1 className="text-3xl font-bold text-gray-800">الرئيسية</h1>
-                <button onClick={() => setIsPrintAssigneeModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                    <PrintIcon className="w-5 h-5" />
-                    <span>طباعة جدول الأعمال</span>
-                </button>
+                 <div className="flex items-center gap-2">
+                    <button onClick={() => setIsPrintAssigneeModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                        <PrintIcon className="w-5 h-5" />
+                        <span>طباعة جدول الأعمال</span>
+                    </button>
+                    <button onClick={() => setIsShareAssigneeModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                        <ShareIcon className="w-5 h-5" />
+                        <span>إرسال عبر واتساب</span>
+                    </button>
+                </div>
             </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1171,6 +1261,35 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                         </div>
                         <div className="mt-6 flex justify-end">
                             <button type="button" onClick={() => setIsPrintAssigneeModalOpen(false)} className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors">إغلاق</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {isShareAssigneeModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={() => setIsShareAssigneeModalOpen(false)}>
+                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+                        <h2 className="text-xl font-bold mb-4 border-b pb-3">اختر الشخص لإرسال جدول أعماله عبر واتساب</h2>
+                        <div className="space-y-3 max-h-80 overflow-y-auto">
+                            <button
+                                onClick={() => handleShareAssigneeReport(null)}
+                                className="w-full text-right px-4 py-3 bg-green-50 text-green-800 font-semibold rounded-lg hover:bg-green-100 transition-colors"
+                            >
+                                إرسال جدول الأعمال العام (لكل المهام اليومية)
+                            </button>
+                            <h3 className="text-md font-semibold text-gray-600 pt-2">أو إرسال لشخص محدد:</h3>
+                            {assistants.map(name => (
+                                <button
+                                    key={name}
+                                    onClick={() => handleShareAssigneeReport(name)}
+                                    className="w-full text-right block px-4 py-2 bg-gray-50 text-gray-800 rounded-md hover:bg-gray-100 transition-colors"
+                                >
+                                    {name}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="mt-6 flex justify-end">
+                            <button type="button" onClick={() => setIsShareAssigneeModalOpen(false)} className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors">إغلاق</button>
                         </div>
                     </div>
                 </div>

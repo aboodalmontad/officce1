@@ -35,7 +35,6 @@ interface ClientsTreeViewProps {
 }
 
 const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props: ClientsTreeViewProps; expanded: boolean; onToggle: () => void }> = ({ stage, caseItem, client, props, expanded, onToggle }) => {
-    // FIX: Changed timer ref to be nullable for stricter type checking and correct handling of clearTimeout.
     const longPressTimer = React.useRef<number | null>(null);
 
     const handleContextMenu = (event: React.MouseEvent) => {
@@ -65,7 +64,6 @@ const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props:
     };
     
     const handleTouchStart = (e: React.TouchEvent) => {
-        // FIX: Used window.setTimeout to be explicit about browser environment.
         longPressTimer.current = window.setTimeout(() => {
             const touch = e.touches[0];
             const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY };
@@ -74,7 +72,6 @@ const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props:
     };
 
     const handleTouchEnd = () => {
-        // FIX: Added a stricter null check and used window.clearTimeout to prevent errors. Reset ref to null.
         if (longPressTimer.current !== null) {
             window.clearTimeout(longPressTimer.current);
             longPressTimer.current = null;
@@ -201,7 +198,6 @@ const StageItemContainer: React.FC<{ stage: Stage; caseItem: Case; client: Clien
 const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeViewProps; expanded: boolean; onToggle: () => void }> = ({ caseItem, client, props, expanded, onToggle }) => {
     const [activeTab, setActiveTab] = React.useState<'stages' | 'accounting'>('stages');
     const caseAccountingEntries = props.accountingEntries.filter(e => e.caseId === caseItem.id);
-    // FIX: Changed timer ref to be nullable for stricter type checking and correct handling of clearTimeout.
     const longPressTimer = React.useRef<number | null>(null);
 
     const handleFeeChange = (newFee: string) => {
@@ -246,7 +242,6 @@ const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeVie
     };
     
     const handleTouchStart = (e: React.TouchEvent) => {
-        // FIX: Used window.setTimeout to be explicit about browser environment.
         longPressTimer.current = window.setTimeout(() => {
             const touch = e.touches[0];
             const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY };
@@ -255,7 +250,6 @@ const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeVie
     };
 
     const handleTouchEnd = () => {
-        // FIX: Added a stricter null check and used window.clearTimeout to prevent errors. Reset ref to null.
         if (longPressTimer.current !== null) {
             window.clearTimeout(longPressTimer.current);
             longPressTimer.current = null;
@@ -320,7 +314,6 @@ const CaseItemContainer: React.FC<{ caseItem: Case; client: Client; props: Clien
 }
 
 const ClientItem: React.FC<{ client: Client; props: ClientsTreeViewProps; expanded: boolean; onToggle: () => void; }> = ({ client, props, expanded, onToggle }) => {
-    // FIX: Changed timer ref to be nullable for stricter type checking and correct handling of clearTimeout.
     const longPressTimer = React.useRef<number | null>(null);
     
     const handleContextMenu = (event: React.MouseEvent) => {
@@ -350,7 +343,6 @@ const ClientItem: React.FC<{ client: Client; props: ClientsTreeViewProps; expand
     };
 
     const handleTouchStart = (e: React.TouchEvent) => {
-        // FIX: Used window.setTimeout to be explicit about browser environment.
         longPressTimer.current = window.setTimeout(() => {
             const touch = e.touches[0];
             const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY };
@@ -359,7 +351,6 @@ const ClientItem: React.FC<{ client: Client; props: ClientsTreeViewProps; expand
     };
 
     const handleTouchEnd = () => {
-        // FIX: Added a stricter null check and used window.clearTimeout to prevent errors. Reset ref to null.
         if (longPressTimer.current !== null) {
             window.clearTimeout(longPressTimer.current);
             longPressTimer.current = null;
