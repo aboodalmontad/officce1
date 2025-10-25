@@ -58,7 +58,7 @@ const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointmen
         <div className="bg-white rounded-lg shadow overflow-hidden">
             <div className="flex justify-between items-center p-4 bg-gray-50 border-b">
                 <h3 className="text-lg font-bold">سجل المواعيد</h3>
-                <button onClick={onAddAppointment} className="no-print flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                <button onClick={onAddAppointment} className="no-print flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors text-sm">
                     <PlusIcon className="w-5 h-5" />
                     <span>موعد جديد</span>
                 </button>
@@ -829,24 +829,24 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                     </div>
                                     <div className="bg-white p-4 sm:p-6 rounded-lg shadow space-y-4 no-print">
                                         <div className="flex justify-between items-center flex-wrap gap-4 border-b pb-3">
-                                            <h2 className="text-2xl font-semibold">المهام الإدارية</h2>
                                             <div className="flex items-center gap-4">
-                                                <div className="relative">
-                                                    <input 
-                                                        type="search" 
-                                                        placeholder="ابحث عن مهمة..." 
-                                                        value={adminTaskSearch}
-                                                        onChange={(e) => setAdminTaskSearch(e.target.value)}
-                                                        className="w-full sm:w-64 p-2 ps-10 text-sm border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500" 
-                                                    />
-                                                    <div className="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
-                                                        <SearchIcon className="w-4 h-4 text-gray-500" />
-                                                    </div>
-                                                </div>
-                                                <button onClick={() => onOpenAdminTaskModal()} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                                                <h2 className="text-2xl font-semibold">المهام الإدارية</h2>
+                                                <button onClick={() => onOpenAdminTaskModal()} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors text-sm">
                                                     <PlusIcon className="w-5 h-5" />
                                                     <span>مهمة جديدة</span>
                                                 </button>
+                                            </div>
+                                            <div className="relative">
+                                                <input 
+                                                    type="search" 
+                                                    placeholder="ابحث عن مهمة..." 
+                                                    value={adminTaskSearch}
+                                                    onChange={(e) => setAdminTaskSearch(e.target.value)}
+                                                    className="w-full sm:w-64 p-2 ps-10 text-sm border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500" 
+                                                />
+                                                <div className="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
+                                                    <SearchIcon className="w-4 h-4 text-gray-500" />
+                                                </div>
                                             </div>
                                         </div>
                                         <div className="border-b border-gray-200">

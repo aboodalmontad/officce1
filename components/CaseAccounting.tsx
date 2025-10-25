@@ -18,7 +18,7 @@ const CaseAccounting: React.FC<CaseAccountingProps> = ({ caseData, client, caseA
     const [formData, setFormData] = React.useState<Partial<AccountingEntry>>({});
 
     const sortedEntries = React.useMemo(() =>
-        [...caseAccountingEntries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+        [...caseAccountingEntries].sort((a, b) => b.date.getTime() - a.date.getTime()),
         [caseAccountingEntries]
     );
 

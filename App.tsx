@@ -5,8 +5,6 @@ import { Session as AuthSession, User } from '@supabase/supabase-js';
 const HomePage = React.lazy(() => import('./pages/HomePage'));
 const ClientsPage = React.lazy(() => import('./pages/ClientsPage'));
 const AccountingPage = React.lazy(() => import('./pages/AccountingPage'));
-const InvoicesPage = React.lazy(() => import('./pages/InvoicesPage'));
-const ReportsPage = React.lazy(() => import('./pages/ReportsPage'));
 const SettingsPage = React.lazy(() => import('./pages/SettingsPage'));
 const LoginPage = React.lazy(() => import('./pages/LoginPage'));
 const AdminDashboard = React.lazy(() => import('./pages/AdminDashboard'));
@@ -64,7 +62,7 @@ export const useData = () => {
     return context;
 };
 
-type Page = 'home' | 'clients' | 'accounting' | 'invoices' | 'reports' | 'settings';
+type Page = 'home' | 'clients' | 'accounting' | 'settings';
 
 interface AppProps {
     onRefresh: () => void;
@@ -163,8 +161,6 @@ const Navbar: React.FC<{
         { id: 'home', label: 'الرئيسية', icon: HomeIcon },
         { id: 'clients', label: 'الموكلين', icon: UserIcon },
         { id: 'accounting', label: 'المحاسبة', icon: CalculatorIcon },
-        { id: 'invoices', label: 'الفواتير', icon: DocumentTextIcon },
-        { id: 'reports', label: 'التقارير', icon: ChartBarIcon },
         { id: 'settings', label: 'الإعدادات', icon: Cog6ToothIcon },
     ];
     
@@ -399,7 +395,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
 
     const handleCreateInvoice = (clientId: string, caseId?: string) => {
         setInitialInvoiceData({ clientId, caseId });
-        setCurrentPage('invoices');
+        setCurrentPage('accounting');
     };
     
     const clearInitialInvoiceData = () => setInitialInvoiceData(undefined);
@@ -408,9 +404,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         switch (currentPage) {
             case 'home': return <HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} />;
             case 'clients': return <ClientsPage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} onCreateInvoice={handleCreateInvoice} />;
-            case 'accounting': return <AccountingPage />;
-            case 'invoices': return <InvoicesPage initialInvoiceData={initialInvoiceData} clearInitialInvoiceData={clearInitialInvoiceData} />;
-            case 'reports': return <ReportsPage />;
+            case 'accounting': return <AccountingPage initialInvoiceData={initialInvoiceData} clearInitialInvoiceData={clearInitialInvoiceData} />;
             case 'settings': return <SettingsPage />;
             default: return <HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} />;
         }

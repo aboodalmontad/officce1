@@ -144,16 +144,19 @@ const SiteFinancesPage: React.FC = () => {
 
     // Report Data Processing
     const reportsData = React.useMemo(() => {
-        // FIX: The original logic for sorting monthly data was incorrect because it tried to create a Date from a localized string (e.g., "يناير ٢٠٢٤"), which is unreliable.
-        // This has been updated to group by a sortable date key and store a Date object for correct chronological sorting.
-        const monthlyData = entries.reduce((acc, entry) => {
+        // FIX: Typed the accumulator parameter of the reduce function to ensure correct type inference for monthlyData.
+        const monthlyData = entries.reduce((acc: Record<string, { month: string, monthDate: Date, income: number, expense: number }>, entry) => {
             const d = new Date(entry.payment_date);
+            if (isNaN(d.getTime())) {
+                console.warn("Skipping financial entry with invalid date:", entry);
+                return acc; 
+            }
             const monthStart = new Date(d.getFullYear(), d.getMonth(), 1);
             const monthKey = monthStart.toISOString();
 
             if (!acc[monthKey]) {
                 acc[monthKey] = {
-                    month: new Date(entry.payment_date).toLocaleString('ar-EG', { month: 'short', year: 'numeric' }),
+                    month: d.toLocaleString('ar-EG', { month: 'short', year: 'numeric' }),
                     monthDate: monthStart,
                     income: 0,
                     expense: 0
@@ -165,7 +168,7 @@ const SiteFinancesPage: React.FC = () => {
                 acc[monthKey].expense += entry.amount;
             }
             return acc;
-        }, {} as Record<string, { month: string, monthDate: Date, income: number, expense: number }>);
+        }, {});
 
         const incomeBreakdown = entries
             .filter(e => e.type === 'income')
@@ -184,7 +187,7 @@ const SiteFinancesPage: React.FC = () => {
             }, {} as Record<string, number>);
 
         return {
-            monthly: Object.values(monthlyData).sort((a,b) => a.monthDate.getTime() - b.monthDate.getTime()),
+            monthly: Object.values(monthlyData).sort((a, b) => a.monthDate.getTime() - b.monthDate.getTime()),
             income: Object.entries(incomeBreakdown).map(([name, value]) => ({ name, value })),
             expense: Object.entries(expenseBreakdown).map(([name, value]) => ({ name, value })),
         };
