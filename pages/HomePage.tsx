@@ -2,7 +2,7 @@ import * as React from 'react';
 import Calendar from '../components/Calendar';
 import { Session, AdminTask, Appointment, Stage, Client } from '../types';
 import { formatDate, isSameDay, isBeforeToday, toInputDateString } from '../utils/dateUtils';
-import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, CalendarIcon, ChevronLeftIcon, ScaleIcon, BuildingLibraryIcon, ShareIcon, UserIcon } from '../components/icons';
+import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, CalendarIcon, ChevronLeftIcon, ScaleIcon, BuildingLibraryIcon, ShareIcon, UserIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon } from '../components/icons';
 import SessionsTable from '../components/SessionsTable';
 import PrintableReport from '../components/PrintableReport';
 import { printElement } from '../utils/printUtils';
@@ -137,7 +137,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
     // State for drag-and-drop of groups
     const [locationOrder, setLocationOrder] = React.useState<string[]>([]);
     const [draggedGroupLocation, setDraggedGroupLocation] = React.useState<string | null>(null);
-    const [activeLocationTab, setActiveLocationTab] = React.useState<string>('all');
+    const [activeLocationTab, setActiveLocationTab] = React.useState<string>('');
 
     // State for inline assignee editing
     const [editingAssigneeTaskId, setEditingAssigneeTaskId] = React.useState<string | null>(null);
@@ -726,15 +726,18 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
             
             return [...updatedOrder, ...newlyAddedLocations];
         });
-        
-        setActiveLocationTab(currentTab => {
-             const newLocations = Object.keys(groupedTasks);
-             if (currentTab !== 'all' && !newLocations.includes(currentTab)) {
-                return 'all';
-             }
-             return currentTab;
-        });
     }, [groupedTasks]);
+
+    React.useEffect(() => {
+        if (activeLocationTab && locationOrder.includes(activeLocationTab)) {
+            return;
+        }
+        if (locationOrder.length > 0) {
+            setActiveLocationTab(locationOrder[0]);
+        } else {
+            setActiveLocationTab('');
+        }
+    }, [locationOrder, activeLocationTab]);
 
     const handleDateSelect = (date: Date) => {
         setSelectedDate(date);
@@ -1038,30 +1041,53 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                             </div>
                                         </div>
                                         <div className="border-b border-gray-200">
-                                            <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+                                            <nav className="-mb-px flex space-x-4" aria-label="Tabs">
                                                 <button
                                                     onClick={() => setActiveTaskTab('pending')}
-                                                    className={`${activeTaskTab === 'pending' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                                                    className={`p-2 rounded-md ${activeTaskTab === 'pending' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-gray-100'}`}
+                                                    title="المهام المعلقة"
                                                 >
-                                                    المهام المعلقة
+                                                    <ClipboardDocumentIcon className="w-5 h-5" />
                                                 </button>
                                                 <button
                                                     onClick={() => setActiveTaskTab('completed')}
-                                                    className={`${activeTaskTab === 'completed' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                                                    className={`p-2 rounded-md ${activeTaskTab === 'completed' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-gray-100'}`}
+                                                    title="المهام المنجزة"
                                                 >
-                                                    المهام المنجزة
+                                                    <ClipboardDocumentCheckIcon className="w-5 h-5" />
                                                 </button>
                                             </nav>
                                         </div>
 
                                         {locationOrder.length > 0 && (
                                             <div className="border-b border-gray-200">
-                                                <nav className="-mb-px flex space-x-4 overflow-x-auto" aria-label="Location Tabs">
-                                                    <button onClick={() => setActiveLocationTab('all')} className={`${activeLocationTab === 'all' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>
-                                                        الكل
-                                                    </button>
+                                                <nav className="-mb-px flex space-x-1 sm:space-x-2 overflow-x-auto" aria-label="Location Tabs">
                                                     {locationOrder.map(location => (
-                                                        <button key={location} onClick={() => setActiveLocationTab(location)} className={`${activeLocationTab === location ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>
+                                                        <button
+                                                            key={location}
+                                                            onClick={() => setActiveLocationTab(location)}
+                                                            draggable
+                                                            onDragStart={e => handleDragStart(e, 'group', location)}
+                                                            onDragEnd={handleDragEnd}
+                                                            onDragOver={e => e.preventDefault()}
+                                                            onDrop={e => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                if (!draggedGroupLocation || draggedGroupLocation === location) {
+                                                                    return;
+                                                                }
+                                                                setLocationOrder(currentOrder => {
+                                                                    const sourceIndex = currentOrder.indexOf(draggedGroupLocation);
+                                                                    const targetIndex = currentOrder.indexOf(location);
+                                                                    if (sourceIndex === -1 || targetIndex === -1) return currentOrder;
+                                                                    const newOrder = [...currentOrder];
+                                                                    const [movedItem] = newOrder.splice(sourceIndex, 1);
+                                                                    newOrder.splice(targetIndex, 0, movedItem);
+                                                                    return newOrder;
+                                                                });
+                                                            }}
+                                                            className={`whitespace-nowrap py-3 px-4 rounded-t-md border-b-2 font-medium text-sm cursor-grab transition-all duration-150 ${activeLocationTab === location ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} ${draggedGroupLocation === location ? 'opacity-30 scale-95' : 'opacity-100'}`}
+                                                        >
                                                             {location}
                                                         </button>
                                                     ))}
@@ -1070,47 +1096,18 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                         )}
                                         
                                         <div className="mt-4 space-y-6">
-                                            {locationOrder.length > 0 ? (
-                                                activeLocationTab === 'all' ? (
-                                                    locationOrder.map(location => {
-                                                        const tasks = groupedTasks[location];
-                                                        if (!tasks || tasks.length === 0) return null;
-                                                        return (
-                                                            <div 
-                                                                key={location}
-                                                                draggable={activeTaskTab === 'pending'}
-                                                                onDragStart={e => activeTaskTab === 'pending' && handleDragStart(e, 'group', location)}
-                                                                onDragOver={handleGroupDragOver}
-                                                                onDrop={e => handleGroupDrop(e, location)}
-                                                                onDragEnd={handleDragEnd}
-                                                                className={`transition-opacity ${draggedGroupLocation === location ? 'opacity-40' : ''}`}
-                                                            >
-                                                                <h3 className={`text-lg font-semibold text-gray-700 bg-gray-100 p-3 rounded-t-lg ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`}>
-                                                                    {location} <span className="text-sm font-normal text-gray-500">({tasks.length} مهام)</span>
-                                                                </h3>
-                                                                <div className="border border-t-0 rounded-b-lg bg-gray-50 p-2 sm:p-4 space-y-3">
-                                                                    {tasks.map(task => renderTaskItem(task, location))}
-                                                                </div>
-                                                            </div>
-                                                        )
-                                                    })
-                                                ) : (
-                                                    (() => {
-                                                        const tasks = groupedTasks[activeLocationTab];
-                                                        if (!tasks || tasks.length === 0) {
-                                                            return <p className="text-center text-gray-500 py-8">لا توجد مهام في هذا المكان.</p>;
-                                                        }
-                                                        return (
-                                                            <div 
-                                                                onDragOver={handleGroupDragOver}
-                                                                onDrop={e => handleGroupDrop(e, activeLocationTab)}
-                                                                className="bg-gray-50 p-2 sm:p-4 space-y-3 border border-t-0 rounded-b-lg"
-                                                            >
-                                                                {tasks.map(task => renderTaskItem(task, activeLocationTab))}
-                                                            </div>
-                                                        )
-                                                    })()
-                                                )
+                                            {locationOrder.length > 0 && activeLocationTab ? (
+                                                <div 
+                                                    onDragOver={handleGroupDragOver}
+                                                    onDrop={e => handleGroupDrop(e, activeLocationTab)}
+                                                    className="bg-gray-50 p-2 sm:p-4 space-y-3 border border-gray-200 border-t-0 rounded-b-lg -mt-px min-h-[100px]"
+                                                >
+                                                    {(groupedTasks[activeLocationTab] || []).length > 0 ? (
+                                                        (groupedTasks[activeLocationTab] || []).map(task => renderTaskItem(task, activeLocationTab))
+                                                    ) : (
+                                                         <p className="text-center text-gray-500 py-8">لا توجد مهام في هذا المكان.</p>
+                                                    )}
+                                                </div>
                                             ) : (
                                                 <p className="text-center text-gray-500 py-8">لا توجد مهام لعرضها.</p>
                                             )}
