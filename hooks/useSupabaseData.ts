@@ -263,9 +263,9 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         setDeletedIds(prev => {
             const newDeleted = { ...prev };
             for (const key of Object.keys(syncedDeletions) as (keyof DeletedIds)[]) {
-                const syncedIds = new Set((syncedDeletions[key] || []).map((item: any) => item.id || item.name));
-                if (syncedIds.size > 0) {
-                    newDeleted[key] = (prev[key] || []).filter(id => !syncedIds.has(id));
+                const syncedSet = new Set((syncedDeletions[key] || []).map((item: any) => item.id || item.name));
+                if (syncedSet.size > 0) {
+                     newDeleted[key] = (prev[key] || []).filter(id => !syncedSet.has(id));
                 }
             }
             return newDeleted;

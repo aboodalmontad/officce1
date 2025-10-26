@@ -150,11 +150,13 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                 localData.accountingEntries.length === 0 && 
                 localData.invoices.length === 0
             );
+
+            const hasPendingDeletions = Object.values(deletedIds).some(arr => arr.length > 0);
             const isRemoteEffectivelyEmpty = remoteDataRaw.clients.length === 0 && remoteDataRaw.admin_tasks.length === 0;
 
-            if (isInitialPull || (isLocalEffectivelyEmpty && !isRemoteEffectivelyEmpty)) {
+            if (isInitialPull || (isLocalEffectivelyEmpty && !isRemoteEffectivelyEmpty && !hasPendingDeletions)) {
                 if (!isInitialPull) {
-                    console.warn("Safety Check Triggered: Local data is empty but remote is not. Aborting destructive sync and performing a safe refresh from remote instead.");
+                    console.warn("Safety Check Triggered: Local data is empty with no pending deletions, but remote is not. Aborting destructive sync and performing a safe refresh from remote instead.");
                 } else {
                     console.log("Performing initial pull. Server is source of truth.");
                 }
