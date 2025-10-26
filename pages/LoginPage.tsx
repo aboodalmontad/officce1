@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { getSupabaseClient } from '../supabaseClient';
-import { ExclamationCircleIcon, EyeIcon, EyeSlashIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon } from '../components/icons';
+import { ExclamationCircleIcon, EyeIcon, EyeSlashIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, ArrowTopRightOnSquareIcon } from '../components/icons';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { User } from '@supabase/supabase-js';
 
@@ -383,6 +383,18 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                             <span className="hover:underline">هل تواجه مشكلة في الإعداد؟ افتح معالج قاعدة البيانات</span>
                         </button>
                     </div>
+                </div>
+
+                <div className="mt-6 text-center">
+                    <a 
+                        href="https://joint-fish-ila1mb4.gamma.site/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-blue-600 hover:underline"
+                    >
+                        <span>زيارة الصفحة الرئيسية للتطبيق</span>
+                        <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+                    </a>
                 </div>
             </div>
         </div>
