@@ -330,8 +330,12 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                          throw new Error("User is authenticated, but no profile was found.");
                     }
                 } else if (!profileFromCache) {
-                    // Offline and no cached profile.
-                    throw new Error("أنت غير متصل ولا توجد بيانات محفوظة على هذا الجهاز. يرجى الاتصال بالإنترنت.");
+                    // Offline and no cached profile, but we might have a stale session from Supabase's cache.
+                    // Instead of throwing an error which leads to an error screen,
+                    // we treat this as an unverified session. By setting the profile to null,
+                    // the app will gracefully fall back to the LoginPage on the next render.
+                    console.warn("Offline with a session but no cached profile. Falling back to login page.");
+                    setProfile(null);
                 }
 
             } catch (e: any) {
