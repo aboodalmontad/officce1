@@ -10,6 +10,7 @@ import { printElement } from '../utils/printUtils';
 import { MenuItem } from '../components/ContextMenu';
 import { useDebounce } from '../hooks/useDebounce';
 import { useData } from '../App';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 
 interface ClientsPageProps {
     onOpenAdminTaskModal: (initialData?: any) => void;
@@ -46,6 +47,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
     
     // State for AI data generation
     const [isGenerating, setIsGenerating] = React.useState(false);
+    const isOnline = useOnlineStatus();
 
 
     const filteredClients = React.useMemo(() => {
@@ -654,8 +656,9 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                     <div className="mt-6">
                         <button 
                             onClick={generateSampleData}
-                            disabled={isGenerating}
-                            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-colors disabled:bg-purple-300"
+                            disabled={isGenerating || !isOnline}
+                            title={!isOnline ? "هذه الميزة تتطلب اتصالاً بالإنترنت" : "إنشاء بيانات باستخدام الذكاء الاصطناعي"}
+                            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-colors disabled:bg-purple-300 disabled:cursor-not-allowed"
                         >
                             {isGenerating ? <ArrowPathIcon className="w-5 h-5 animate-spin" /> : <SparklesIcon className="w-5 h-5" />}
                             <span>{isGenerating ? 'جاري الإنشاء...' : 'إنشاء بيانات تجريبية (AI)'}</span>

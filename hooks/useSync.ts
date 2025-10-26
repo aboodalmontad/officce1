@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { User } from '@supabase/supabase-js';
-import { AppData, checkSupabaseSchema, fetchDataFromSupabase, upsertDataToSupabase, FlatData, deleteDataFromSupabase } from './useOnlineData';
+import { AppData, checkSupabaseSchema, fetchDataFromSupabase, upsertDataToSupabase, FlatData, deleteDataFromSupabase, transformRemoteToLocal } from './useOnlineData';
 import { getSupabaseClient } from '../supabaseClient';
 import { Client, Case, Stage, Session } from '../types';
 import { DeletedIds } from './useSupabaseData';
@@ -40,16 +40,16 @@ const flattenData = (data: AppData): FlatData => {
 };
 
 // Reconstructs the nested client data structure from flat arrays.
-const constructData = (flatData: FlatData): AppData => {
+const constructData = (flatData: Partial<FlatData>): AppData => {
     const sessionMap = new Map<string, Session[]>();
-    flatData.sessions.forEach(s => {
+    (flatData.sessions || []).forEach(s => {
         const stageId = (s as any).stage_id;
         if (!sessionMap.has(stageId)) sessionMap.set(stageId, []);
         sessionMap.get(stageId)!.push(s as Session);
     });
 
     const stageMap = new Map<string, Stage[]>();
-    flatData.stages.forEach(st => {
+    (flatData.stages || []).forEach(st => {
         const stage = { ...st, sessions: sessionMap.get(st.id) || [] } as Stage;
         const caseId = (st as any).case_id;
         if (!stageMap.has(caseId)) stageMap.set(caseId, []);
@@ -57,7 +57,7 @@ const constructData = (flatData: FlatData): AppData => {
     });
 
     const caseMap = new Map<string, Case[]>();
-    flatData.cases.forEach(cs => {
+    (flatData.cases || []).forEach(cs => {
         const caseItem = { ...cs, stages: stageMap.get(cs.id) || [] } as Case;
         const clientId = (cs as any).client_id;
         if (!caseMap.has(clientId)) caseMap.set(clientId, []);
@@ -65,19 +65,19 @@ const constructData = (flatData: FlatData): AppData => {
     });
     
     const invoiceItemMap = new Map<string, any[]>();
-    flatData.invoice_items.forEach(item => {
+    (flatData.invoice_items || []).forEach(item => {
         const invoiceId = (item as any).invoice_id;
         if(!invoiceItemMap.has(invoiceId)) invoiceItemMap.set(invoiceId, []);
         invoiceItemMap.get(invoiceId)!.push(item);
     });
 
     return {
-        clients: flatData.clients.map(c => ({ ...c, cases: caseMap.get(c.id) || [] } as Client)),
-        adminTasks: flatData.admin_tasks as any,
-        appointments: flatData.appointments as any,
-        accountingEntries: flatData.accounting_entries as any,
-        assistants: flatData.assistants.map(a => a.name),
-        invoices: flatData.invoices.map(inv => ({...inv, items: invoiceItemMap.get(inv.id) || []})) as any,
+        clients: (flatData.clients || []).map(c => ({ ...c, cases: caseMap.get(c.id) || [] } as Client)),
+        adminTasks: (flatData.admin_tasks || []) as any,
+        appointments: (flatData.appointments || []) as any,
+        accountingEntries: (flatData.accounting_entries || []) as any,
+        assistants: (flatData.assistants || []).map(a => a.name),
+        invoices: (flatData.invoices || []).map(inv => ({...inv, items: invoiceItemMap.get(inv.id) || []})) as any,
     };
 };
 
@@ -109,20 +109,6 @@ const mergeForRefresh = <T extends { id: any; updated_at?: Date | string }>(loca
     });
 };
 
-
-// Helper to transform remote snake_case data to local camelCase format
-const transformRemoteToLocal = (remote: any): FlatData => ({
-    clients: remote.clients.map(({ contact_info, ...r }: any) => ({ ...r, contactInfo: contact_info })),
-    cases: remote.cases.map(({ client_name, opponent_name, fee_agreement, ...r }: any) => ({ ...r, clientName: client_name, opponentName: opponent_name, feeAgreement: fee_agreement })),
-    stages: remote.stages.map(({ case_number, first_session_date, decision_date, decision_number, decision_summary, decision_notes, ...r }: any) => ({ ...r, caseNumber: case_number, firstSessionDate: first_session_date, decisionDate: decision_date, decisionNumber: decision_number, decisionSummary: decision_summary, decisionNotes: decision_notes })),
-    sessions: remote.sessions.map(({ case_number, client_name, opponent_name, postponement_reason, next_postponement_reason, is_postponed, next_session_date, ...r }: any) => ({ ...r, caseNumber: case_number, clientName: client_name, opponentName: opponent_name, postponementReason: postponement_reason, nextPostponementReason: next_postponement_reason, isPostponed: is_postponed, nextSessionDate: next_session_date })),
-    admin_tasks: remote.admin_tasks.map(({ due_date, ...r }: any) => ({ ...r, dueDate: due_date })),
-    appointments: remote.appointments.map(({ reminder_time_in_minutes, ...r }: any) => ({ ...r, reminderTimeInMinutes: reminder_time_in_minutes })),
-    accounting_entries: remote.accounting_entries.map(({ client_id, case_id, client_name, ...r }: any) => ({ ...r, clientId: client_id, caseId: case_id, clientName: client_name })),
-    assistants: remote.assistants.map((a: any) => ({ name: a.name })),
-    invoices: remote.invoices.map(({ client_id, client_name, case_id, case_subject, issue_date, due_date, tax_rate, ...r }: any) => ({ ...r, clientId: client_id, clientName: client_name, caseId: case_id, caseSubject: case_subject, issueDate: issue_date, dueDate: due_date, taxRate: tax_rate })),
-    invoice_items: remote.invoice_items,
-});
 
 export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletionsSynced, onSyncStatusChange, isOnline, isAuthLoading }: UseSyncProps) => {
     const userRef = React.useRef(user);
@@ -198,7 +184,7 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
 
             for (const key of Object.keys(localFlatData) as (keyof FlatData)[]) {
                 const localItems = (localFlatData as any)[key] as any[];
-                const remoteItems = (remoteFlatData as any)[key] as any[];
+                const remoteItems = (remoteFlatData as any)[key] as any[] || [];
                 
                 const localMap = new Map(localItems.map(i => [i.id ?? i.name, i]));
                 const remoteMap = new Map(remoteItems.map(i => [i.id ?? i.name, i]));
@@ -268,8 +254,26 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
             }
 
             setStatus('syncing', 'جاري رفع البيانات إلى السحابة...');
-            await upsertDataToSupabase(flatUpserts as FlatData, currentUser);
+            const upsertedDataRaw = await upsertDataToSupabase(flatUpserts as FlatData, currentUser);
     
+            // Transform the server response (snake_case) to local format (camelCase)
+            const upsertedFlatData = transformRemoteToLocal(upsertedDataRaw);
+            const upsertedDataMap = new Map();
+            Object.values(upsertedFlatData).forEach(arr => 
+                (arr as any[])?.forEach(item => upsertedDataMap.set(item.id ?? item.name, item))
+            );
+
+            // Update the optimistic merge result with the authoritative data from the server
+            for (const key of Object.keys(mergedFlatData) as (keyof FlatData)[]) {
+                const mergedItems = (mergedFlatData as any)[key];
+                if (Array.isArray(mergedItems)) {
+                    (mergedFlatData as any)[key] = mergedItems.map((item: any) => {
+                        const upsertedVersion = upsertedDataMap.get(item.id ?? item.name);
+                        return upsertedVersion || item;
+                    });
+                }
+            }
+
             const finalMergedData = constructData(mergedFlatData as FlatData);
             onDataSynced(finalMergedData);
     
@@ -277,7 +281,11 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
         } catch (err: any) {
             console.error("Error during sync:", err);
             let errorMessage = err.message || 'حدث خطأ غير متوقع.';
-            if (err.table) errorMessage = `[جدول: ${err.table}] ${errorMessage}`;
+            if (String(errorMessage).toLowerCase().includes('failed to fetch')) {
+                errorMessage = 'فشل الاتصال بالخادم. تحقق من اتصالك بالإنترنت وإعدادات CORS.';
+            } else if (err.table) {
+                errorMessage = `[جدول: ${err.table}] ${errorMessage}`;
+            }
             setStatus('error', `فشل المزامنة: ${errorMessage}`);
         }
     }, [localData, userRef, isOnline, onDataSynced, deletedIds, onDeletionsSynced, isAuthLoading]);
@@ -296,7 +304,7 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
         
         try {
             const remoteDataRaw = await fetchDataFromSupabase();
-            const remoteFlatData = transformRemoteToLocal(remoteDataRaw);
+            const remoteFlatData = transformRemoteToLocal(remoteDataRaw) as FlatData;
             
             const localFlatData = flattenData(localData);
             
@@ -325,6 +333,9 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
         } catch (err: any) {
             console.error("Error during realtime refresh:", err);
             let errorMessage = err.message || 'حدث خطأ غير متوقع.';
+            if (String(errorMessage).toLowerCase().includes('failed to fetch')) {
+                errorMessage = 'فشل الاتصال بالخادم. تحقق من اتصالك بالإنترنت وإعدادات CORS.';
+            }
             setStatus('error', `فشل تحديث البيانات: ${errorMessage}`);
         }
     }, [localData, userRef, isOnline, onDataSynced, isAuthLoading]);

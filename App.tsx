@@ -168,7 +168,7 @@ const Navbar: React.FC<{
         <header className="bg-white shadow-md p-2 sm:p-4 flex justify-between items-center no-print sticky top-0 z-30">
             <nav className="flex items-center gap-1 sm:gap-4 flex-wrap">
                 <h1 className="text-xl font-bold text-gray-800 hidden md:block">مكتب المحامي</h1>
-                 <div className="flex items-center gap-1 sm:gap-2">
+                 <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
                     {navItems.map(item => (
                         <button
                             key={item.id}
@@ -176,7 +176,7 @@ const Navbar: React.FC<{
                             className={`flex items-center gap-2 px-2 sm:px-3 py-2 rounded-md text-sm font-medium transition-colors ${currentPage === item.id ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
                         >
                             <item.icon className="w-5 h-5" />
-                            <span className="hidden sm:inline">{item.label}</span>
+                            <span>{item.label}</span>
                         </button>
                     ))}
                 </div>

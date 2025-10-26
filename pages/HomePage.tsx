@@ -2,7 +2,7 @@ import * as React from 'react';
 import Calendar from '../components/Calendar';
 import { Session, AdminTask, Appointment, Stage, Client } from '../types';
 import { formatDate, isSameDay, isBeforeToday, toInputDateString } from '../utils/dateUtils';
-import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, CalendarIcon, ChevronLeftIcon, ScaleIcon, BuildingLibraryIcon, ShareIcon } from '../components/icons';
+import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, CalendarIcon, ChevronLeftIcon, ScaleIcon, BuildingLibraryIcon, ShareIcon, UserIcon } from '../components/icons';
 import SessionsTable from '../components/SessionsTable';
 import PrintableReport from '../components/PrintableReport';
 import { printElement } from '../utils/printUtils';
@@ -974,60 +974,57 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                                             <h3 className={`text-lg font-semibold text-gray-700 bg-gray-100 p-3 rounded-t-lg ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`}>
                                                                 {location} <span className="text-sm font-normal text-gray-500">({tasks.length} مهام)</span>
                                                             </h3>
-                                                            <div className="overflow-x-auto border border-t-0 rounded-b-lg">
-                                                                <table className="w-full text-sm text-right text-gray-600">
-                                                                    <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-                                                                        <tr>
-                                                                            <th className="px-2 sm:px-4 py-3 w-12">إنجاز</th>
-                                                                            <th className="px-2 sm:px-6 py-3">المهمة</th>
-                                                                            <th className="px-2 sm:px-6 py-3">المسؤول</th>
-                                                                            <th className="px-2 sm:px-6 py-3">تاريخ الاستحقاق</th>
-                                                                            <th className="px-2 sm:px-6 py-3">الأهمية</th>
-                                                                            <th className="px-2 sm:px-6 py-3">إجراءات</th>
-                                                                        </tr>
-                                                                    </thead>
-                                                                    <tbody>
-                                                                        {tasks.map(task => (
-                                                                            <React.Fragment key={task.id}>
-                                                                                <tr 
-                                                                                    draggable={activeTaskTab === 'pending'}
-                                                                                    onDragStart={e => handleDragStart(e, 'task', task.id)}
-                                                                                    onDragEnd={handleDragEnd}
-                                                                                    onDragOver={e => {
-                                                                                        if (activeTaskTab !== 'pending' || !draggedTaskId || draggedTaskId === task.id) return;
-                                                                                        e.preventDefault();
-                                                                                    }}
-                                                                                    onDrop={e => {
-                                                                                        if (activeTaskTab !== 'pending') return;
-                                                                                        e.preventDefault();
-                                                                                        e.stopPropagation(); // Prevent group drop from firing
-                                                                                        const rect = e.currentTarget.getBoundingClientRect();
-                                                                                        const midpoint = rect.top + rect.height / 2;
-                                                                                        const position = e.clientY < midpoint ? 'before' : 'after';
-                                                                                        handleTaskDrop(task.id, location, position);
-                                                                                    }}
-                                                                                    onContextMenu={(e) => handleAdminTaskContextMenu(e, task)}
-                                                                                    onTouchStart={(e) => handleAdminTaskTouchStart(e, task)}
-                                                                                    onTouchEnd={handleAdminTaskTouchEnd}
-                                                                                    onTouchMove={handleAdminTaskTouchEnd}
-                                                                                    className={`border-b transition-opacity ${draggedTaskId === task.id ? 'opacity-40' : ''} ${task.completed ? 'bg-green-50' : 'bg-white hover:bg-gray-50'} ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`}
-                                                                                >
-                                                                                    <td className="px-2 sm:px-4 py-4 text-center">
-                                                                                        <input
-                                                                                            type="checkbox"
-                                                                                            checked={task.completed}
-                                                                                            onChange={() => handleToggleTaskComplete(task.id)}
-                                                                                            className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-                                                                                        />
-                                                                                    </td>
-                                                                                    <td className={`px-2 sm:px-6 py-4 font-medium ${task.completed ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.task}</td>
-                                                                                    <td className="px-2 sm:px-6 py-4 text-gray-500" onClick={() => activeTaskTab === 'pending' && setEditingAssigneeTaskId(task.id)}>
+                                                            <div className="border border-t-0 rounded-b-lg bg-gray-50 p-2 sm:p-4 space-y-3">
+                                                                {tasks.map(task => (
+                                                                    <div 
+                                                                        key={task.id}
+                                                                        draggable={activeTaskTab === 'pending'}
+                                                                        onDragStart={e => handleDragStart(e, 'task', task.id)}
+                                                                        onDragEnd={handleDragEnd}
+                                                                        onDragOver={e => {
+                                                                            if (activeTaskTab !== 'pending' || !draggedTaskId || draggedTaskId === task.id) return;
+                                                                            e.preventDefault();
+                                                                        }}
+                                                                        onDrop={e => {
+                                                                            if (activeTaskTab !== 'pending') return;
+                                                                            e.preventDefault();
+                                                                            e.stopPropagation(); // Prevent group drop from firing
+                                                                            const rect = e.currentTarget.getBoundingClientRect();
+                                                                            const midpoint = rect.top + rect.height / 2;
+                                                                            const position = e.clientY < midpoint ? 'before' : 'after';
+                                                                            handleTaskDrop(task.id, location, position);
+                                                                        }}
+                                                                        onContextMenu={(e) => handleAdminTaskContextMenu(e, task)}
+                                                                        onTouchStart={(e) => handleAdminTaskTouchStart(e, task)}
+                                                                        onTouchEnd={handleAdminTaskTouchEnd}
+                                                                        onTouchMove={handleAdminTaskTouchEnd}
+                                                                        className={`p-3 border rounded-lg transition-all duration-150 ${draggedTaskId === task.id ? 'opacity-40 scale-95' : 'opacity-100 scale-100'} ${task.completed ? 'bg-green-50/70 border-green-200' : 'bg-white border-gray-200 hover:bg-gray-50 hover:shadow-sm'} ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`}
+                                                                    >
+                                                                        <div className="flex items-start gap-3">
+                                                                            {/* Checkbox */}
+                                                                            <div className="flex-shrink-0 pt-1">
+                                                                                <input
+                                                                                    type="checkbox"
+                                                                                    checked={task.completed}
+                                                                                    onChange={() => handleToggleTaskComplete(task.id)}
+                                                                                    className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                                                                                />
+                                                                            </div>
+
+                                                                            {/* Task Details */}
+                                                                            <div className="flex-grow">
+                                                                                <p className={`font-medium text-base ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>{task.task}</p>
+                                                                                
+                                                                                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-gray-600">
+                                                                                    {/* Assignee */}
+                                                                                    <div className="flex items-center gap-1.5" onClick={() => activeTaskTab === 'pending' && setEditingAssigneeTaskId(task.id)}>
+                                                                                        <UserIcon className="w-4 h-4 text-gray-400" />
                                                                                         {editingAssigneeTaskId === task.id ? (
                                                                                             <select
                                                                                                 value={task.assignee}
                                                                                                 onChange={(e) => handleAssigneeChange(task.id, e.target.value)}
                                                                                                 onBlur={() => setEditingAssigneeTaskId(null)}
-                                                                                                className="w-full p-1 border rounded bg-white text-sm focus:ring-blue-500 focus:border-blue-500"
+                                                                                                className="p-1 border rounded bg-white text-sm focus:ring-blue-500 focus:border-blue-500"
                                                                                                 autoFocus
                                                                                             >
                                                                                                 {assistants.map(name => (
@@ -1041,23 +1038,32 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                                                                                 {task.assignee || '-'}
                                                                                             </span>
                                                                                         )}
-                                                                                    </td>
-                                                                                    <td className="px-2 sm:px-6 py-4">{formatDate(task.dueDate)}</td>
-                                                                                    <td className="px-2 sm:px-6 py-4">
-                                                                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${importanceMapAdminTasks[task.importance]?.className}`}>
+                                                                                    </div>
+
+                                                                                    {/* Due Date */}
+                                                                                    <div className="flex items-center gap-1.5">
+                                                                                        <CalendarIcon className="w-4 h-4 text-gray-400" />
+                                                                                        <span>{formatDate(task.dueDate)}</span>
+                                                                                    </div>
+
+                                                                                    {/* Importance */}
+                                                                                    <div className="flex items-center gap-1.5">
+                                                                                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${importanceMapAdminTasks[task.importance]?.className}`}>
                                                                                             {importanceMapAdminTasks[task.importance]?.text}
                                                                                         </span>
-                                                                                    </td>
-                                                                                    <td className="px-2 sm:px-6 py-4 flex items-center gap-2">
-                                                                                        <button onClick={() => handleShareTask(task)} className="p-2 text-gray-500 hover:text-green-600" title="مشاركة عبر واتساب"><ShareIcon className="w-4 h-4" /></button>
-                                                                                        <button onClick={() => onOpenAdminTaskModal(task)} className="p-2 text-gray-500 hover:text-blue-600"><PencilIcon className="w-4 h-4" /></button>
-                                                                                        <button onClick={() => openDeleteTaskModal(task)} className="p-2 text-gray-500 hover:text-red-600"><TrashIcon className="w-4 h-4" /></button>
-                                                                                    </td>
-                                                                                </tr>
-                                                                            </React.Fragment>
-                                                                        ))}
-                                                                    </tbody>
-                                                                </table>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+
+                                                                            {/* Actions */}
+                                                                            <div className="flex flex-col sm:flex-row items-center gap-0 sm:gap-1 flex-shrink-0">
+                                                                                <button onClick={() => handleShareTask(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-green-600 rounded-full" title="مشاركة عبر واتساب"><ShareIcon className="w-4 h-4" /></button>
+                                                                                <button onClick={() => onOpenAdminTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-blue-600 rounded-full"><PencilIcon className="w-4 h-4" /></button>
+                                                                                <button onClick={() => openDeleteTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-red-600 rounded-full"><TrashIcon className="w-4 h-4" /></button>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
                                                             </div>
                                                         </div>
                                                     )

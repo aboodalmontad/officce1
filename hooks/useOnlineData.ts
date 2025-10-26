@@ -194,32 +194,57 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     };
     
     const upsertTable = async (table: string, records: any[] | undefined, options: { onConflict?: string } = {}) => {
-        if (!records || records.length === 0) return;
-        const { error } = await supabase.from(table).upsert(records, options);
+        if (!records || records.length === 0) return [];
+        const { data: responseData, error } = await supabase.from(table).upsert(records, options).select();
         if (error) {
             console.error(`Error upserting to ${table}:`, error);
             const newError = new Error(error.message);
             (newError as any).table = table;
             throw newError;
         }
+        return responseData || [];
     };
     
+    const results: Partial<Record<keyof FlatData, any[]>> = {};
+
     // Upsert assistants with conflict resolution
-    await upsertTable('assistants', dataToUpsert.assistants, { onConflict: 'user_id,name' });
+    results.assistants = await upsertTable('assistants', dataToUpsert.assistants, { onConflict: 'user_id,name' });
 
     // Upsert independent tables in parallel
-    await Promise.all([
+    const [adminTasks, appointments, accountingEntries] = await Promise.all([
         upsertTable('admin_tasks', dataToUpsert.admin_tasks),
         upsertTable('appointments', dataToUpsert.appointments),
         upsertTable('accounting_entries', dataToUpsert.accounting_entries),
     ]);
+    results.admin_tasks = adminTasks;
+    results.appointments = appointments;
+    results.accounting_entries = accountingEntries;
 
     // Upsert tables with dependencies in order
-    await upsertTable('clients', dataToUpsert.clients);
-    await upsertTable('cases', dataToUpsert.cases);
-    await upsertTable('stages', dataToUpsert.stages);
-    await upsertTable('sessions', dataToUpsert.sessions);
+    results.clients = await upsertTable('clients', dataToUpsert.clients);
+    results.cases = await upsertTable('cases', dataToUpsert.cases);
+    results.stages = await upsertTable('stages', dataToUpsert.stages);
+    results.sessions = await upsertTable('sessions', dataToUpsert.sessions);
     
-    await upsertTable('invoices', dataToUpsert.invoices);
-    await upsertTable('invoice_items', dataToUpsert.invoice_items);
+    results.invoices = await upsertTable('invoices', dataToUpsert.invoices);
+    results.invoice_items = await upsertTable('invoice_items', dataToUpsert.invoice_items);
+    
+    return results;
+};
+
+// Helper to transform remote snake_case data to local camelCase format
+export const transformRemoteToLocal = (remote: any): Partial<FlatData> => {
+    if (!remote) return {};
+    return {
+        clients: remote.clients?.map(({ contact_info, ...r }: any) => ({ ...r, contactInfo: contact_info })),
+        cases: remote.cases?.map(({ client_name, opponent_name, fee_agreement, ...r }: any) => ({ ...r, clientName: client_name, opponentName: opponent_name, feeAgreement: fee_agreement })),
+        stages: remote.stages?.map(({ case_number, first_session_date, decision_date, decision_number, decision_summary, decision_notes, ...r }: any) => ({ ...r, caseNumber: case_number, firstSessionDate: first_session_date, decisionDate: decision_date, decisionNumber: decision_number, decisionSummary: decision_summary, decisionNotes: decision_notes })),
+        sessions: remote.sessions?.map(({ case_number, client_name, opponent_name, postponement_reason, next_postponement_reason, is_postponed, next_session_date, ...r }: any) => ({ ...r, caseNumber: case_number, clientName: client_name, opponentName: opponent_name, postponementReason: postponement_reason, nextPostponementReason: next_postponement_reason, isPostponed: is_postponed, nextSessionDate: next_session_date })),
+        admin_tasks: remote.admin_tasks?.map(({ due_date, ...r }: any) => ({ ...r, dueDate: due_date })),
+        appointments: remote.appointments?.map(({ reminder_time_in_minutes, ...r }: any) => ({ ...r, reminderTimeInMinutes: reminder_time_in_minutes })),
+        accounting_entries: remote.accounting_entries?.map(({ client_id, case_id, client_name, ...r }: any) => ({ ...r, clientId: client_id, caseId: case_id, clientName: client_name })),
+        assistants: remote.assistants?.map((a: any) => ({ name: a.name })),
+        invoices: remote.invoices?.map(({ client_id, client_name, case_id, case_subject, issue_date, due_date, tax_rate, ...r }: any) => ({ ...r, clientId: client_id, clientName: client_name, caseId: case_id, caseSubject: case_subject, issueDate: issue_date, dueDate: due_date, taxRate: tax_rate })),
+        invoice_items: remote.invoice_items,
+    };
 };

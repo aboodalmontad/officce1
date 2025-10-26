@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lawyer-app-cache-v11';
+const CACHE_NAME = 'lawyer-app-cache-v12';
 // The list of URLs to cache has been expanded to include all critical,
 // external dependencies. This ensures the app is fully functional offline
 // immediately after the service worker is installed, preventing failures
@@ -51,52 +51,60 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // We only want to cache GET requests.
+  // We only want to handle GET requests.
   if (event.request.method !== 'GET') {
     return;
   }
 
-  // Use a cache-first strategy for all requests.
-  // This is suitable for an offline-first application.
+  // Supabase API calls should always go to the network and not be cached.
+  // The JS library itself is hosted on esm.sh and will be cached.
+  if (event.request.url.includes('supabase.co')) {
+    // We don't call event.respondWith, so the browser handles it as usual (network).
+    return;
+  }
+
+  // For all other GET requests, use a robust cache-first strategy.
   event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        // Cache hit - return response
-        if (response) {
-          return response;
+    caches.open(CACHE_NAME).then(async (cache) => {
+      // 1. Try to find a response in the cache.
+      const cachedResponse = await cache.match(event.request);
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+
+      // 2. If not in cache, fetch from the network.
+      try {
+        const networkResponse = await fetch(event.request);
+        
+        // We cache successful responses (status 200) and opaque responses (for no-cors CDNs).
+        // This is important for caching assets like tailwindcss.
+        if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque')) {
+          // Clone the response because it can only be consumed once.
+          const responseToCache = networkResponse.clone();
+          await cache.put(event.request, responseToCache);
         }
+        
+        return networkResponse;
+      } catch (error) {
+        // 3. If the network fails (e.g., offline), provide a fallback.
+        console.error('Fetch failed; returning offline fallback if available for:', event.request.url, error);
 
-        // Not in cache, fetch from network
-        return fetch(event.request).then(
-          networkResponse => {
-            // Check if we received a valid response
-            if (!networkResponse || networkResponse.status !== 200) {
-              return networkResponse;
-            }
-
-            // IMPORTANT: Clone the response. A response is a stream
-            // and because we want the browser to consume the response
-            // as well as the cache consuming the response, we need
-            // to clone it so we have two streams.
-            const responseToCache = networkResponse.clone();
-
-            caches.open(CACHE_NAME)
-              .then(cache => {
-                // We don't cache Supabase API calls, only static assets
-                if (!event.request.url.includes('supabase.co')) {
-                    cache.put(event.request, responseToCache);
-                }
-              });
-
-            return networkResponse;
+        // For navigation requests (i.e., loading a page), return the cached root file.
+        if (event.request.mode === 'navigate') {
+          const fallbackResponse = await cache.match('./');
+          if (fallbackResponse) {
+            return fallbackResponse;
           }
-        ).catch(error => {
-            console.error('Fetching failed:', error);
-            // For navigation requests, return the cached index.html as a fallback.
-            if (event.request.mode === 'navigate') {
-              return caches.match('./index.html');
-            }
+        }
+        
+        // For other failed requests (images, scripts, etc.), there's no specific fallback,
+        // so we return a generic error response to make debugging easier.
+        return new Response('Network error: The resource could not be fetched and is not in the cache.', {
+          status: 408, // Request Timeout
+          statusText: 'Request Timeout',
+          headers: { 'Content-Type': 'text/plain' },
         });
-      })
+      }
+    })
   );
 });

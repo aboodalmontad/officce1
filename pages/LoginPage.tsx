@@ -262,7 +262,17 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                         </div>
                     );
                 } else if (lowerMsg.includes('failed to fetch') || lowerMsg.includes('networkerror')) {
-                    displayError = "فشل الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.";
+                    displayError = (
+                        <div className="text-right w-full text-xs">
+                            <p className="font-bold mb-2 text-sm">فشل الاتصال بالخادم</p>
+                            <p>قد يكون هذا بسبب مشكلة في الشبكة أو إعدادات CORS في Supabase.</p>
+                            <ul className="list-disc list-inside mt-2 space-y-1">
+                                <li>تأكد من اتصالك بالإنترنت.</li>
+                                <li>تأكد من أن نطاق التطبيق (domain) الذي تستخدمه مضاف إلى قائمة CORS Origins في إعدادات Supabase.</li>
+                                <li>اذهب إلى: <code className="text-sm bg-gray-200 text-black p-1 rounded select-all">Project Settings &gt; API &gt; CORS Origins</code></li>
+                            </ul>
+                        </div>
+                    );
                 }
     
                 setError(displayError);

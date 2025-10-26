@@ -254,6 +254,11 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const prevIsOnline = usePrevious(isOnline);
     const prevIsAuthLoading = usePrevious(isAuthLoading);
 
+    const isDirtyRef = React.useRef(isDirty);
+    isDirtyRef.current = isDirty;
+    const isAutoSyncEnabledRef = React.useRef(isAutoSyncEnabled);
+    isAutoSyncEnabledRef.current = isAutoSyncEnabled;
+
     const onDeletionsSynced = React.useCallback((syncedDeletions: Partial<DeletedIds>) => {
         setDeletedIds(prev => {
             const newDeleted = { ...prev };
@@ -389,24 +394,38 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     React.useEffect(() => {
         // This effect specifically handles the app reconnecting to the internet.
         const justCameOnline = prevIsOnline === false && isOnline === true;
+        let syncOnReconnectTimeout: number | null = null;
 
         if (justCameOnline && userId && !isAuthLoading && !isDataLoading) {
-            console.log('Application reconnected to the internet. Checking for updates.');
+            console.log('Application reconnected to the internet. Scheduling sync...');
             
-            if (isAutoSyncEnabled) {
-                if (isDirty) {
-                    console.log('Local changes detected. Performing full sync on reconnection.');
-                    manualSyncRef.current();
+            // Schedule the sync after a short delay (e.g., 1.5 seconds) to allow Supabase's auth client
+            // to re-establish its connection and refresh tokens if necessary. This helps prevent race conditions.
+            syncOnReconnectTimeout = window.setTimeout(() => {
+                console.log('Executing scheduled sync on reconnection.');
+                
+                if (isAutoSyncEnabledRef.current) {
+                    if (isDirtyRef.current) {
+                        console.log('Local changes detected. Performing full sync.');
+                        manualSyncRef.current();
+                    } else {
+                        console.log('No local changes. Performing a safe refresh from server.');
+                        fetchAndRefreshRef.current();
+                    }
                 } else {
-                    // If there are no local changes, just fetch the latest from the server.
-                    console.log('No local changes. Performing a safe refresh from server on reconnection.');
-                    fetchAndRefreshRef.current();
+                     console.log('Auto-sync is disabled. Skipping sync on reconnection.');
                 }
-            } else {
-                 console.log('Auto-sync is disabled. Skipping sync on reconnection.');
-            }
+            }, 1500); // 1.5 second delay
         }
-    }, [isOnline, prevIsOnline, userId, isAuthLoading, isDataLoading, isDirty, isAutoSyncEnabled]);
+
+        // Cleanup function to clear the timeout if the component unmounts or dependencies change
+        // before the timeout has executed.
+        return () => {
+            if (syncOnReconnectTimeout) {
+                clearTimeout(syncOnReconnectTimeout);
+            }
+        };
+    }, [isOnline, prevIsOnline, userId, isAuthLoading, isDataLoading]);
     
     React.useEffect(() => {
         if (!isDirty || !isOnline || isDataLoading || isAuthLoading || syncStatus === 'syncing' || !isAutoSyncEnabled) {
