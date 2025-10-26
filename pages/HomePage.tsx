@@ -1044,17 +1044,15 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                             <nav className="-mb-px flex space-x-4" aria-label="Tabs">
                                                 <button
                                                     onClick={() => setActiveTaskTab('pending')}
-                                                    className={`p-2 rounded-md ${activeTaskTab === 'pending' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-gray-100'}`}
-                                                    title="المهام المعلقة"
+                                                    className={`whitespace-nowrap py-3 px-4 border-b-2 font-medium text-sm ${activeTaskTab === 'pending' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
                                                 >
-                                                    <ClipboardDocumentIcon className="w-5 h-5" />
+                                                    المهام المعلقة
                                                 </button>
                                                 <button
                                                     onClick={() => setActiveTaskTab('completed')}
-                                                    className={`p-2 rounded-md ${activeTaskTab === 'completed' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-gray-100'}`}
-                                                    title="المهام المنجزة"
+                                                    className={`whitespace-nowrap py-3 px-4 border-b-2 font-medium text-sm ${activeTaskTab === 'completed' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
                                                 >
-                                                    <ClipboardDocumentCheckIcon className="w-5 h-5" />
+                                                    المهام المنجزة
                                                 </button>
                                             </nav>
                                         </div>
