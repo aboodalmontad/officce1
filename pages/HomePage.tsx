@@ -117,6 +117,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
     const [isAppointmentModalOpen, setIsAppointmentModalOpen] = React.useState(false);
     const [editingAppointment, setEditingAppointment] = React.useState<Appointment | null>(null);
     const [newAppointment, setNewAppointment] = React.useState<{ title: string; date: string; time: string; importance: 'normal' | 'important' | 'urgent'; reminderTimeInMinutes: number; assignee: string; }>({ title: '', date: '', time: '', importance: 'normal', reminderTimeInMinutes: 15, assignee: 'بدون تخصيص' });
+    const [dateWarning, setDateWarning] = React.useState<string | null>(null);
 
     const [activeTaskTab, setActiveTaskTab] = React.useState<'pending' | 'completed'>('pending');
     const [adminTaskSearch, setAdminTaskSearch] = React.useState('');
@@ -152,6 +153,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
         setEditingAppointment(null);
         setNewAppointment({ title: '', date: toInputDateString(selectedDate), time: '', importance: 'normal', reminderTimeInMinutes: 15, assignee: 'بدون تخصيص' });
         setIsAppointmentModalOpen(true);
+        setDateWarning(null);
     };
 
     const handleOpenEditAppointmentModal = (apt: Appointment) => {
@@ -170,10 +172,21 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
     const handleCloseAppointmentModal = () => {
         setIsAppointmentModalOpen(false);
         setEditingAppointment(null);
+        setDateWarning(null);
     }
 
     const handleAppointmentFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
+        
+        if (name === 'date' && !editingAppointment) {
+            const selectedInputDate = new Date(`${value}T00:00:00`);
+            if (isBeforeToday(selectedInputDate)) {
+                setDateWarning('تنبيه: التاريخ المحدد في الماضي.');
+            } else {
+                setDateWarning(null);
+            }
+        }
+        
         const processedValue = name === 'reminderTimeInMinutes' ? Number(value) : value;
         setNewAppointment(prev => ({ ...prev, [name]: processedValue }));
     };
@@ -1142,6 +1155,12 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                 <div>
                                     <label htmlFor="date" className="block text-sm font-medium text-gray-700">التاريخ</label>
                                     <input type="date" id="date" name="date" value={newAppointment.date} onChange={handleAppointmentFormChange} className="mt-1 w-full p-2 border rounded" placeholder="DD/MM/YYYY" required />
+                                    {dateWarning && (
+                                        <p className="mt-1 text-xs text-yellow-600 flex items-center gap-1">
+                                            <ExclamationTriangleIcon className="w-4 h-4" />
+                                            {dateWarning}
+                                        </p>
+                                    )}
                                 </div>
                                 <div>
                                     <label htmlFor="time" className="block text-sm font-medium text-gray-700">الوقت</label>
