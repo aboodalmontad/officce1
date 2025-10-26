@@ -137,7 +137,8 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
     // State for drag-and-drop of groups
     const [locationOrder, setLocationOrder] = React.useState<string[]>([]);
     const [draggedGroupLocation, setDraggedGroupLocation] = React.useState<string | null>(null);
-    
+    const [activeLocationTab, setActiveLocationTab] = React.useState<string>('all');
+
     // State for inline assignee editing
     const [editingAssigneeTaskId, setEditingAssigneeTaskId] = React.useState<string | null>(null);
     
@@ -725,8 +726,15 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
             
             return [...updatedOrder, ...newlyAddedLocations];
         });
+        
+        setActiveLocationTab(currentTab => {
+             const newLocations = Object.keys(groupedTasks);
+             if (currentTab !== 'all' && !newLocations.includes(currentTab)) {
+                return 'all';
+             }
+             return currentTab;
+        });
     }, [groupedTasks]);
-
 
     const handleDateSelect = (date: Date) => {
         setSelectedDate(date);
@@ -846,6 +854,96 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
         }
     };
 
+    const renderTaskItem = (task: AdminTask, location: string) => (
+         <div 
+            key={task.id}
+            draggable={activeTaskTab === 'pending'}
+            onDragStart={e => handleDragStart(e, 'task', task.id)}
+            onDragEnd={handleDragEnd}
+            onDragOver={e => {
+                if (activeTaskTab !== 'pending' || !draggedTaskId || draggedTaskId === task.id) return;
+                e.preventDefault();
+            }}
+            onDrop={e => {
+                if (activeTaskTab !== 'pending') return;
+                e.preventDefault();
+                e.stopPropagation(); // Prevent group drop from firing
+                const rect = e.currentTarget.getBoundingClientRect();
+                const midpoint = rect.top + rect.height / 2;
+                const position = e.clientY < midpoint ? 'before' : 'after';
+                handleTaskDrop(task.id, location, position);
+            }}
+            onContextMenu={(e) => handleAdminTaskContextMenu(e, task)}
+            onTouchStart={(e) => handleAdminTaskTouchStart(e, task)}
+            onTouchEnd={handleAdminTaskTouchEnd}
+            onTouchMove={handleAdminTaskTouchEnd}
+            className={`p-3 border rounded-lg transition-all duration-150 ${draggedTaskId === task.id ? 'opacity-40 scale-95' : 'opacity-100 scale-100'} ${task.completed ? 'bg-green-50/70 border-green-200' : 'bg-white border-gray-200 hover:bg-gray-50 hover:shadow-sm'} ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`}
+        >
+            <div className="flex items-start gap-3">
+                {/* Checkbox */}
+                <div className="flex-shrink-0 pt-1">
+                    <input
+                        type="checkbox"
+                        checked={task.completed}
+                        onChange={() => handleToggleTaskComplete(task.id)}
+                        className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                </div>
+
+                {/* Task Details */}
+                <div className="flex-grow">
+                    <p className={`font-medium text-base ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>{task.task}</p>
+                    
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-gray-600">
+                        {/* Assignee */}
+                        <div className="flex items-center gap-1.5" onClick={() => activeTaskTab === 'pending' && setEditingAssigneeTaskId(task.id)}>
+                            <UserIcon className="w-4 h-4 text-gray-400" />
+                            {editingAssigneeTaskId === task.id ? (
+                                <select
+                                    value={task.assignee}
+                                    onChange={(e) => handleAssigneeChange(task.id, e.target.value)}
+                                    onBlur={() => setEditingAssigneeTaskId(null)}
+                                    className="p-1 border rounded bg-white text-sm focus:ring-blue-500 focus:border-blue-500"
+                                    autoFocus
+                                >
+                                    {assistants.map(name => (
+                                        <option key={name} value={name}>
+                                            {name}
+                                        </option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <span className={activeTaskTab === 'pending' ? 'cursor-pointer hover:text-blue-600' : ''}>
+                                    {task.assignee || '-'}
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Due Date */}
+                        <div className="flex items-center gap-1.5">
+                            <CalendarIcon className="w-4 h-4 text-gray-400" />
+                            <span>{formatDate(task.dueDate)}</span>
+                        </div>
+
+                        {/* Importance */}
+                        <div className="flex items-center gap-1.5">
+                             <span className={`px-2 py-1 text-xs font-semibold rounded-full ${importanceMapAdminTasks[task.importance]?.className}`}>
+                                {importanceMapAdminTasks[task.importance]?.text}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-col sm:flex-row items-center gap-0 sm:gap-1 flex-shrink-0">
+                    <button onClick={() => handleShareTask(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-green-600 rounded-full" title="مشاركة عبر واتساب"><ShareIcon className="w-4 h-4" /></button>
+                    <button onClick={() => onOpenAdminTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-blue-600 rounded-full"><PencilIcon className="w-4 h-4" /></button>
+                    <button onClick={() => openDeleteTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-red-600 rounded-full"><TrashIcon className="w-4 h-4" /></button>
+                </div>
+            </div>
+        </div>
+    );
+
 
     return (
         <div className="space-y-6">
@@ -955,119 +1053,64 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                                 </button>
                                             </nav>
                                         </div>
+
+                                        {locationOrder.length > 0 && (
+                                            <div className="border-b border-gray-200">
+                                                <nav className="-mb-px flex space-x-4 overflow-x-auto" aria-label="Location Tabs">
+                                                    <button onClick={() => setActiveLocationTab('all')} className={`${activeLocationTab === 'all' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>
+                                                        الكل
+                                                    </button>
+                                                    {locationOrder.map(location => (
+                                                        <button key={location} onClick={() => setActiveLocationTab(location)} className={`${activeLocationTab === location ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>
+                                                            {location}
+                                                        </button>
+                                                    ))}
+                                                </nav>
+                                            </div>
+                                        )}
+                                        
                                         <div className="mt-4 space-y-6">
                                             {locationOrder.length > 0 ? (
-                                                locationOrder.map(location => {
-                                                    const tasks = groupedTasks[location];
-                                                    if (!tasks || tasks.length === 0) return null;
-                                                    
-                                                    return (
-                                                        <div 
-                                                            key={location}
-                                                            draggable={activeTaskTab === 'pending'}
-                                                            onDragStart={e => activeTaskTab === 'pending' && handleDragStart(e, 'group', location)}
-                                                            onDragOver={handleGroupDragOver}
-                                                            onDrop={e => handleGroupDrop(e, location)}
-                                                            onDragEnd={handleDragEnd}
-                                                            className={`transition-opacity ${draggedGroupLocation === location ? 'opacity-40' : ''}`}
-                                                        >
-                                                            <h3 className={`text-lg font-semibold text-gray-700 bg-gray-100 p-3 rounded-t-lg ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`}>
-                                                                {location} <span className="text-sm font-normal text-gray-500">({tasks.length} مهام)</span>
-                                                            </h3>
-                                                            <div className="border border-t-0 rounded-b-lg bg-gray-50 p-2 sm:p-4 space-y-3">
-                                                                {tasks.map(task => (
-                                                                    <div 
-                                                                        key={task.id}
-                                                                        draggable={activeTaskTab === 'pending'}
-                                                                        onDragStart={e => handleDragStart(e, 'task', task.id)}
-                                                                        onDragEnd={handleDragEnd}
-                                                                        onDragOver={e => {
-                                                                            if (activeTaskTab !== 'pending' || !draggedTaskId || draggedTaskId === task.id) return;
-                                                                            e.preventDefault();
-                                                                        }}
-                                                                        onDrop={e => {
-                                                                            if (activeTaskTab !== 'pending') return;
-                                                                            e.preventDefault();
-                                                                            e.stopPropagation(); // Prevent group drop from firing
-                                                                            const rect = e.currentTarget.getBoundingClientRect();
-                                                                            const midpoint = rect.top + rect.height / 2;
-                                                                            const position = e.clientY < midpoint ? 'before' : 'after';
-                                                                            handleTaskDrop(task.id, location, position);
-                                                                        }}
-                                                                        onContextMenu={(e) => handleAdminTaskContextMenu(e, task)}
-                                                                        onTouchStart={(e) => handleAdminTaskTouchStart(e, task)}
-                                                                        onTouchEnd={handleAdminTaskTouchEnd}
-                                                                        onTouchMove={handleAdminTaskTouchEnd}
-                                                                        className={`p-3 border rounded-lg transition-all duration-150 ${draggedTaskId === task.id ? 'opacity-40 scale-95' : 'opacity-100 scale-100'} ${task.completed ? 'bg-green-50/70 border-green-200' : 'bg-white border-gray-200 hover:bg-gray-50 hover:shadow-sm'} ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`}
-                                                                    >
-                                                                        <div className="flex items-start gap-3">
-                                                                            {/* Checkbox */}
-                                                                            <div className="flex-shrink-0 pt-1">
-                                                                                <input
-                                                                                    type="checkbox"
-                                                                                    checked={task.completed}
-                                                                                    onChange={() => handleToggleTaskComplete(task.id)}
-                                                                                    className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-                                                                                />
-                                                                            </div>
-
-                                                                            {/* Task Details */}
-                                                                            <div className="flex-grow">
-                                                                                <p className={`font-medium text-base ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>{task.task}</p>
-                                                                                
-                                                                                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-gray-600">
-                                                                                    {/* Assignee */}
-                                                                                    <div className="flex items-center gap-1.5" onClick={() => activeTaskTab === 'pending' && setEditingAssigneeTaskId(task.id)}>
-                                                                                        <UserIcon className="w-4 h-4 text-gray-400" />
-                                                                                        {editingAssigneeTaskId === task.id ? (
-                                                                                            <select
-                                                                                                value={task.assignee}
-                                                                                                onChange={(e) => handleAssigneeChange(task.id, e.target.value)}
-                                                                                                onBlur={() => setEditingAssigneeTaskId(null)}
-                                                                                                className="p-1 border rounded bg-white text-sm focus:ring-blue-500 focus:border-blue-500"
-                                                                                                autoFocus
-                                                                                            >
-                                                                                                {assistants.map(name => (
-                                                                                                    <option key={name} value={name}>
-                                                                                                        {name}
-                                                                                                    </option>
-                                                                                                ))}
-                                                                                            </select>
-                                                                                        ) : (
-                                                                                            <span className={activeTaskTab === 'pending' ? 'cursor-pointer hover:text-blue-600' : ''}>
-                                                                                                {task.assignee || '-'}
-                                                                                            </span>
-                                                                                        )}
-                                                                                    </div>
-
-                                                                                    {/* Due Date */}
-                                                                                    <div className="flex items-center gap-1.5">
-                                                                                        <CalendarIcon className="w-4 h-4 text-gray-400" />
-                                                                                        <span>{formatDate(task.dueDate)}</span>
-                                                                                    </div>
-
-                                                                                    {/* Importance */}
-                                                                                    <div className="flex items-center gap-1.5">
-                                                                                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${importanceMapAdminTasks[task.importance]?.className}`}>
-                                                                                            {importanceMapAdminTasks[task.importance]?.text}
-                                                                                        </span>
-                                                                                    </div>
-                                                                                </div>
-                                                                            </div>
-
-                                                                            {/* Actions */}
-                                                                            <div className="flex flex-col sm:flex-row items-center gap-0 sm:gap-1 flex-shrink-0">
-                                                                                <button onClick={() => handleShareTask(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-green-600 rounded-full" title="مشاركة عبر واتساب"><ShareIcon className="w-4 h-4" /></button>
-                                                                                <button onClick={() => onOpenAdminTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-blue-600 rounded-full"><PencilIcon className="w-4 h-4" /></button>
-                                                                                <button onClick={() => openDeleteTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-red-600 rounded-full"><TrashIcon className="w-4 h-4" /></button>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                ))}
+                                                activeLocationTab === 'all' ? (
+                                                    locationOrder.map(location => {
+                                                        const tasks = groupedTasks[location];
+                                                        if (!tasks || tasks.length === 0) return null;
+                                                        return (
+                                                            <div 
+                                                                key={location}
+                                                                draggable={activeTaskTab === 'pending'}
+                                                                onDragStart={e => activeTaskTab === 'pending' && handleDragStart(e, 'group', location)}
+                                                                onDragOver={handleGroupDragOver}
+                                                                onDrop={e => handleGroupDrop(e, location)}
+                                                                onDragEnd={handleDragEnd}
+                                                                className={`transition-opacity ${draggedGroupLocation === location ? 'opacity-40' : ''}`}
+                                                            >
+                                                                <h3 className={`text-lg font-semibold text-gray-700 bg-gray-100 p-3 rounded-t-lg ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`}>
+                                                                    {location} <span className="text-sm font-normal text-gray-500">({tasks.length} مهام)</span>
+                                                                </h3>
+                                                                <div className="border border-t-0 rounded-b-lg bg-gray-50 p-2 sm:p-4 space-y-3">
+                                                                    {tasks.map(task => renderTaskItem(task, location))}
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    )
-                                                })
+                                                        )
+                                                    })
+                                                ) : (
+                                                    (() => {
+                                                        const tasks = groupedTasks[activeLocationTab];
+                                                        if (!tasks || tasks.length === 0) {
+                                                            return <p className="text-center text-gray-500 py-8">لا توجد مهام في هذا المكان.</p>;
+                                                        }
+                                                        return (
+                                                            <div 
+                                                                onDragOver={handleGroupDragOver}
+                                                                onDrop={e => handleGroupDrop(e, activeLocationTab)}
+                                                                className="bg-gray-50 p-2 sm:p-4 space-y-3 border border-t-0 rounded-b-lg"
+                                                            >
+                                                                {tasks.map(task => renderTaskItem(task, activeLocationTab))}
+                                                            </div>
+                                                        )
+                                                    })()
+                                                )
                                             ) : (
                                                 <p className="text-center text-gray-500 py-8">لا توجد مهام لعرضها.</p>
                                             )}
