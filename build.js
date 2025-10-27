@@ -29,6 +29,7 @@ async function build() {
                 '@supabase/supabase-js',
                 '@google/genai',
                 'recharts',
+                'idb',
                 'react-router-dom',
                 'react/*', // To handle react/jsx-runtime and other react sub-modules
             ],
