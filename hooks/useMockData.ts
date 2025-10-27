@@ -161,6 +161,8 @@ export const mockAppointments: Appointment[] = [
         importance: 'important',
         assignee: 'أحمد',
         completed: false,
+        reminderTimeInMinutes: 15,
+        notified: false,
     },
     {
         id: 'apt-2',
@@ -170,6 +172,8 @@ export const mockAppointments: Appointment[] = [
         importance: 'normal',
         assignee: 'فاطمة',
         completed: true,
+        reminderTimeInMinutes: 30,
+        notified: true,
     },
 ];
 

@@ -19,7 +19,19 @@ interface ClientsPageProps {
 }
 
 const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminTaskModal, onCreateInvoice }) => {
-    const { clients, setClients, accountingEntries, setAccountingEntries, assistants, setFullData, invoices, adminTasks, appointments, deleteClient, deleteCase, deleteStage, deleteSession } = useData();
+    const { 
+        clients, 
+        setClients, 
+        accountingEntries, 
+        setAccountingEntries, 
+        assistants, 
+        setFullData, 
+        deleteClient, 
+        deleteCase, 
+        deleteStage, 
+        deleteSession,
+        postponeSession
+    } = useData();
     const [modal, setModal] = React.useState<{ type: 'client' | 'case' | 'stage' | 'session' | null, context?: any, isEditing: boolean }>({ type: null, isEditing: false });
     const [formData, setFormData] = React.useState<any>({});
     const [searchQuery, setSearchQuery] = React.useState('');
@@ -127,42 +139,17 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                         }
 
                         const updatedSessions = [...stage.sessions];
-                        const currentSession = updatedSessions[sessionIndex];
-                        
-                        // Logic for postponing: create a new session and update the old one
-                        if ('nextSessionDate' in updatedFields && 'nextPostponementReason' in updatedFields) {
-                            const newSessionDate = updatedFields.nextSessionDate;
-                            const newPostponementReason = updatedFields.nextPostponementReason;
+                        updatedSessions[sessionIndex] = {
+                            ...updatedSessions[sessionIndex],
+                            ...updatedFields,
+                            updated_at: new Date(),
+                        };
 
-                            if (newSessionDate && newPostponementReason) {
-                                // Mark current session as postponed
-                                updatedSessions[sessionIndex] = {
-                                    ...currentSession,
-                                    isPostponed: true,
-                                    nextSessionDate: newSessionDate,
-                                    nextPostponementReason: newPostponementReason,
-                                    updated_at: new Date(),
-                                };
-                                
-                                // Create the new session
-                                const newSession: Session = {
-                                    ...currentSession,
-                                    id: `session-${Date.now()}`,
-                                    date: newSessionDate,
-                                    isPostponed: false,
-                                    postponementReason: newPostponementReason, // The reason for this new session is the postponement of the old one
-                                    nextSessionDate: undefined,
-                                    nextPostponementReason: undefined,
-                                    updated_at: new Date(),
-                                };
-                                updatedSessions.push(newSession);
-                            }
-                        } else {
-                             // Regular update
-                             updatedSessions[sessionIndex] = { ...currentSession, ...updatedFields, updated_at: new Date() };
-                        }
-
-                        return { ...stage, sessions: updatedSessions, updated_at: new Date() };
+                        return {
+                            ...stage,
+                            sessions: updatedSessions,
+                            updated_at: new Date(),
+                        };
                     }),
                 })),
             }));
@@ -421,7 +408,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
 
 
     const handlePostponeSession = (sessionId: string, newDate: Date, newReason: string) => {
-        onUpdateSession(sessionId, { nextSessionDate: newDate, nextPostponementReason: newReason });
+        postponeSession(sessionId, newDate, newReason);
     };
 
     // Printing Handlers
@@ -850,7 +837,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                             <div><label>رقم القرار</label><input type="text" value={decideFormData.decisionNumber} onChange={e => setDecideFormData(p => ({...p, decisionNumber: e.target.value}))} className="w-full p-2 border rounded" /></div>
                             <div><label>ملخص القرار</label><textarea value={decideFormData.decisionSummary} onChange={e => setDecideFormData(p => ({...p, decisionSummary: e.target.value}))} className="w-full p-2 border rounded" rows={3}></textarea></div>
                             <div><label>ملاحظات</label><textarea value={decideFormData.decisionNotes} onChange={e => setDecideFormData(p => ({...p, decisionNotes: e.target.value}))} className="w-full p-2 border rounded" rows={2}></textarea></div>
-                            <div className="mt-6 flex justify-end gap-4"><button type="button" onClick={handleCloseDecideModal} className="px-4 py-2 bg-gray-200 rounded">إلغاء</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">حفظ القرار</button></div>
+                            <div className="mt-6 flex justify-end gap-4"><button type="button" onClick={handleCloseDecideModal} className="px-4 py-2 bg-gray-200 rounded">إلغاء</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">حفظ</button></div>
                         </form>
                     </div>
                 </div>

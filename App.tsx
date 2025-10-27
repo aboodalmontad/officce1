@@ -13,14 +13,14 @@ const SubscriptionExpiredPage = React.lazy(() => import('./pages/SubscriptionExp
 
 import ConfigurationModal from './components/ConfigurationModal';
 import { useSupabaseData, SyncStatus, AppData } from './hooks/useSupabaseData';
-import { HomeIcon, UserIcon, CalculatorIcon, ChartBarIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, ExclamationTriangleIcon, ServerIcon, CloudArrowDownIcon, CloudArrowUpIcon, DocumentTextIcon, PowerIcon, ChevronLeftIcon, CloudIcon } from './components/icons';
+import { UserIcon, CalculatorIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, ExclamationTriangleIcon, PowerIcon } from './components/icons';
 import ContextMenu, { MenuItem } from './components/ContextMenu';
 import AdminTaskModal from './components/AdminTaskModal';
 import { AdminTask, Profile, Session, Client, Appointment, AccountingEntry, Invoice } from './types';
 import { getSupabaseClient } from './supabaseClient';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
-import { toInputDateString } from './utils/dateUtils';
-import Logo from './components/Logo';
+import AppointmentNotifier from './components/AppointmentNotifier';
+import UnpostponedSessionsModal from './components/UnpostponedSessionsModal';
 
 
 // --- Data Context for avoiding prop drilling ---
@@ -32,6 +32,7 @@ interface IDataContext extends AppData {
     setInvoices: (updater: React.SetStateAction<Invoice[]>) => void;
     setAssistants: (updater: React.SetStateAction<string[]>) => void;
     allSessions: (Session & { stageId?: string, stageDecisionDate?: Date })[];
+    unpostponedSessions: (Session & { stageId?: string, stageDecisionDate?: Date })[];
     setFullData: (data: any) => void;
     syncStatus: SyncStatus;
     manualSync: () => Promise<void>;
@@ -42,6 +43,10 @@ interface IDataContext extends AppData {
     isAuthLoading: boolean;
     isAutoSyncEnabled: boolean;
     setAutoSyncEnabled: (enabled: boolean) => void;
+    isAutoBackupEnabled: boolean;
+    setAutoBackupEnabled: (enabled: boolean) => void;
+    triggeredAlerts: Appointment[];
+    dismissAlert: (appointmentId: string) => void;
     deleteClient: (clientId: string) => void;
     deleteCase: (caseId: string, clientId: string) => void;
     deleteStage: (stageId: string, caseId: string, clientId: string) => void;
@@ -51,6 +56,9 @@ interface IDataContext extends AppData {
     deleteAccountingEntry: (entryId: string) => void;
     deleteInvoice: (invoiceId: string) => void;
     deleteAssistant: (name: string) => void;
+    postponeSession: (sessionId: string, newDate: Date, newReason: string) => void;
+    showUnpostponedSessionsModal: boolean;
+    setShowUnpostponedSessionsModal: (show: boolean) => void;
 }
 
 const DataContext = React.createContext<IDataContext | null>(null);
@@ -81,7 +89,7 @@ const SyncStatusIndicator: React.FC<{ status: SyncStatus, lastError: string | nu
         };
     } else if (!isAutoSyncEnabled && isDirty) {
         displayStatus = {
-            icon: <CloudArrowUpIcon className="w-5 h-5 text-yellow-600 animate-pulse" />,
+            icon: <ArrowPathIcon className="w-5 h-5 text-yellow-600 animate-pulse" />,
             text: 'مزامنة يدوية مطلوبة',
             className: 'text-yellow-600',
             title: 'المزامنة التلقائية متوقفة. اضغط للمزامنة الآن.'
@@ -102,7 +110,7 @@ const SyncStatusIndicator: React.FC<{ status: SyncStatus, lastError: string | nu
         };
     } else if (status === 'syncing') {
          displayStatus = {
-            icon: <CloudArrowUpIcon className="w-5 h-5 text-blue-500 animate-pulse" />,
+            icon: <ArrowPathIcon className="w-5 h-5 text-blue-500 animate-pulse" />,
             text: 'جاري المزامنة...',
             className: 'text-blue-500',
             title: 'جاري مزامنة بياناتك مع السحابة.'
@@ -116,7 +124,7 @@ const SyncStatusIndicator: React.FC<{ status: SyncStatus, lastError: string | nu
         };
     } else if (isDirty) {
          displayStatus = {
-            icon: <CloudArrowUpIcon className="w-5 h-5 text-yellow-600" />,
+            icon: <ArrowPathIcon className="w-5 h-5 text-yellow-600" />,
             text: 'تغييرات غير محفوظة',
             className: 'text-yellow-600',
             title: 'لديك تغييرات لم تتم مزامنتها بعد.'
@@ -159,7 +167,6 @@ const Navbar: React.FC<{
 }> = ({ currentPage, onNavigate, onLogout, syncStatus, lastSyncError, isDirty, isOnline, onManualSync, profile, isAutoSyncEnabled }) => {
     
     const navItems = [
-        { id: 'home', label: 'الرئيسية', icon: HomeIcon },
         { id: 'clients', label: 'الموكلين', icon: UserIcon },
         { id: 'accounting', label: 'المحاسبة', icon: CalculatorIcon },
         { id: 'settings', label: 'الإعدادات', icon: Cog6ToothIcon },
@@ -168,19 +175,19 @@ const Navbar: React.FC<{
     return (
         <header className="bg-white shadow-md p-2 sm:p-4 flex justify-between items-center no-print sticky top-0 z-30">
             <nav className="flex items-center gap-1 sm:gap-4 flex-wrap">
-                <button onClick={() => onNavigate('home')} className="flex items-center gap-3" aria-label="العودة إلى الصفحة الرئيسية">
-                    <Logo />
-                    <h1 className="text-xl font-bold text-gray-800 hidden md:block">مكتب المحامي</h1>
+                <button onClick={() => onNavigate('home')} className="flex items-center" aria-label="العودة إلى الصفحة الرئيسية">
+                    <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
                 </button>
                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
                     {navItems.map(item => (
                         <button
                             key={item.id}
                             onClick={() => onNavigate(item.id as Page)}
-                            className={`flex items-center gap-2 px-2 sm:px-3 py-2 rounded-md text-sm font-medium transition-colors ${currentPage === item.id ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
+                            title={item.label}
+                            className={`flex items-center gap-0 sm:gap-2 p-2 sm:px-3 rounded-md text-sm font-medium transition-colors ${currentPage === item.id ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
                         >
                             <item.icon className="w-5 h-5" />
-                            <span>{item.label}</span>
+                            <span className="hidden sm:inline">{item.label}</span>
                         </button>
                     ))}
                 </div>
@@ -247,6 +254,8 @@ const OfflineBanner: React.FC = () => {
 const DataProvider = DataContext.Provider;
 
 const LAST_USER_CACHE_KEY = 'lawyerAppLastUser';
+const UNPOSTPONED_MODAL_SHOWN_KEY = 'lawyerAppUnpostponedModalShown';
+
 
 const App: React.FC<AppProps> = ({ onRefresh }) => {
     const [session, setSession] = React.useState<AuthSession | null>(null);
@@ -274,6 +283,15 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
             setShowConfigModal(false);
         }
     }, [supabaseData.syncStatus]);
+
+     React.useEffect(() => {
+        if (!supabaseData.isDataLoading && supabaseData.unpostponedSessions.length > 0) {
+            const alreadyShown = sessionStorage.getItem(UNPOSTPONED_MODAL_SHOWN_KEY);
+            if (!alreadyShown) {
+                supabaseData.setShowUnpostponedSessionsModal(true);
+            }
+        }
+    }, [supabaseData.isDataLoading, supabaseData.unpostponedSessions.length]);
     
     // This effect runs once to get the initial session state from Supabase.
     React.useEffect(() => {
@@ -325,6 +343,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                 setProfile(null);
                 setAuthError(null);
                 setIsAuthLoading(false);
+                 sessionStorage.removeItem(UNPOSTPONED_MODAL_SHOWN_KEY);
                 return;
             }
 
@@ -551,6 +570,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                 onClose={() => setIsAdminTaskModalOpen(false)}
                 onSubmit={handleAdminTaskSubmit}
                 initialData={initialAdminTaskData}
+                assistants={supabaseData.assistants}
             />
             <ContextMenu 
                 isOpen={contextMenu.isOpen}
@@ -558,6 +578,22 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                 menuItems={contextMenu.menuItems}
                 onClose={() => setContextMenu(p => ({...p, isOpen: false}))}
             />
+            <AppointmentNotifier
+                triggeredAlerts={supabaseData.triggeredAlerts}
+                dismissAlert={supabaseData.dismissAlert}
+            />
+             {supabaseData.showUnpostponedSessionsModal && (
+                <UnpostponedSessionsModal
+                    isOpen={supabaseData.showUnpostponedSessionsModal}
+                    onClose={() => {
+                        supabaseData.setShowUnpostponedSessionsModal(false);
+                        sessionStorage.setItem(UNPOSTPONED_MODAL_SHOWN_KEY, 'true');
+                    }}
+                    sessions={supabaseData.unpostponedSessions}
+                    onPostpone={supabaseData.postponeSession}
+                    assistants={supabaseData.assistants}
+                />
+            )}
         </DataProvider>
     );
 };

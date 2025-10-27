@@ -5,6 +5,8 @@ import { User } from '@supabase/supabase-js';
 import { AppData as OnlineAppData } from './useOnlineData';
 import { useSync, SyncStatus as SyncStatusType } from './useSync';
 import { getSupabaseClient } from '../supabaseClient';
+import { isBeforeToday } from '../utils/dateUtils';
+
 
 export const APP_DATA_KEY = 'lawyerBusinessManagementData';
 export type SyncStatus = SyncStatusType;
@@ -154,7 +156,7 @@ const validateAndHydrate = (data: any): AppData => {
             time: typeof apt.time === 'string' && /^\d{2}:\d{2}$/.test(apt.time) ? apt.time : '00:00',
             date: aptDate,
             importance: ['normal', 'important', 'urgent'].includes(apt.importance) ? apt.importance : 'normal',
-            completed: typeof apt.completed === 'boolean' ? apt.completed : false,
+            completed: 'completed' in apt ? !!apt.completed : false,
             notified: typeof apt.notified === 'boolean' ? apt.notified : false,
             reminderTimeInMinutes: typeof (apt.reminder_time_in_minutes ?? apt.reminderTimeInMinutes) === 'number' ? (apt.reminder_time_in_minutes ?? apt.reminderTimeInMinutes) : undefined,
             assignee: isValidAssistant(apt.assignee) ? apt.assignee : defaultAssignee,
@@ -248,6 +250,9 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const [lastSyncError, setLastSyncError] = React.useState<string | null>(null);
     const [isDirty, setIsDirty] = React.useState(false);
     const [isAutoSyncEnabled, setIsAutoSyncEnabled] = React.useState(true);
+    const [isAutoBackupEnabled, setIsAutoBackupEnabled] = React.useState(true);
+    const [triggeredAlerts, setTriggeredAlerts] = React.useState<Appointment[]>([]);
+    const [showUnpostponedSessionsModal, setShowUnpostponedSessionsModal] = React.useState(false);
     
     const hadCacheOnLoad = React.useRef(false);
     
@@ -259,6 +264,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     isDirtyRef.current = isDirty;
     const isAutoSyncEnabledRef = React.useRef(isAutoSyncEnabled);
     isAutoSyncEnabledRef.current = isAutoSyncEnabled;
+    const isAutoBackupEnabledRef = React.useRef(isAutoBackupEnabled);
+    isAutoBackupEnabledRef.current = isAutoBackupEnabled;
 
     const onDeletionsSynced = React.useCallback((syncedDeletions: Partial<DeletedIds>) => {
         setDeletedIds(prev => {
@@ -318,6 +325,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             setSyncStatus('loading'); // Or another appropriate default state
             setIsDataLoading(false); // Correctly reflect that no data is being loaded.
             setIsAutoSyncEnabled(true);
+            setIsAutoBackupEnabled(true);
             hadCacheOnLoad.current = false;
             return;
         }
@@ -331,6 +339,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             setDeletedIds(rawDeleted ? JSON.parse(rawDeleted) : getInitialDeletedIds());
             const autoSyncEnabled = localStorage.getItem(`lawyerAppAutoSyncEnabled_${userId}`);
             setIsAutoSyncEnabled(autoSyncEnabled === null ? true : autoSyncEnabled === 'true');
+            const autoBackupEnabled = localStorage.getItem(`lawyerAppAutoBackupEnabled_${userId}`);
+            setIsAutoBackupEnabled(autoBackupEnabled === null ? true : autoBackupEnabled === 'true');
 
             if (rawData) {
                 const parsedData = JSON.parse(rawData);
@@ -497,6 +507,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             localStorage.setItem(getLocalStorageKey(), JSON.stringify(data));
             localStorage.setItem(`lawyerAppDeletedIds_${userId}`, JSON.stringify(deletedIds));
             localStorage.setItem(`lawyerAppAutoSyncEnabled_${userId}`, String(isAutoSyncEnabled));
+            localStorage.setItem(`lawyerAppAutoBackupEnabled_${userId}`, String(isAutoBackupEnabled));
             if (isDirty) {
                 localStorage.setItem(`lawyerAppIsDirty_${userId}`, 'true');
             } else {
@@ -505,7 +516,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         } catch (e) {
             console.error("Failed to save data to localStorage:", e);
         }
-    }, [data, deletedIds, userId, isDirty, getLocalStorageKey, isAutoSyncEnabled, isDataLoading]);
+    }, [data, deletedIds, userId, isDirty, getLocalStorageKey, isAutoSyncEnabled, isAutoBackupEnabled, isDataLoading]);
 
     // New useEffect for daily backup
     React.useEffect(() => {
@@ -514,6 +525,11 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         }
 
         const performBackupCheck = () => {
+            if (!isAutoBackupEnabledRef.current) {
+                console.log('Daily automatic backup is disabled by the user.');
+                return;
+            }
+
             const LAST_BACKUP_KEY = `lawyerAppLastBackupTimestamp_${userId}`;
             const todayString = new Date().toISOString().split('T')[0];
 
@@ -569,7 +585,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         performBackupCheck();
 
     }, [isDataLoading, userId]);
-
+    
     const setClients = React.useCallback((updater: React.SetStateAction<Client[]>) => {
         setData(prev => ({ ...prev, clients: updater instanceof Function ? updater(prev.clients) : updater }));
         setIsDirty(true);
@@ -608,6 +624,62 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const setAutoSyncEnabled = React.useCallback((enabled: boolean) => {
         setIsAutoSyncEnabled(enabled);
     }, []);
+
+    const setAutoBackupEnabled = React.useCallback((enabled: boolean) => {
+        setIsAutoBackupEnabled(enabled);
+    }, []);
+
+    // --- Notification Logic ---
+    const dismissAlert = React.useCallback((appointmentId: string) => {
+        setTriggeredAlerts(prev => prev.filter(a => a.id !== appointmentId));
+    }, []);
+
+    React.useEffect(() => {
+        const checkReminders = () => {
+            const now = new Date();
+            const upcomingAlerts: Appointment[] = [];
+            
+            // Use a functional update to ensure we're working with the latest state
+            setData(currentData => {
+                const updatedAppointments = currentData.appointments.map(apt => {
+                    if (apt.completed || apt.notified || !apt.reminderTimeInMinutes) {
+                        return apt;
+                    }
+
+                    const [hours, minutes] = apt.time.split(':').map(Number);
+                    const appointmentDateTime = new Date(apt.date);
+                    appointmentDateTime.setHours(hours, minutes, 0, 0);
+
+                    const reminderTime = new Date(appointmentDateTime.getTime() - apt.reminderTimeInMinutes * 60000);
+
+                    if (now >= reminderTime && now < appointmentDateTime) {
+                        upcomingAlerts.push(apt);
+                        return { ...apt, notified: true, updated_at: new Date() }; // Mark as notified
+                    }
+
+                    return apt;
+                });
+                
+                if (upcomingAlerts.length > 0) {
+                    setTriggeredAlerts(prev => {
+                        const existingIds = new Set(prev.map(a => a.id));
+                        const newAlerts = upcomingAlerts.filter(a => !existingIds.has(a.id));
+                        return [...prev, ...newAlerts];
+                    });
+                    setIsDirty(true);
+                    return { ...currentData, appointments: updatedAppointments };
+                }
+
+                return currentData; // No changes needed
+            });
+        };
+
+        const intervalId = setInterval(checkReminders, 30 * 1000); // Check every 30 seconds
+        checkReminders(); // Run once on mount
+
+        return () => clearInterval(intervalId);
+    }, [setData, setIsDirty]);
+
 
     const trackDeletion = React.useCallback((type: keyof DeletedIds, id: string) => {
         setDeletedIds(prev => ({
@@ -716,6 +788,79 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         trackDeletion('assistants', name);
     }, [setAdminTasks, setAppointments, setClients, setAssistants, trackDeletion]);
 
+    const postponeSession = React.useCallback((sessionId: string, newDate: Date, newReason: string) => {
+        setClients(currentClients => {
+            let sessionToPostpone: Session | undefined;
+            let stageOfSession: Stage | undefined;
+            let caseOfSession: Case | undefined;
+            let clientOfSession: Client | undefined;
+
+            for (const client of currentClients) {
+                for (const caseItem of client.cases) {
+                    for (const stage of caseItem.stages) {
+                        const foundSession = stage.sessions.find(s => s.id === sessionId);
+                        if (foundSession) {
+                            sessionToPostpone = foundSession;
+                            stageOfSession = stage;
+                            caseOfSession = caseItem;
+                            clientOfSession = client;
+                            break;
+                        }
+                    }
+                    if (stageOfSession) break;
+                }
+                if (stageOfSession) break;
+            }
+
+            if (!sessionToPostpone || !stageOfSession || !caseOfSession || !clientOfSession) {
+                console.error("Could not find complete context for session to postpone:", sessionId);
+                return currentClients;
+            }
+
+            const newSession: Session = {
+                ...sessionToPostpone,
+                id: `session-${Date.now()}`,
+                date: newDate,
+                isPostponed: false,
+                postponementReason: newReason,
+                nextPostponementReason: undefined,
+                nextSessionDate: undefined,
+                updated_at: new Date(),
+            };
+
+            return currentClients.map(client => {
+                if (client.id !== clientOfSession!.id) return client;
+                return {
+                    ...client,
+                    updated_at: new Date(),
+                    cases: client.cases.map(caseItem => {
+                        if (caseItem.id !== caseOfSession!.id) return caseItem;
+                        return {
+                            ...caseItem,
+                            updated_at: new Date(),
+                            stages: caseItem.stages.map(stage => {
+                                if (stage.id !== stageOfSession!.id) return stage;
+                                
+                                return {
+                                    ...stage,
+                                    updated_at: new Date(),
+                                    sessions: [
+                                        ...stage.sessions.map(s =>
+                                            s.id === sessionId
+                                                ? { ...s, isPostponed: true, nextPostponementReason: newReason, nextSessionDate: newDate, updated_at: new Date() }
+                                                : s
+                                        ),
+                                        newSession,
+                                    ],
+                                };
+                            }),
+                        };
+                    }),
+                };
+            });
+        });
+    }, [setClients]);
+
 
     // allSessions derivation
     const allSessions = React.useMemo(() => {
@@ -731,6 +876,10 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             )
         );
     }, [data.clients]);
+    
+    const unpostponedSessions = React.useMemo(() => {
+        return allSessions.filter(s => !s.isPostponed && isBeforeToday(s.date) && !s.stageDecisionDate);
+    }, [allSessions]);
 
     return {
         ...data,
@@ -742,6 +891,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         setAssistants,
         setFullData,
         allSessions,
+        unpostponedSessions,
         syncStatus,
         manualSync,
         lastSyncError,
@@ -750,6 +900,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         isDataLoading,
         isAutoSyncEnabled,
         setAutoSyncEnabled,
+        isAutoBackupEnabled,
+        setAutoBackupEnabled,
         deleteClient,
         deleteCase,
         deleteStage,
@@ -759,5 +911,10 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         deleteAccountingEntry,
         deleteInvoice,
         deleteAssistant,
+        triggeredAlerts,
+        dismissAlert,
+        postponeSession,
+        showUnpostponedSessionsModal,
+        setShowUnpostponedSessionsModal,
     };
 };

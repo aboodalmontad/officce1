@@ -119,7 +119,21 @@ interface HomePageProps {
 }
 
 const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMenu }) => {
-    const { appointments, clients, setClients, allSessions, setAppointments, adminTasks, setAdminTasks, assistants, deleteAdminTask, deleteAppointment } = useData();
+    const { 
+        appointments, 
+        allSessions, 
+        setAppointments, 
+        adminTasks, 
+        setAdminTasks, 
+        assistants, 
+        deleteAdminTask, 
+        deleteAppointment,
+        unpostponedSessions,
+        postponeSession,
+        setClients,
+        clients,
+    } = useData();
+
     const [selectedDate, setSelectedDate] = React.useState(new Date());
     const [calendarViewDate, setCalendarViewDate] = React.useState(new Date());
     type ViewMode = 'daily' | 'unpostponed' | 'upcoming';
@@ -530,68 +544,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
 
     // Session Handlers
     const handlePostponeSession = (sessionId: string, newDate: Date, newReason: string) => {
-        setClients(currentClients => {
-            let sessionToPostpone: Session | undefined;
-            let stageOfSession: Stage | undefined;
-
-            for (const client of currentClients) {
-                for (const caseItem of client.cases) {
-                    for (const stage of caseItem.stages) {
-                        const foundSession = stage.sessions.find(s => s.id === sessionId);
-                        if (foundSession) {
-                            sessionToPostpone = foundSession;
-                            stageOfSession = stage;
-                            break;
-                        }
-                    }
-                    if (stageOfSession) break;
-                }
-                if (stageOfSession) break;
-            }
-
-            if (!sessionToPostpone || !stageOfSession) {
-                console.error("Session or stage not found");
-                return currentClients;
-            }
-
-            const newSession: Session = {
-                ...sessionToPostpone,
-                id: `session-${Date.now()}`,
-                date: newDate,
-                isPostponed: false,
-                postponementReason: newReason,
-                nextPostponementReason: undefined,
-                nextSessionDate: undefined,
-                updated_at: new Date(),
-            };
-
-            return currentClients.map(client => ({
-                ...client,
-                updated_at: new Date(),
-                cases: client.cases.map(caseItem => ({
-                    ...caseItem,
-                    updated_at: new Date(),
-                    stages: caseItem.stages.map(stage => {
-                        if (stage.id !== stageOfSession!.id) {
-                            return stage;
-                        }
-                        
-                        return {
-                            ...stage,
-                            updated_at: new Date(),
-                            sessions: [
-                                ...stage.sessions.map(s =>
-                                    s.id === sessionId
-                                        ? { ...s, isPostponed: true, nextPostponementReason: newReason, nextSessionDate: newDate, updated_at: new Date() }
-                                        : s
-                                ),
-                                newSession,
-                            ],
-                        };
-                    }),
-                })),
-            }));
-        });
+        postponeSession(sessionId, newDate, newReason);
     };
     
     const handleUpdateSession = (sessionId: string, updatedFields: Partial<Session>) => {
@@ -695,10 +648,6 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
         return { dailySessions, dailyAppointments };
     }, [selectedDate, allSessions, appointments]);
 
-    const unpostponedSessions = React.useMemo(() => {
-        return allSessions.filter(s => !s.isPostponed && isBeforeToday(s.date) && !s.stageDecisionDate);
-    }, [allSessions]);
-    
     const upcomingSessions = React.useMemo(() => {
         const tomorrow = new Date(selectedDate);
         tomorrow.setDate(tomorrow.getDate() + 1);

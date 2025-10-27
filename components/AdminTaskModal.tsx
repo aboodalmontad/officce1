@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { AdminTask } from '../types';
-import { useData } from '../App';
 import { toInputDateString } from '../utils/dateUtils';
 
 interface AdminTaskModalProps {
@@ -8,10 +7,10 @@ interface AdminTaskModalProps {
     onClose: () => void;
     onSubmit: (taskData: Omit<AdminTask, 'id' | 'completed'> & { id?: string }) => void;
     initialData?: Partial<Omit<AdminTask, 'dueDate'>> & { dueDate?: string; id?: string };
+    assistants: string[];
 }
 
-const AdminTaskModal: React.FC<AdminTaskModalProps> = ({ isOpen, onClose, onSubmit, initialData }) => {
-    const { assistants } = useData();
+const AdminTaskModal: React.FC<AdminTaskModalProps> = ({ isOpen, onClose, onSubmit, initialData, assistants }) => {
     const [taskFormData, setTaskFormData] = React.useState({
         task: '',
         dueDate: toInputDateString(new Date()),
