@@ -24,7 +24,7 @@ import { User } from '@supabase/supabase-js';
 
 interface AuthPageProps {
     onForceSetup: () => void;
-    onLoginSuccess: (user: User) => void;
+    onLoginSuccess: (user: User, isOfflineLogin?: boolean) => void;
 }
 
 const LAST_USER_CREDENTIALS_CACHE_KEY = 'lawyerAppLastUserCredentials';
@@ -190,7 +190,7 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                 if (normalize(cachedCredentials.mobile) === normalize(form.mobile) && cachedCredentials.password === form.password) {
                     localStorage.removeItem(LOGGED_OUT_KEY);
                     const user = JSON.parse(lastUserRaw) as User;
-                    onLoginSuccess(user);
+                    onLoginSuccess(user, true);
                 } else {
                     throw new Error('بيانات الدخول غير صحيحة للوصول بدون انترنت.');
                 }

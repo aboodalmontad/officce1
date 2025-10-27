@@ -254,6 +254,8 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const [isAuthLoading, setIsAuthLoading] = React.useState(true);
     const [authError, setAuthError] = React.useState<string | null>(null);
     const [showConfigModal, setShowConfigModal] = React.useState(false);
+    const [loginMessage, setLoginMessage] = React.useState<string | null>(null);
+
 
     const [currentPage, setCurrentPage] = React.useState<Page>('home');
     const [isAdminTaskModalOpen, setIsAdminTaskModalOpen] = React.useState(false);
@@ -404,7 +406,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         setSession(null);
     };
     
-    const handleLoginSuccess = (user: User) => {
+    const handleLoginSuccess = (user: User, isOfflineLogin?: boolean) => {
         // Cache the user object to enable temporary profile creation if needed.
         localStorage.setItem(LAST_USER_CACHE_KEY, JSON.stringify(user));
         // Trigger the authentication flow by setting a session-like object.
@@ -415,6 +417,11 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
             refresh_token: 'local-session',
             expires_at: Math.floor(Date.now() / 1000) + 3600,
         } as AuthSession);
+
+        if (isOfflineLogin) {
+            setLoginMessage('تم تسجيل الدخول بنجاح باستخدام البيانات المحفوظة. أنت تعمل في وضع عدم الاتصال.');
+            setTimeout(() => setLoginMessage(null), 5000);
+        }
     };
 
     const handleOpenAdminTaskModal = (initialData: any = null) => {
@@ -524,6 +531,15 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     isAutoSyncEnabled={supabaseData.isAutoSyncEnabled}
                 />
                 <OfflineBanner />
+                {loginMessage && (
+                    <div 
+                        className="no-print w-full bg-blue-100 text-blue-800 p-3 text-center text-sm font-semibold flex items-center justify-center gap-2 animate-fade-in"
+                        role="status"
+                    >
+                        <CheckCircleIcon className="w-5 h-5" />
+                        <span>{loginMessage}</span>
+                    </div>
+                )}
                 <main className="flex-grow p-4 sm:p-6">
                     <React.Suspense fallback={<FullScreenLoader />}>
                         {renderPage()}

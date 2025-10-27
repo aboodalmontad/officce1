@@ -154,6 +154,28 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow space-y-4">
+                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">النسخ الاحتياطي التلقائي</h2>
+                <div className="p-4 bg-blue-50 border-s-4 border-blue-500 rounded-md">
+                    <div className="flex">
+                        <div className="flex-shrink-0">
+                            <ShieldCheckIcon className="h-5 w-5 text-blue-500" aria-hidden="true" />
+                        </div>
+                        <div className="ms-3">
+                            <h3 className="text-lg font-semibold text-blue-800">حماية بياناتك</h3>
+                            <div className="mt-2 text-sm text-blue-700">
+                                <p>
+                                    لحماية بياناتك من الضياع العرضي (مثل مسح بيانات المتصفح)، يقوم التطبيق تلقائياً بإنشاء نسخة احتياطية كاملة من بياناتك وتنزيلها إلى جهازك مرة واحدة كل يوم عند أول استخدام.
+                                </p>
+                                <p className="mt-2">
+                                    ننصحك بالاحتفاظ بهذه الملفات في مكان آمن.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow space-y-4">
                 <h2 className="text-xl font-bold text-gray-800 border-b pb-3">حفظ ونقل البيانات</h2>
                 <p className="text-gray-600 text-sm">
                     يتم حفظ جميع بياناتك بشكل آمن وتلقائي على هذا الجهاز. للعمل على جهاز آخر، يمكنك استخدام أدوات التصدير والاستيراد لنقل نسخة من بياناتك.
