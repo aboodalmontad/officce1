@@ -1,10 +1,11 @@
 import * as React from 'react';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
-import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon, GavelIcon, BuildingLibraryIcon, ShareIcon, DocumentTextIcon } from './icons';
+import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon, GavelIcon, BuildingLibraryIcon, ShareIcon, DocumentTextIcon, DocumentDuplicateIcon } from './icons';
 import SessionsTable from './SessionsTable';
 import CaseAccounting from './CaseAccounting';
 import { formatDate } from '../utils/dateUtils';
 import { MenuItem } from './ContextMenu';
+import CaseDocuments from './CaseDocuments';
 
 interface ClientsListViewProps {
     clients: Client[];
@@ -34,7 +35,7 @@ interface ClientsListViewProps {
 
 const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expanded: boolean; onToggle: () => void; }> = ({ client, props, expanded, onToggle }) => {
     const [expandedCaseId, setExpandedCaseId] = React.useState<string | null>(null);
-    const [activeTab, setActiveTab] = React.useState<'stages' | 'accounting'>('stages');
+    const [activeTab, setActiveTab] = React.useState<'stages' | 'accounting' | 'documents'>('stages');
     const clientLongPressTimer = React.useRef<number | null>(null);
     const caseLongPressTimer = React.useRef<number | null>(null);
     const stageLongPressTimer = React.useRef<number | null>(null);
@@ -261,6 +262,7 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
                                         <div className="flex border-b mb-3">
                                             <button onClick={() => setActiveTab('stages')} className={`px-4 py-2 text-sm font-medium ${activeTab === 'stages' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'}`}>المراحل والجلسات</button>
                                             <button onClick={() => setActiveTab('accounting')} className={`px-4 py-2 text-sm font-medium ${activeTab === 'accounting' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'}`}>المحاسبة</button>
+                                            <button onClick={() => setActiveTab('documents')} className={`px-4 py-2 text-sm font-medium ${activeTab === 'documents' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'}`}>الوثائق</button>
                                         </div>
                                         {activeTab === 'stages' && (
                                             <div>
@@ -352,6 +354,9 @@ const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expand
                                                 setAccountingEntries={props.setAccountingEntries}
                                                 onFeeAgreementChange={(fee) => handleFeeChange(caseItem.id, fee)}
                                             />
+                                        )}
+                                        {activeTab === 'documents' && (
+                                            <CaseDocuments caseId={caseItem.id} />
                                         )}
                                     </div>
                                 )}
