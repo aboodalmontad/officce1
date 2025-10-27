@@ -283,6 +283,18 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
         } catch (err: any) {
             console.error("Error during sync:", err);
             let errorMessage = err.message || 'حدث خطأ غير متوقع.';
+            const lowerErrorMessage = errorMessage.toLowerCase();
+
+            // Check for common schema errors that can be fixed by the user running a script.
+            if (
+                (lowerErrorMessage.includes('column') && lowerErrorMessage.includes('does not exist')) ||
+                lowerErrorMessage.includes('schema cache') ||
+                (lowerErrorMessage.includes('relation') && lowerErrorMessage.includes('does not exist'))
+            ) {
+                setStatus('uninitialized', `هناك عدم تطابق في مخطط قاعدة البيانات: ${errorMessage}`);
+                return; // Stop further execution and show the configuration modal
+            }
+
             if (String(errorMessage).toLowerCase().includes('failed to fetch')) {
                 errorMessage = 'فشل الاتصال بالخادم. تحقق من اتصالك بالإنترنت وإعدادات CORS.';
             } else if (err.table) {
@@ -335,6 +347,18 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
         } catch (err: any) {
             console.error("Error during realtime refresh:", err);
             let errorMessage = err.message || 'حدث خطأ غير متوقع.';
+            const lowerErrorMessage = errorMessage.toLowerCase();
+
+            // Check for schema-related errors
+            if (
+                (lowerErrorMessage.includes('column') && lowerErrorMessage.includes('does not exist')) ||
+                lowerErrorMessage.includes('schema cache') ||
+                (lowerErrorMessage.includes('relation') && lowerErrorMessage.includes('does not exist'))
+            ) {
+                setStatus('uninitialized', `هناك عدم تطابق في مخطط قاعدة البيانات: ${errorMessage}`);
+                return; // Stop further execution
+            }
+
             if (String(errorMessage).toLowerCase().includes('failed to fetch')) {
                 errorMessage = 'فشل الاتصال بالخادم. تحقق من اتصالك بالإنترنت وإعدادات CORS.';
             }

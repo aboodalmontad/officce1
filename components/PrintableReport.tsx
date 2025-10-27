@@ -57,9 +57,10 @@ const PrintableReport: React.FC<PrintableReportProps> = ({ reportData }) => {
                                     <table className="w-full text-sm text-right text-gray-600">
                                         <thead className="text-xs text-gray-700 uppercase bg-gray-50">
                                             <tr>
-                                                <th className="px-4 py-3 w-1/5">الوقت</th>
-                                                <th className="px-4 py-3 w-3/5">الموضوع</th>
-                                                <th className="px-4 py-3 w-1/5">الأهمية</th>
+                                                <th className="px-4 py-3">الوقت</th>
+                                                <th className="px-4 py-3">الموضوع</th>
+                                                <th className="px-4 py-3">الأهمية</th>
+                                                <th className="px-4 py-3">الحالة</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -68,6 +69,7 @@ const PrintableReport: React.FC<PrintableReportProps> = ({ reportData }) => {
                                                     <td className="px-4 py-3 font-medium">{formatTime(item.time)}</td>
                                                     <td className="px-4 py-3">{item.title}</td>
                                                     <td className="px-4 py-3">{importanceMap[item.importance]?.text}</td>
+                                                    <td className="px-4 py-3">{item.completed ? 'تم' : 'قيد الانتظار'}</td>
                                                 </tr>
                                             ))}
                                         </tbody>

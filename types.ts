@@ -79,6 +79,7 @@ export interface Appointment {
     time: string;
     date: Date;
     importance: 'normal' | 'important' | 'urgent';
+    completed: boolean;
     notified?: boolean;
     reminderTimeInMinutes?: number;
     assignee?: string;

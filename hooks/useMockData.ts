@@ -159,7 +159,8 @@ export const mockAppointments: Appointment[] = [
         time: '11:00',
         date: createDate(0),
         importance: 'important',
-        assignee: 'أحمد'
+        assignee: 'أحمد',
+        completed: false,
     },
     {
         id: 'apt-2',
@@ -167,7 +168,8 @@ export const mockAppointments: Appointment[] = [
         time: '14:30',
         date: createDate(1),
         importance: 'normal',
-        assignee: 'فاطمة'
+        assignee: 'فاطمة',
+        completed: true,
     },
 ];
 

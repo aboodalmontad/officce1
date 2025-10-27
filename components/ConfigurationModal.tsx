@@ -85,7 +85,7 @@ CREATE TABLE public.cases (id text NOT NULL PRIMARY KEY, user_id uuid NOT NULL R
 CREATE TABLE public.stages (id text NOT NULL PRIMARY KEY, user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, case_id text NOT NULL REFERENCES public.cases(id) ON DELETE CASCADE, court text NOT NULL, case_number text, first_session_date timestamptz, decision_date timestamptz, decision_number text, decision_summary text, decision_notes text, updated_at timestamptz DEFAULT now());
 CREATE TABLE public.sessions (id text NOT NULL PRIMARY KEY, user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, stage_id text NOT NULL REFERENCES public.stages(id) ON DELETE CASCADE, court text, case_number text, date timestamptz NOT NULL, client_name text, opponent_name text, postponement_reason text, next_postponement_reason text, is_postponed boolean DEFAULT false, next_session_date timestamptz, assignee text, updated_at timestamptz DEFAULT now());
 CREATE TABLE public.admin_tasks (id text NOT NULL PRIMARY KEY, user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, task text NOT NULL, due_date timestamptz NOT NULL, completed boolean DEFAULT false, importance text DEFAULT 'normal', assignee text, location text, updated_at timestamptz DEFAULT now());
-CREATE TABLE public.appointments (id text NOT NULL PRIMARY KEY, user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, title text NOT NULL, "time" text, date timestamptz NOT NULL, importance text, notified boolean, reminder_time_in_minutes integer, assignee text, updated_at timestamptz DEFAULT now());
+CREATE TABLE public.appointments (id text NOT NULL PRIMARY KEY, user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, title text NOT NULL, "time" text, date timestamptz NOT NULL, importance text, notified boolean, reminder_time_in_minutes integer, assignee text, completed boolean DEFAULT false, updated_at timestamptz DEFAULT now());
 CREATE TABLE public.accounting_entries (id text NOT NULL PRIMARY KEY, user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, type text NOT NULL, amount real NOT NULL, date timestamptz NOT NULL, description text, client_id text, case_id text, client_name text, updated_at timestamptz DEFAULT now());
 CREATE TABLE public.invoices (id text NOT NULL PRIMARY KEY, user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, client_id text NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE, client_name text, case_id text REFERENCES public.cases(id) ON DELETE SET NULL, case_subject text, issue_date timestamptz NOT NULL, due_date timestamptz NOT NULL, tax_rate real DEFAULT 0, discount real DEFAULT 0, status text DEFAULT 'draft', notes text, updated_at timestamptz DEFAULT now());
 CREATE TABLE public.invoice_items (id text NOT NULL PRIMARY KEY, user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, invoice_id text NOT NULL REFERENCES public.invoices(id) ON DELETE CASCADE, description text NOT NULL, amount real NOT NULL, updated_at timestamptz DEFAULT now());
@@ -440,6 +440,27 @@ CREATE TRIGGER handle_updated_at BEFORE UPDATE ON public.invoice_items
     FOR EACH ROW EXECUTE PROCEDURE public.update_updated_at_column();
 `;
 
+const repairScript = `
+-- =================================================================
+-- سكربت إصلاح أخطاء (مثل عمود 'completed' المفقود)
+-- =================================================================
+-- هذا السكربت يقوم بإضافة الأعمدة المفقودة إلى الجداول الموجودة دون حذف البيانات.
+-- شغله إذا واجهت خطأ "Could not find the '...' column".
+
+-- 1. Add 'completed' column to 'appointments' table
+ALTER TABLE public.appointments
+ADD COLUMN IF NOT EXISTS completed BOOLEAN DEFAULT false;
+
+-- COMMENT: Add future repair statements here as needed.
+
+-- Notify PostgREST to reload schema
+-- This can help resolve caching issues immediately after altering the schema.
+NOTIFY pgrst, 'reload schema';
+
+-- Final check: Ensure permissions are correct on the new column.
+-- The existing policies should cover it, but this is a safeguard.
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.appointments TO anon, authenticated;
+`;
 
 const ScriptDisplay: React.FC<{ script: string }> = ({ script }) => {
     const [copied, setCopied] = React.useState(false);
@@ -468,7 +489,7 @@ const ScriptDisplay: React.FC<{ script: string }> = ({ script }) => {
 }
 
 const ConfigurationModal: React.FC<{ onRetry: () => void }> = ({ onRetry }) => {
-    const [view, setView] = React.useState<'setup' | 'realtime' | 'accounting'>('setup');
+    const [view, setView] = React.useState<'setup' | 'realtime' | 'accounting' | 'repair'>('repair');
 
     return (
         <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4" dir="rtl">
@@ -479,11 +500,18 @@ const ConfigurationModal: React.FC<{ onRetry: () => void }> = ({ onRetry }) => {
                         {view === 'setup' && "يبدو أن قاعدة البيانات غير مهيأة. يرجى اتباع الخطوات التالية لإعداد التطبيق."}
                         {view === 'realtime' && "استخدم هذا القسم لتفعيل المزامنة الفورية إذا توقفت عن العمل."}
                         {view === 'accounting' && "استخدم هذا القسم لإعادة إنشاء الجداول المتعلقة بالمحاسبة فقط."}
+                        {view === 'repair' && "يبدو أن هناك خطأ في مزامنة البيانات. يرجى اتباع الخطوات أدناه لإصلاح قاعدة البيانات."}
                     </p>
                 </div>
 
                 <div className="border-b border-gray-200">
                     <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+                         <button
+                            onClick={() => setView('repair')}
+                            className={`${view === 'repair' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                        >
+                            إصلاح الأخطاء
+                        </button>
                         <button
                             onClick={() => setView('setup')}
                             className={`${view === 'setup' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
@@ -504,6 +532,24 @@ const ConfigurationModal: React.FC<{ onRetry: () => void }> = ({ onRetry }) => {
                         </button>
                     </nav>
                 </div>
+
+                 {view === 'repair' && (
+                    <div className="space-y-4 animate-fade-in">
+                        <h2 className="text-xl font-semibold">إصلاح أخطاء شائعة</h2>
+                        <p className="text-sm text-gray-600">
+                            إذا كنت تواجه خطأً مثل <code className="bg-gray-200 p-1 rounded text-sm">Could not find the 'completed' column</code>، فهذا يعني أن مخطط قاعدة بياناتك قديم.
+                            انسخ وشغّل السكربت التالي في <strong className="font-semibold">SQL Editor</strong> الخاص بـ Supabase لإصلاح المشكلة دون فقدان بياناتك الحالية.
+                        </p>
+                        <ScriptDisplay script={repairScript} />
+                        <ol className="list-decimal list-inside space-y-2 text-gray-700">
+                            <li>من القائمة الجانبية في لوحة تحكم Supabase، اختر <strong className="font-semibold">SQL Editor</strong>.</li>
+                            <li>اضغط على <strong className="font-semibold">+ New query</strong>.</li>
+                            <li>الصق السكربت الذي نسخته في محرر الأكواد.</li>
+                            <li>اضغط على زر <strong className="font-semibold text-green-600">RUN</strong> لتنفيذ السكربت.</li>
+                            <li>بعد النجاح، عد إلى التطبيق واضغط على "إعادة المحاولة".</li>
+                        </ol>
+                    </div>
+                )}
 
                 {view === 'setup' && (
                     <div className="space-y-4 animate-fade-in">

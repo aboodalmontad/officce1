@@ -33,7 +33,7 @@ const formatTime = (time: string) => {
     return `${finalHours}:${minutes} ${ampm}`;
 };
 
-const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointment: () => void, onEdit: (appointment: Appointment) => void, onDelete: (appointment: Appointment) => void, onContextMenu: (event: React.MouseEvent, appointment: Appointment) => void }> = React.memo(({ appointments, onAddAppointment, onEdit, onDelete, onContextMenu }) => {
+const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointment: () => void, onEdit: (appointment: Appointment) => void, onDelete: (appointment: Appointment) => void, onContextMenu: (event: React.MouseEvent, appointment: Appointment) => void, onToggleComplete: (id: string) => void }> = React.memo(({ appointments, onAddAppointment, onEdit, onDelete, onContextMenu, onToggleComplete }) => {
     const longPressTimer = React.useRef<number | null>(null);
 
     const handleTouchStart = (e: React.TouchEvent, appointment: Appointment) => {
@@ -65,6 +65,7 @@ const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointmen
                     <table className="w-full text-sm text-right text-gray-600">
                         <thead className="text-xs text-gray-700 uppercase bg-gray-100">
                             <tr>
+                                <th className="px-6 py-3">تم</th>
                                 <th className="px-6 py-3">الموعد</th>
                                 <th className="px-6 py-3">الوقت</th>
                                 <th className="px-6 py-3">الشخص المسؤول</th>
@@ -80,10 +81,19 @@ const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointmen
                                     onTouchStart={(e) => handleTouchStart(e, a)}
                                     onTouchEnd={handleTouchEnd}
                                     onTouchMove={handleTouchEnd}
-                                    className="bg-white border-b hover:bg-gray-50">
-                                    <td className="px-6 py-4">{a.title}</td>
-                                    <td className="px-6 py-4">{formatTime(a.time)}</td>
-                                    <td className="px-6 py-4">{a.assignee}</td>
+                                    className={`border-b transition-colors ${a.completed ? 'bg-green-50 text-gray-500 hover:bg-green-100' : 'bg-white hover:bg-gray-50'}`}>
+                                    <td className="px-6 py-4">
+                                        <input
+                                            type="checkbox"
+                                            checked={a.completed}
+                                            onChange={() => onToggleComplete(a.id)}
+                                            className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                                            aria-label={`Mark appointment ${a.title} as ${a.completed ? 'incomplete' : 'complete'}`}
+                                        />
+                                    </td>
+                                    <td className={`px-6 py-4 ${a.completed ? 'line-through' : ''}`}>{a.title}</td>
+                                    <td className={`px-6 py-4 ${a.completed ? 'line-through' : ''}`}>{formatTime(a.time)}</td>
+                                    <td className={`px-6 py-4 ${a.completed ? 'line-through' : ''}`}>{a.assignee}</td>
                                     <td className="px-6 py-4">
                                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${importanceMap[a.importance]?.className}`}>
                                             {importanceMap[a.importance]?.text}
@@ -174,6 +184,14 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
         setEditingAppointment(null);
         setDateWarning(null);
     }
+    
+    const handleToggleAppointmentComplete = (id: string) => {
+        setAppointments(prev => 
+            prev.map(apt => 
+                apt.id === id ? { ...apt, completed: !apt.completed, updated_at: new Date() } : apt
+            )
+        );
+    };
 
     const handleAppointmentFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -217,6 +235,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                 time: newAppointment.time,
                 date: appointmentDate,
                 importance: newAppointment.importance,
+                completed: false,
                 reminderTimeInMinutes: newAppointment.reminderTimeInMinutes,
                 assignee: newAppointment.assignee,
                 notified: false,
@@ -1124,7 +1143,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                             )}
                                         </div>
                                     </div>
-                                    <AppointmentsTable appointments={dailyData.dailyAppointments} onAddAppointment={handleOpenAddAppointmentModal} onEdit={handleOpenEditAppointmentModal} onDelete={openDeleteAppointmentModal} onContextMenu={handleAppointmentContextMenu}/>
+                                    <AppointmentsTable appointments={dailyData.dailyAppointments} onAddAppointment={handleOpenAddAppointmentModal} onEdit={handleOpenEditAppointmentModal} onDelete={openDeleteAppointmentModal} onContextMenu={handleAppointmentContextMenu} onToggleComplete={handleToggleAppointmentComplete} />
                                 </>
                             )}
                             {viewMode === 'unpostponed' && (

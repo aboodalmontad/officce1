@@ -154,6 +154,7 @@ const validateAndHydrate = (data: any): AppData => {
             time: typeof apt.time === 'string' && /^\d{2}:\d{2}$/.test(apt.time) ? apt.time : '00:00',
             date: aptDate,
             importance: ['normal', 'important', 'urgent'].includes(apt.importance) ? apt.importance : 'normal',
+            completed: typeof apt.completed === 'boolean' ? apt.completed : false,
             notified: typeof apt.notified === 'boolean' ? apt.notified : false,
             reminderTimeInMinutes: typeof (apt.reminder_time_in_minutes ?? apt.reminderTimeInMinutes) === 'number' ? (apt.reminder_time_in_minutes ?? apt.reminderTimeInMinutes) : undefined,
             assignee: isValidAssistant(apt.assignee) ? apt.assignee : defaultAssignee,
@@ -428,7 +429,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     }, [isOnline, prevIsOnline, userId, isAuthLoading, isDataLoading]);
     
     React.useEffect(() => {
-        if (!isDirty || !isOnline || isDataLoading || isAuthLoading || syncStatus === 'syncing' || !isAutoSyncEnabled) {
+        if (!isDirty || !isOnline || isDataLoading || isAuthLoading || syncStatus === 'syncing' || syncStatus === 'uninitialized' || syncStatus === 'unconfigured' || !isAutoSyncEnabled) {
             return;
         }
 
