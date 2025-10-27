@@ -208,6 +208,42 @@ const Navbar: React.FC<{
     );
 };
 
+const OfflineBanner: React.FC = () => {
+    const isOnline = useOnlineStatus();
+    const [isVisible, setIsVisible] = React.useState(!isOnline);
+    const [isRendered, setIsRendered] = React.useState(!isOnline);
+
+    React.useEffect(() => {
+        if (!isOnline) {
+            setIsRendered(true);
+            requestAnimationFrame(() => {
+                setIsVisible(true);
+            });
+        } else {
+            setIsVisible(false);
+            const timer = setTimeout(() => {
+                setIsRendered(false);
+            }, 300); // Match transition duration
+            return () => clearTimeout(timer);
+        }
+    }, [isOnline]);
+    
+    if (!isRendered) {
+        return null;
+    }
+
+    return (
+        <div 
+            className={`no-print w-full bg-yellow-100 text-yellow-800 p-3 text-center text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-300 ease-in-out ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-full'}`}
+            role="status"
+            aria-live="polite"
+        >
+            <NoSymbolIcon className="w-5 h-5" />
+            <span>أنت غير متصل بالإنترنت. التغييرات محفوظة محلياً وستتم مزامنتها تلقائياً عند عودة الاتصال.</span>
+        </div>
+    );
+};
+
 const DataProvider = DataContext.Provider;
 
 const LAST_USER_CACHE_KEY = 'lawyerAppLastUser';
@@ -487,6 +523,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     onManualSync={supabaseData.manualSync}
                     isAutoSyncEnabled={supabaseData.isAutoSyncEnabled}
                 />
+                <OfflineBanner />
                 <main className="flex-grow p-4 sm:p-6">
                     <React.Suspense fallback={<FullScreenLoader />}>
                         {renderPage()}
