@@ -20,6 +20,7 @@ import { AdminTask, Profile, Session, Client, Appointment, AccountingEntry, Invo
 import { getSupabaseClient } from './supabaseClient';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { toInputDateString } from './utils/dateUtils';
+import Logo from './components/Logo';
 
 
 // --- Data Context for avoiding prop drilling ---
@@ -167,7 +168,10 @@ const Navbar: React.FC<{
     return (
         <header className="bg-white shadow-md p-2 sm:p-4 flex justify-between items-center no-print sticky top-0 z-30">
             <nav className="flex items-center gap-1 sm:gap-4 flex-wrap">
-                <h1 className="text-xl font-bold text-gray-800 hidden md:block">مكتب المحامي</h1>
+                <button onClick={() => onNavigate('home')} className="flex items-center gap-3" aria-label="العودة إلى الصفحة الرئيسية">
+                    <Logo />
+                    <h1 className="text-xl font-bold text-gray-800 hidden md:block">مكتب المحامي</h1>
+                </button>
                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
                     {navItems.map(item => (
                         <button
