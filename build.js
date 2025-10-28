@@ -32,6 +32,7 @@ async function build() {
                 'idb',
                 'react-router-dom',
                 'react/*', // To handle react/jsx-runtime and other react sub-modules
+                'docx-preview',
             ],
         });
 
