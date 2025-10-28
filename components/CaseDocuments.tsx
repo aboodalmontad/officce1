@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useCaseDocuments, DocumentRecord } from '../hooks/useCaseDocuments';
-import { DocumentArrowUpIcon, TrashIcon, EyeIcon, DocumentTextIcon, PhotoIcon, XMarkIcon, ExclamationTriangleIcon, ArrowPathIcon } from './icons';
+import { DocumentArrowUpIcon, TrashIcon, EyeIcon, DocumentTextIcon, PhotoIcon, XMarkIcon, ExclamationTriangleIcon, ArrowPathIcon, CameraIcon } from './icons';
 import { renderAsync } from 'docx-preview';
 
 interface CaseDocumentsProps {
@@ -93,7 +93,8 @@ const DocxPreview: React.FC<{ file: File; name: string }> = ({ file, name }) => 
                 container.removeChild(container.firstChild);
             }
 
-            if (file.type === 'application/msword') { // Handle legacy .doc files
+            // Check for legacy .doc format by MIME type or extension
+            if (file.type === 'application/msword' || name.toLowerCase().endsWith('.doc')) {
                 setError('معاينة ملفات .doc القديمة غير مدعومة حالياً. يرجى فتح الملف ببرنامج Microsoft Word.');
                 setIsLoading(false);
                 return;
@@ -107,7 +108,7 @@ const DocxPreview: React.FC<{ file: File; name: string }> = ({ file, name }) => 
                     setIsLoading(false);
                 });
         }
-    }, [file]);
+    }, [file, name]);
 
     return (
         <div className="w-[80vw] h-[90vh] bg-gray-100 p-4 rounded-lg overflow-auto flex flex-col" onClick={e => e.stopPropagation()}>
@@ -123,6 +124,127 @@ const DocxPreview: React.FC<{ file: File; name: string }> = ({ file, name }) => 
     );
 };
 
+interface CameraModalProps {
+    onClose: () => void;
+    onSave: (photoFile: File) => void;
+}
+
+const CameraModal: React.FC<CameraModalProps> = ({ onClose, onSave }) => {
+    const videoRef = React.useRef<HTMLVideoElement>(null);
+    const canvasRef = React.useRef<HTMLCanvasElement>(null);
+    const streamRef = React.useRef<MediaStream | null>(null);
+
+    const [mode, setMode] = React.useState<'streaming' | 'preview'>('streaming');
+    const [capturedImage, setCapturedImage] = React.useState<string | null>(null);
+    const [error, setError] = React.useState<string | null>(null);
+
+    React.useEffect(() => {
+        let didCancel = false;
+        async function startCamera() {
+            try {
+                // Prefer the rear camera
+                const constraints = { video: { facingMode: 'environment' } };
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                if (!didCancel && videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    streamRef.current = stream;
+                }
+            } catch (err) {
+                console.error("Camera access failed:", err);
+                setError("لا يمكن الوصول إلى الكاميرا. يرجى التحقق من الأذونات.");
+            }
+        }
+
+        if (mode === 'streaming') {
+            setError(null);
+            startCamera();
+        }
+
+        return () => {
+            didCancel = true;
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+                streamRef.current = null;
+            }
+        };
+    }, [mode]);
+
+    const handleCapture = () => {
+        if (videoRef.current && canvasRef.current) {
+            const video = videoRef.current;
+            const canvas = canvasRef.current;
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const context = canvas.getContext('2d');
+            if(context){
+                context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+                const dataUrl = canvas.toDataURL('image/jpeg');
+                setCapturedImage(dataUrl);
+                setMode('preview');
+            }
+        }
+    };
+
+    const handleRetake = () => {
+        setCapturedImage(null);
+        setMode('streaming');
+    };
+
+    const handleSave = () => {
+        if (capturedImage) {
+            fetch(capturedImage)
+                .then(res => res.blob())
+                .then(blob => {
+                    const photoFile = new File([blob], `capture-${Date.now()}.jpg`, { type: 'image/jpeg' });
+                    onSave(photoFile);
+                });
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className="bg-gray-800 p-4 rounded-lg shadow-xl w-full max-w-2xl relative" onClick={e => e.stopPropagation()}>
+                <button onClick={onClose} className="absolute top-2 right-2 text-white p-2 bg-black/50 rounded-full hover:bg-black/75 z-10">
+                    <XMarkIcon className="w-6 h-6"/>
+                </button>
+                
+                {error ? (
+                    <div className="text-center p-8 text-red-400">
+                        <ExclamationTriangleIcon className="w-12 h-12 mx-auto mb-4"/>
+                        <p>{error}</p>
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        <div className="relative w-full aspect-video bg-black rounded overflow-hidden">
+                            {mode === 'streaming' && (
+                                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-contain"></video>
+                            )}
+                            {mode === 'preview' && capturedImage && (
+                                <img src={capturedImage} alt="Preview" className="w-full h-full object-contain" />
+                            )}
+                        </div>
+                        
+                        <div className="flex justify-center items-center gap-4">
+                            {mode === 'streaming' && (
+                                <button onClick={handleCapture} className="p-4 bg-white rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-white" aria-label="التقاط صورة">
+                                    <div className="w-8 h-8 bg-red-600 rounded-full border-4 border-white"></div>
+                                </button>
+                            )}
+                            {mode === 'preview' && (
+                                <>
+                                    <button onClick={handleRetake} className="px-6 py-3 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-500">إعادة التقاط</button>
+                                    <button onClick={handleSave} className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">حفظ الصورة</button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                )}
+                <canvas ref={canvasRef} className="hidden"></canvas>
+            </div>
+        </div>
+    );
+};
+
 
 const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
     const { documents, loading, error, addDocuments, deleteDocument } = useCaseDocuments(caseId);
@@ -130,6 +252,7 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
     const [previewDoc, setPreviewDoc] = React.useState<DocumentRecord | null>(null);
     const [docToDelete, setDocToDelete] = React.useState<DocumentRecord | null>(null);
     const [isDragging, setIsDragging] = React.useState(false);
+    const [isCameraOpen, setIsCameraOpen] = React.useState(false);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
@@ -157,10 +280,12 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
     };
 
     const handlePreview = (doc: DocumentRecord) => {
+        const lowerCaseName = doc.name.toLowerCase();
         const wordMimeTypes = [
             'application/msword', // .doc
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document' // .docx
         ];
+        const isWordFile = wordMimeTypes.includes(doc.type) || lowerCaseName.endsWith('.docx') || lowerCaseName.endsWith('.doc');
 
         const isModalPreviewable = 
             doc.type.startsWith('image/') ||
@@ -168,7 +293,7 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
             doc.type.startsWith('video/') ||
             doc.type.startsWith('audio/') ||
             doc.type.startsWith('text/') ||
-            wordMimeTypes.includes(doc.type);
+            isWordFile;
 
         if (isModalPreviewable) {
             setPreviewDoc(doc);
@@ -180,9 +305,16 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
             setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
     };
+    
+    const handleSavePhoto = (photoFile: File) => {
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(photoFile);
+        addDocuments(dataTransfer.files);
+        setIsCameraOpen(false);
+    };
 
     const previewUrl = React.useMemo(() => {
-        if (previewDoc && !previewDoc.type.startsWith('text/') && !previewDoc.type.includes('word')) {
+        if (previewDoc && !previewDoc.type.startsWith('text/') && !previewDoc.name.toLowerCase().match(/\.(docx|doc)$/)) {
             return URL.createObjectURL(previewDoc.file);
         }
         return null;
@@ -212,16 +344,25 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
                 multiple 
             />
             
-             <div className="flex items-center justify-center w-full">
+             <div className="flex flex-col sm:flex-row items-stretch justify-center w-full gap-4">
                 <div 
-                    className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${isDragging ? 'border-blue-500 bg-blue-100' : 'border-gray-300 bg-gray-50 hover:bg-gray-100'}`}
+                    className={`flex-grow flex flex-col items-center justify-center h-32 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${isDragging ? 'border-blue-500 bg-blue-100' : 'border-gray-300 bg-gray-50 hover:bg-gray-100'}`}
                     onClick={() => fileInputRef.current?.click()}
                 >
-                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center">
                         <DocumentArrowUpIcon className="w-8 h-8 mb-2 text-gray-500"/>
-                        <p className="mb-2 text-sm text-gray-500"><span className="font-semibold">اضغط للإضافة</span> أو اسحب وأفلت الملفات هنا</p>
+                        <p className="mb-2 text-sm text-gray-500"><span className="font-semibold">اختر ملف</span> أو اسحبه هنا</p>
                     </div>
                 </div>
+                <button 
+                    onClick={() => setIsCameraOpen(true)}
+                    className="flex flex-col items-center justify-center h-32 w-full sm:w-32 border-2 border-dashed border-gray-300 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
+                    type="button"
+                    aria-label="التقط صورة"
+                >
+                    <CameraIcon className="w-8 h-8 mb-2 text-gray-500"/>
+                    <p className="text-sm text-gray-500 font-semibold">التقط صورة</p>
+                </button>
             </div> 
 
             {error && (
@@ -245,6 +386,8 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
                     ))}
                 </div>
             )}
+
+            {isCameraOpen && <CameraModal onClose={() => setIsCameraOpen(false)} onSave={handleSavePhoto} />}
 
             {previewDoc && (
                 <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewDoc(null)}>
@@ -276,7 +419,12 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
                             <TextPreview file={previewDoc.file} name={previewDoc.name} />
                         )}
                         
-                        {(previewDoc.type === 'application/msword' || previewDoc.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') && (
+                        {(
+                            previewDoc.type === 'application/msword' || 
+                            previewDoc.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                            previewDoc.name.toLowerCase().endsWith('.doc') ||
+                            previewDoc.name.toLowerCase().endsWith('.docx')
+                        ) && (
                             <DocxPreview file={previewDoc.file} name={previewDoc.name} />
                         )}
                     </div>

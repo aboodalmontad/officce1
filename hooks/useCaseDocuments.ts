@@ -71,25 +71,23 @@ export const useCaseDocuments = (caseId: string) => {
         type: file.type,
         addedAt: new Date(),
     }));
+    
+    const newDocIds = new Set(newDocs.map(d => d.id));
 
-    // Optimistic UI update: add new docs to the top of the list
-    const originalDocuments = documents;
-    // .slice().reverse() to show multiple added files in the order they were selected
+    // Optimistic UI update
     setDocuments(prev => [...newDocs.slice().reverse(), ...prev]);
     setError(null);
-    setLoading(false); // Stop loading immediately after optimistic update
 
     try {
         const db = await getDb();
         const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        const addPromises = newDocs.map(doc => store.add(doc));
+        const addPromises = newDocs.map(doc => tx.store.add(doc));
         await Promise.all(addPromises);
         await tx.done;
     } catch (err: any) {
         console.error("Failed to add documents to IndexedDB:", err);
-        // Revert on error
-        setDocuments(originalDocuments);
+        // Revert on error using a functional update to avoid stale state.
+        setDocuments(prev => prev.filter(doc => !newDocIds.has(doc.id))); 
         let userMessage = 'فشل إضافة الوثائق.';
         if (err.name === 'QuotaExceededError') {
             userMessage = 'فشل إضافة الوثائق. قد تكون مساحة التخزين المتاحة للتطبيق قد امتلأت.';
@@ -99,11 +97,11 @@ export const useCaseDocuments = (caseId: string) => {
   };
 
   const deleteDocument = async (id: string) => {
-    const originalDocuments = documents;
-    const docToDelete = originalDocuments.find(doc => doc.id === id);
+    // Find the document to delete for potential revert.
+    const docToDelete = documents.find(d => d.id === id);
     if (!docToDelete) return;
 
-    // Optimistic UI update
+    // Optimistically remove the document.
     setDocuments(prev => prev.filter(doc => doc.id !== id));
     setError(null);
 
@@ -112,8 +110,8 @@ export const useCaseDocuments = (caseId: string) => {
         await db.delete(STORE_NAME, id);
     } catch (err: any) {
         console.error("Failed to delete document from IndexedDB:", err);
-        // Revert on error
-        setDocuments(originalDocuments);
+        // Revert on error by re-adding the document and re-sorting.
+        setDocuments(prev => [...prev, docToDelete].sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime()));
         setError('فشل حذف الوثيقة.');
     }
   };

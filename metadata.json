@@ -1,5 +1,7 @@
 {
   "name": "3 Lawyer Business Management",
   "description": "A comprehensive web application for lawyers to manage their clients, cases, sessions, appointments, and administrative tasks efficiently.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "camera"
+  ]
 }
