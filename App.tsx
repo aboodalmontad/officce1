@@ -13,7 +13,7 @@ const SubscriptionExpiredPage = React.lazy(() => import('./pages/SubscriptionExp
 
 import ConfigurationModal from './components/ConfigurationModal';
 import { useSupabaseData, SyncStatus, AppData } from './hooks/useSupabaseData';
-import { UserIcon, CalculatorIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, ExclamationTriangleIcon, PowerIcon } from './components/icons';
+import { UserIcon, CalculatorIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, ExclamationTriangleIcon, PowerIcon, HomeIcon } from './components/icons';
 import ContextMenu, { MenuItem } from './components/ContextMenu';
 import AdminTaskModal from './components/AdminTaskModal';
 import { AdminTask, Profile, Session, Client, Appointment, AccountingEntry, Invoice } from './types';
@@ -167,6 +167,7 @@ const Navbar: React.FC<{
 }> = ({ currentPage, onNavigate, onLogout, syncStatus, lastSyncError, isDirty, isOnline, onManualSync, profile, isAutoSyncEnabled }) => {
     
     const navItems = [
+        { id: 'home', label: 'الرئيسية', icon: HomeIcon },
         { id: 'clients', label: 'الموكلين', icon: UserIcon },
         { id: 'accounting', label: 'المحاسبة', icon: CalculatorIcon },
         { id: 'settings', label: 'الإعدادات', icon: Cog6ToothIcon },

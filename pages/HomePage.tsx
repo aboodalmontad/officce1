@@ -2,7 +2,7 @@ import * as React from 'react';
 import Calendar from '../components/Calendar';
 import { Session, AdminTask, Appointment, Stage, Client } from '../types';
 import { formatDate, isSameDay, isBeforeToday, toInputDateString } from '../utils/dateUtils';
-import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, CalendarIcon, ChevronLeftIcon, ScaleIcon, BuildingLibraryIcon, ShareIcon, UserIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon } from '../components/icons';
+import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, CalendarIcon, ChevronLeftIcon, ScaleIcon, BuildingLibraryIcon, ShareIcon, UserIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, HomeIcon } from '../components/icons';
 import SessionsTable from '../components/SessionsTable';
 import PrintableReport from '../components/PrintableReport';
 import { printElement } from '../utils/printUtils';
@@ -932,7 +932,10 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
     return (
         <div className="space-y-6">
             <div className="no-print flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <h1 className="text-3xl font-bold text-gray-800">الرئيسية</h1>
+                <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
+                    <HomeIcon className="w-8 h-8"/>
+                    <span>الرئيسية</span>
+                </h1>
                  <div className="flex items-center gap-2">
                     <button onClick={() => setIsPrintAssigneeModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
                         <PrintIcon className="w-5 h-5" />

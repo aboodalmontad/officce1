@@ -242,8 +242,6 @@ const validateAndHydrate = (data: any): AppData => {
 };
 
 function usePrevious<T>(value: T): T | undefined {
-  // FIX: Explicitly provide `undefined` as the initial value to `useRef` and type the ref to allow `undefined`.
-  // This resolves the "Expected 1 arguments, but got 0" error which can occur with older React type definitions.
   const ref = React.useRef<T | undefined>(undefined);
   React.useEffect(() => {
     ref.current = value;
@@ -255,8 +253,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const getLocalStorageKey = React.useCallback(() => user ? `${APP_DATA_KEY}_${user.id}` : APP_DATA_KEY, [user]);
     const userId = user?.id;
 
-    // Initialize state by calling the function to get the initial data object.
-    // This ensures we start with a fresh object and avoids potential issues with React's functional updates.
     const [data, setData] = React.useState<AppData>(getInitialData());
     const dataRef = React.useRef(data);
     dataRef.current = data;
@@ -272,6 +268,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const [showUnpostponedSessionsModal, setShowUnpostponedSessionsModal] = React.useState(false);
     
     const hadCacheOnLoad = React.useRef(false);
+    const isInitialLoadAfterHydrate = React.useRef(true);
     
     const isOnline = useOnlineStatus();
     const prevIsOnline = usePrevious(isOnline);
@@ -299,14 +296,13 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
     const handleDataSynced = React.useCallback(async (syncedData: AppData) => {
         const validatedData = validateAndHydrate(syncedData);
+        isInitialLoadAfterHydrate.current = true; // Prevent marking as dirty on sync
         setData(validatedData);
         if (userId) {
             try {
                 const db = await getDb();
                 await db.put(DATA_STORE_NAME, validatedData, `${APP_DATA_KEY}_${userId}`);
                 setIsDirty(false);
-                localStorage.setItem(`lawyerAppIsDirty_${userId}`, 'false');
-                console.log('Synced data saved to IndexedDB.');
             } catch (e) {
                 console.error('Failed to save synced data to IndexedDB', e);
             }
@@ -316,7 +312,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const handleSyncStatusChange = React.useCallback((status: SyncStatus, error: string | null) => {
         setSyncStatus(status);
         setLastSyncError(error);
-    }, [setSyncStatus, setLastSyncError]);
+    }, []);
 
     const { manualSync, fetchAndRefresh } = useSync({
         user,
@@ -327,6 +323,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         onSyncStatusChange: handleSyncStatusChange,
         isOnline,
         isAuthLoading,
+        syncStatus,
     });
     
     const manualSyncRef = React.useRef(manualSync);
@@ -337,8 +334,30 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         fetchAndRefreshRef.current = fetchAndRefresh;
     }, [manualSync, fetchAndRefresh]);
     
+    // Effect to automatically sync data when changes are made while online.
     React.useEffect(() => {
-        // This effect handles loading from cache when the user changes.
+        // Guard against running on initial load or while other operations are in progress.
+        if (isDataLoading || isAuthLoading || !userId) {
+            return;
+        }
+
+        // Conditions to trigger auto-sync:
+        // - Data has been modified locally (isDirty).
+        // - The application is online.
+        // - Auto-sync feature is enabled by the user.
+        // - No sync is currently in progress.
+        if (isDirty && isOnline && isAutoSyncEnabled && syncStatus !== 'syncing') {
+            const handler = setTimeout(() => {
+                console.log("Auto-syncing dirty data...");
+                manualSyncRef.current();
+            }, 5000); // 5-second delay to bundle changes
+
+            // Clean up the timeout if dependencies change, resetting the debounce timer.
+            return () => clearTimeout(handler);
+        }
+    }, [isDirty, isOnline, isAutoSyncEnabled, syncStatus, isDataLoading, isAuthLoading, userId]);
+
+    React.useEffect(() => {
         if (!userId) {
             setData(getInitialData());
             setDeletedIds(getInitialDeletedIds());
@@ -359,7 +378,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 const db = await getDb();
                 const rawData = await db.get(DATA_STORE_NAME, getLocalStorageKey());
 
-                // Keep flags in localStorage as they are small and simple.
                 const rawDeleted = localStorage.getItem(`lawyerAppDeletedIds_${userId}`);
                 setDeletedIds(rawDeleted ? JSON.parse(rawDeleted) : getInitialDeletedIds());
                 const autoSyncEnabled = localStorage.getItem(`lawyerAppAutoSyncEnabled_${userId}`);
@@ -368,7 +386,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 setIsAutoBackupEnabled(autoBackupEnabled === null ? true : autoBackupEnabled === 'true');
 
                 if (rawData) {
-                    const parsedData = rawData; // Already an object from IDB
+                    const parsedData = rawData; 
                     const isEffectivelyEmpty =
                         !parsedData ||
                         (Array.isArray(parsedData.clients) && parsedData.clients.length === 0 &&
@@ -379,19 +397,16 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         
                     if (isEffectivelyEmpty) {
                         hadCacheOnLoad.current = false;
-                        console.log("Local IndexedDB data found but is empty. Will perform initial pull.");
                         setData(getInitialData());
                     } else {
+                        isInitialLoadAfterHydrate.current = true; // Prevent marking as dirty on initial load
                         setData(validateAndHydrate(parsedData));
-                        const isLocallyDirty = localStorage.getItem(`lawyerAppIsDirty_${userId}`) === 'true';
-                        setIsDirty(isLocallyDirty);
-                        setSyncStatus('synced'); // Optimistic status
+                        setIsDirty(localStorage.getItem(`lawyerAppIsDirty_${userId}`) === 'true');
+                        setSyncStatus('synced'); 
                         hadCacheOnLoad.current = true;
-                        console.log("Hydrated state from IndexedDB.");
                     }
                 } else {
                     hadCacheOnLoad.current = false;
-                    console.log("No local IndexedDB data found. Will perform initial pull.");
                 }
             } catch (error) {
                 console.error("Error loading cached data from IndexedDB:", error);
@@ -407,59 +422,219 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     }, [userId, getLocalStorageKey]);
 
     React.useEffect(() => {
-        // This effect is the primary trigger for synchronization logic, specifically
-        // designed to handle the race condition on internet reconnection.
+        if (isAuthLoading || isDataLoading || !userId) return;
 
-        // We only want to act when authentication loading is complete.
-        if (isAuthLoading || isDataLoading || !userId) {
-            return;
-        }
-
-        // Condition 1: Authentication just finished (transitioned from true to false).
-        // This is the key to solving the race condition.
         const authJustFinished = prevIsAuthLoading === true && isAuthLoading === false;
 
         if (authJustFinished && isOnline) {
-            console.log("Authentication has just completed while online. Triggering sync.");
-            // We perform a full sync. If we started with no local data, treat it as an initial pull.
             manualSyncRef.current(!hadCacheOnLoad.current);
         } else if (!isOnline && !hadCacheOnLoad.current) {
-            // Condition 2: We are offline and started with no cached data. Show an error.
             setSyncStatus('error');
             setLastSyncError('أنت غير متصل ولا توجد بيانات محلية. يرجى الاتصال بالإنترنت للمزامنة الأولية.');
         }
     }, [isAuthLoading, prevIsAuthLoading, isOnline, isDataLoading, userId]);
 
     React.useEffect(() => {
-        // This effect specifically handles the app reconnecting to the internet.
         const justCameOnline = prevIsOnline === false && isOnline === true;
         let syncOnReconnectTimeout: number | null = null;
 
         if (justCameOnline && userId && !isAuthLoading && !isDataLoading) {
-            console.log('Application reconnected to the internet. Scheduling sync...');
-            
-            // Schedule the sync after a short delay (e.g., 1.5 seconds) to allow Supabase's auth client
-            // to re-establish its connection and refresh tokens if necessary. This helps prevent race conditions.
             syncOnReconnectTimeout = window.setTimeout(() => {
-                console.log('Executing scheduled sync on reconnection.');
-                
                 if (isAutoSyncEnabledRef.current) {
                     if (isDirtyRef.current) {
-                        console.log('Local changes detected. Performing full sync.');
                         manualSyncRef.current();
                     } else {
-                        console.log('No local changes. Performing a safe refresh from server.');
                         fetchAndRefreshRef.current();
                     }
-                } else {
-                     console.log('Auto-sync is disabled. Skipping sync on reconnection.');
                 }
-            }, 1500); // 1.5 second delay
+            }, 1500);
         }
 
-        // Cleanup function to clear the timeout if the component unmounts or dependencies change
-        // before the timeout has executed.
-        return () => {
-            if (syncOnReconnectTimeout) {
-                clearTimeout(syncOnReconnectTimeout);
+        return () => { if (syncOnReconnectTimeout) clearTimeout(syncOnReconnectTimeout); };
+    }, [isOnline, prevIsOnline, userId, isAuthLoading, isDataLoading]);
+
+    // Effect to mark data as "dirty" (changed) when it's modified after initial load.
+    React.useEffect(() => {
+        if (isDataLoading) return;
+
+        if (isInitialLoadAfterHydrate.current) {
+            isInitialLoadAfterHydrate.current = false;
+        } else {
+            setIsDirty(true);
+        }
+    }, [data, deletedIds, isDataLoading]);
+
+    // Debounced save to IndexedDB and localStorage for flags
+    React.useEffect(() => {
+        if (isDataLoading || !userId) return;
+
+        const handler = setTimeout(async () => {
+            console.log('Debounced save: Persisting data to local storage...');
+            try {
+                const db = await getDb();
+                await db.put(DATA_STORE_NAME, dataRef.current, getLocalStorageKey());
+                localStorage.setItem(`lawyerAppDeletedIds_${userId}`, JSON.stringify(deletedIds));
+                localStorage.setItem(`lawyerAppIsDirty_${userId}`, String(isDirtyRef.current));
+            } catch (e) {
+                console.error('Debounced save to local storage failed:', e);
             }
+        }, 1500); // 1.5 seconds debounce delay
+
+        return () => clearTimeout(handler);
+    }, [data, deletedIds, isDataLoading, userId, getLocalStorageKey]);
+
+    // This effect persists simple settings flags to localStorage. It's lightweight and runs on every change.
+    React.useEffect(() => {
+        if (userId) {
+            localStorage.setItem(`lawyerAppAutoSyncEnabled_${userId}`, String(isAutoSyncEnabled));
+            localStorage.setItem(`lawyerAppAutoBackupEnabled_${userId}`, String(isAutoBackupEnabled));
+        }
+    }, [userId, isAutoSyncEnabled, isAutoBackupEnabled]);
+
+    // Effect for real-time data synchronization
+    React.useEffect(() => {
+        if (!user || !isOnline || isAuthLoading || isDataLoading) {
+            return;
+        }
+
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+
+        let debounceTimer: number | null = null;
+        const debouncedRefresh = () => {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            debounceTimer = window.setTimeout(() => {
+                if (syncStatus === 'syncing') {
+                    console.log('Real-time refresh skipped: a sync is already in progress.');
+                    return;
+                }
+                console.log('Real-time change detected, refreshing data...');
+                fetchAndRefreshRef.current();
+            }, 1500); // 1.5s debounce to batch updates
+        };
+
+        const channel = supabase.channel(`user-data-channel-${user.id}`);
+        
+        channel
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                filter: `user_id=eq.${user.id}`
+            }, payload => {
+                console.log('Real-time change on user table:', payload.table);
+                debouncedRefresh();
+            })
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'profiles',
+                filter: `id=eq.${user.id}`
+            }, payload => {
+                console.log('Real-time change on user profile.');
+                debouncedRefresh();
+            })
+            .subscribe((status, err) => {
+                if (status === 'SUBSCRIBED') {
+                    console.log(`Real-time channel subscribed for user ${user.id}`);
+                } else if (status === 'CHANNEL_ERROR' || err) {
+                    console.error('Real-time subscription error:', err);
+                    setLastSyncError('فشل الاتصال بمزامنة الوقت الفعلي.');
+                }
+            });
+
+        return () => {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            if (channel) {
+                supabase.removeChannel(channel).catch(error => {
+                    console.error("Failed to remove real-time channel:", error);
+                });
+            }
+        };
+    }, [user, isOnline, isAuthLoading, isDataLoading, syncStatus]);
+
+    return {
+        clients: data.clients,
+        adminTasks: data.adminTasks,
+        appointments: data.appointments,
+        accountingEntries: data.accountingEntries,
+        invoices: data.invoices,
+        assistants: data.assistants,
+        setClients: (updater) => setData(prev => ({...prev, clients: typeof updater === 'function' ? updater(prev.clients) : updater})),
+        setAdminTasks: (updater) => setData(prev => ({...prev, adminTasks: typeof updater === 'function' ? updater(prev.adminTasks) : updater})),
+        setAppointments: (updater) => setData(prev => ({...prev, appointments: typeof updater === 'function' ? updater(prev.appointments) : updater})),
+        setAccountingEntries: (updater) => setData(prev => ({...prev, accountingEntries: typeof updater === 'function' ? updater(prev.accountingEntries) : updater})),
+        setInvoices: (updater) => setData(prev => ({...prev, invoices: typeof updater === 'function' ? updater(prev.invoices) : updater})),
+        setAssistants: (updater) => setData(prev => ({...prev, assistants: typeof updater === 'function' ? updater(prev.assistants) : updater})),
+        setFullData: handleDataSynced,
+        allSessions: React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.map(s => ({...s, stageId: st.id, stageDecisionDate: st.decisionDate})) ))), [data.clients]),
+        unpostponedSessions: React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.filter(s => !s.isPostponed && isBeforeToday(s.date) && !st.decisionDate)))) , [data.clients]),
+        syncStatus,
+        manualSync: manualSyncRef.current,
+        lastSyncError,
+        isDirty,
+        userId,
+        isDataLoading,
+        isAuthLoading,
+        isAutoSyncEnabled,
+        // FIX: Correctly alias the state setter to match the context interface.
+        setAutoSyncEnabled: setIsAutoSyncEnabled,
+        isAutoBackupEnabled,
+        // FIX: Correctly alias the state setter to match the context interface.
+        setAutoBackupEnabled: setIsAutoBackupEnabled,
+        triggeredAlerts,
+        dismissAlert: React.useCallback((appointmentId: string) => { setTriggeredAlerts(prev => prev.filter(a => a.id !== appointmentId)); }, []),
+        showUnpostponedSessionsModal,
+        setShowUnpostponedSessionsModal,
+        deleteClient: React.useCallback((clientId: string) => { setDeletedIds(prev => ({...prev, clients: [...prev.clients, clientId]})); setData(prev => ({...prev, clients: prev.clients.filter(c => c.id !== clientId)})); }, []),
+        deleteCase: React.useCallback((caseId: string, clientId: string) => { setDeletedIds(prev => ({...prev, cases: [...prev.cases, caseId]})); setData(prev => ({...prev, clients: prev.clients.map(c => c.id === clientId ? {...c, cases: c.cases.filter(cs => cs.id !== caseId)} : c)})); }, []),
+        deleteStage: React.useCallback((stageId: string, caseId: string, clientId: string) => { setDeletedIds(prev => ({...prev, stages: [...prev.stages, stageId]})); setData(prev => ({...prev, clients: prev.clients.map(c => c.id === clientId ? {...c, cases: c.cases.map(cs => cs.id === caseId ? {...cs, stages: cs.stages.filter(st => st.id !== stageId)} : cs)} : c)})); }, []),
+        deleteSession: React.useCallback((sessionId: string, stageId: string, caseId: string, clientId: string) => { setDeletedIds(prev => ({...prev, sessions: [...prev.sessions, sessionId]})); setData(prev => ({...prev, clients: prev.clients.map(c => c.id === clientId ? {...c, cases: c.cases.map(cs => cs.id === caseId ? {...cs, stages: cs.stages.map(st => st.id === stageId ? {...st, sessions: st.sessions.filter(s => s.id !== sessionId)} : st)} : cs)} : c)})); }, []),
+        deleteAdminTask: React.useCallback((taskId: string) => { setDeletedIds(prev => ({...prev, adminTasks: [...prev.adminTasks, taskId]})); setData(prev => ({...prev, adminTasks: prev.adminTasks.filter(t => t.id !== taskId)})); }, []),
+        deleteAppointment: React.useCallback((appointmentId: string) => { setDeletedIds(prev => ({...prev, appointments: [...prev.appointments, appointmentId]})); setData(prev => ({...prev, appointments: prev.appointments.filter(a => a.id !== appointmentId)})); }, []),
+        deleteAccountingEntry: React.useCallback((entryId: string) => { setDeletedIds(prev => ({...prev, accountingEntries: [...prev.accountingEntries, entryId]})); setData(prev => ({...prev, accountingEntries: prev.accountingEntries.filter(e => e.id !== entryId)})); }, []),
+        deleteInvoice: React.useCallback((invoiceId: string) => { setDeletedIds(prev => ({...prev, invoices: [...prev.invoices, invoiceId]})); setData(prev => ({...prev, invoices: prev.invoices.filter(i => i.id !== invoiceId)})); }, []),
+        deleteAssistant: React.useCallback((name: string) => { setDeletedIds(prev => ({...prev, assistants: [...prev.assistants, name]})); setData(prev => ({...prev, assistants: prev.assistants.filter(a => a !== name)})); }, []),
+        postponeSession: React.useCallback((sessionId: string, newDate: Date, newReason: string) => {
+            setData(prev => {
+                const newClients = prev.clients.map(client => ({
+                    ...client,
+                    cases: client.cases.map(caseItem => ({
+                        ...caseItem,
+                        stages: caseItem.stages.map(stage => {
+                            const sessionIndex = stage.sessions.findIndex(s => s.id === sessionId);
+                            if (sessionIndex === -1) return stage;
+
+                            const updatedSessions = [...stage.sessions];
+                            const sessionToUpdate = updatedSessions[sessionIndex];
+                            
+                            updatedSessions[sessionIndex] = {
+                                ...sessionToUpdate,
+                                isPostponed: true,
+                                nextSessionDate: newDate,
+                                nextPostponementReason: newReason,
+                                updated_at: new Date(),
+                            };
+                            
+                            const newSession: Session = {
+                                id: `session-${Date.now()}`,
+                                court: sessionToUpdate.court,
+                                caseNumber: sessionToUpdate.caseNumber,
+                                date: newDate,
+                                clientName: sessionToUpdate.clientName,
+                                opponentName: sessionToUpdate.opponentName,
+                                isPostponed: false,
+                                postponementReason: newReason,
+                                assignee: sessionToUpdate.assignee,
+                                updated_at: new Date()
+                            };
+                            updatedSessions.push(newSession);
+
+                            return { ...stage, sessions: updatedSessions, updated_at: new Date() };
+                        })
+                    }))
+                }));
+                return { ...prev, clients: newClients };
+            });
+        }, []),
+    };
+};

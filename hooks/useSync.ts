@@ -16,6 +16,7 @@ interface UseSyncProps {
     onSyncStatusChange: (status: SyncStatus, error: string | null) => void;
     isOnline: boolean;
     isAuthLoading: boolean;
+    syncStatus: SyncStatus;
 }
 
 // Flattens the nested client data structure into separate arrays for each entity type.
@@ -110,7 +111,7 @@ const mergeForRefresh = <T extends { id: any; updated_at?: Date | string }>(loca
 };
 
 
-export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletionsSynced, onSyncStatusChange, isOnline, isAuthLoading }: UseSyncProps) => {
+export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletionsSynced, onSyncStatusChange, isOnline, isAuthLoading, syncStatus }: UseSyncProps) => {
     const userRef = React.useRef(user);
     userRef.current = user;
 
@@ -119,6 +120,10 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
     };
 
     const manualSync = React.useCallback(async (isInitialPull: boolean = false) => {
+        if (syncStatus === 'syncing') {
+            console.log("Sync aborted: another sync operation is already in progress.");
+            return;
+        }
         if (isAuthLoading) {
             console.log("Sync deferred: Authentication in progress.");
             return;
@@ -302,9 +307,13 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
             }
             setStatus('error', `فشل المزامنة: ${errorMessage}`);
         }
-    }, [localData, userRef, isOnline, onDataSynced, deletedIds, onDeletionsSynced, isAuthLoading]);
+    }, [localData, userRef, isOnline, onDataSynced, deletedIds, onDeletionsSynced, isAuthLoading, syncStatus]);
 
     const fetchAndRefresh = React.useCallback(async () => {
+        if (syncStatus === 'syncing') {
+            console.log("Refresh aborted: a sync operation is already in progress.");
+            return;
+        }
         if (isAuthLoading) {
             console.log("Refresh deferred: Authentication in progress.");
             return;
@@ -364,7 +373,7 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
             }
             setStatus('error', `فشل تحديث البيانات: ${errorMessage}`);
         }
-    }, [localData, userRef, isOnline, onDataSynced, isAuthLoading]);
+    }, [localData, userRef, isOnline, onDataSynced, isAuthLoading, syncStatus]);
 
 
     return { manualSync, fetchAndRefresh };
