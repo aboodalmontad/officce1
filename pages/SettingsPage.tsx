@@ -7,7 +7,7 @@ import { useData } from '../App';
 interface SettingsPageProps {}
 
 const SettingsPage: React.FC<SettingsPageProps> = () => {
-    const { setFullData, assistants, setAssistants, userId, isAutoSyncEnabled, setAutoSyncEnabled, isAutoBackupEnabled, setAutoBackupEnabled, deleteAssistant } = useData();
+    const { setFullData, assistants, setAssistants, userId, isAutoSyncEnabled, setAutoSyncEnabled, isAutoBackupEnabled, setAutoBackupEnabled, deleteAssistant, exportData } = useData();
     const [feedback, setFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = React.useState(false);
     const [isDeleteAssistantModalOpen, setIsDeleteAssistantModalOpen] = React.useState(false);
@@ -39,24 +39,9 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
     };
 
     const handleExportData = () => {
-        try {
-            const key = userId ? `${APP_DATA_KEY}_${userId}` : APP_DATA_KEY;
-            const data = localStorage.getItem(key);
-            if (!data) {
-                showFeedback('لا توجد بيانات لتصديرها.', 'error');
-                return;
-            }
-            const blob = new Blob([data], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            const date = new Date().toISOString().split('T')[0];
-            a.download = `lawyer_app_backup_${date}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
+        if (exportData()) {
             showFeedback('تم تصدير البيانات بنجاح.', 'success');
-        } catch (error) {
-            console.error("Failed to export data:", error);
+        } else {
             showFeedback('فشل تصدير البيانات.', 'error');
         }
     };

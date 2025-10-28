@@ -1042,39 +1042,43 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                         </div>
 
                                         {locationOrder.length > 0 && (
-                                            <div className="border-b border-gray-200">
-                                                <nav className="-mb-px flex space-x-1 sm:space-x-2 overflow-x-auto" aria-label="Location Tabs">
-                                                    {locationOrder.map(location => (
-                                                        <button
-                                                            key={location}
-                                                            onClick={() => setActiveLocationTab(location)}
-                                                            draggable
-                                                            onDragStart={e => handleDragStart(e, 'group', location)}
-                                                            onDragEnd={handleDragEnd}
-                                                            onDragOver={e => e.preventDefault()}
-                                                            onDrop={e => {
-                                                                e.preventDefault();
-                                                                e.stopPropagation();
-                                                                if (!draggedGroupLocation || draggedGroupLocation === location) {
-                                                                    return;
-                                                                }
-                                                                setLocationOrder(currentOrder => {
-                                                                    const sourceIndex = currentOrder.indexOf(draggedGroupLocation);
-                                                                    const targetIndex = currentOrder.indexOf(location);
-                                                                    if (sourceIndex === -1 || targetIndex === -1) return currentOrder;
-                                                                    const newOrder = [...currentOrder];
-                                                                    const [movedItem] = newOrder.splice(sourceIndex, 1);
-                                                                    newOrder.splice(targetIndex, 0, movedItem);
-                                                                    return newOrder;
-                                                                });
-                                                            }}
-                                                            className={`whitespace-nowrap py-3 px-4 rounded-t-md border-b-2 font-medium text-sm cursor-grab transition-all duration-150 ${activeLocationTab === location ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} ${draggedGroupLocation === location ? 'opacity-30 scale-95' : 'opacity-100'}`}
-                                                        >
-                                                            {location}
-                                                        </button>
-                                                    ))}
-                                                </nav>
-                                            </div>
+                                            <nav className="-mb-px flex space-x-2 overflow-x-auto border-b border-gray-200" aria-label="Location Tabs">
+                                                {locationOrder.map(location => (
+                                                    <button
+                                                        key={location}
+                                                        onClick={() => setActiveLocationTab(location)}
+                                                        draggable
+                                                        onDragStart={e => handleDragStart(e, 'group', location)}
+                                                        onDragEnd={handleDragEnd}
+                                                        onDragOver={e => e.preventDefault()}
+                                                        onDrop={e => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            if (!draggedGroupLocation || draggedGroupLocation === location) {
+                                                                return;
+                                                            }
+                                                            setLocationOrder(currentOrder => {
+                                                                const sourceIndex = currentOrder.indexOf(draggedGroupLocation);
+                                                                const targetIndex = currentOrder.indexOf(location);
+                                                                if (sourceIndex === -1 || targetIndex === -1) return currentOrder;
+                                                                const newOrder = [...currentOrder];
+                                                                const [movedItem] = newOrder.splice(sourceIndex, 1);
+                                                                newOrder.splice(targetIndex, 0, movedItem);
+                                                                return newOrder;
+                                                            });
+                                                        }}
+                                                        className={`whitespace-nowrap py-3 px-4 border rounded-t-lg font-medium text-sm cursor-grab transition-colors duration-150 focus:outline-none ${
+                                                            activeLocationTab === location
+                                                                ? 'bg-gray-50 border-gray-200 border-b-gray-50 text-blue-600 font-semibold -mb-px' // Active tab
+                                                                : 'bg-white border-gray-200 border-b-0 text-gray-500 hover:bg-gray-100' // Inactive tab
+                                                        } ${
+                                                            draggedGroupLocation === location ? 'opacity-30 scale-95' : 'opacity-100'
+                                                        }`}
+                                                    >
+                                                        {location}
+                                                    </button>
+                                                ))}
+                                            </nav>
                                         )}
                                         
                                         <div className="mt-4 space-y-6">
@@ -1082,7 +1086,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                                 <div 
                                                     onDragOver={handleGroupDragOver}
                                                     onDrop={e => handleGroupDrop(e, activeLocationTab)}
-                                                    className="bg-gray-50 p-2 sm:p-4 space-y-3 border border-gray-200 border-t-0 rounded-b-lg -mt-px min-h-[100px]"
+                                                    className="bg-gray-50 p-2 sm:p-4 space-y-3 border border-gray-200 border-t-0 rounded-b-lg min-h-[100px]"
                                                 >
                                                     {(groupedTasks[activeLocationTab] || []).length > 0 ? (
                                                         (groupedTasks[activeLocationTab] || []).map(task => renderTaskItem(task, activeLocationTab))

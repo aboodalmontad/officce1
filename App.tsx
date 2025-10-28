@@ -45,6 +45,7 @@ interface IDataContext extends AppData {
     setAutoSyncEnabled: (enabled: boolean) => void;
     isAutoBackupEnabled: boolean;
     setAutoBackupEnabled: (enabled: boolean) => void;
+    exportData: () => boolean;
     triggeredAlerts: Appointment[];
     dismissAlert: (appointmentId: string) => void;
     deleteClient: (clientId: string) => void;

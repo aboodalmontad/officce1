@@ -837,7 +837,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                             <div><label>رقم القرار</label><input type="text" value={decideFormData.decisionNumber} onChange={e => setDecideFormData(p => ({...p, decisionNumber: e.target.value}))} className="w-full p-2 border rounded" /></div>
                             <div><label>ملخص القرار</label><textarea value={decideFormData.decisionSummary} onChange={e => setDecideFormData(p => ({...p, decisionSummary: e.target.value}))} className="w-full p-2 border rounded" rows={3}></textarea></div>
                             <div><label>ملاحظات</label><textarea value={decideFormData.decisionNotes} onChange={e => setDecideFormData(p => ({...p, decisionNotes: e.target.value}))} className="w-full p-2 border rounded" rows={2}></textarea></div>
-                            <div className="mt-6 flex justify-end gap-4"><button type="button" onClick={handleCloseDecideModal} className="px-4 py-2 bg-gray-200 rounded">إلغاء</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">حفظ</button></div>
+                            <div className="mt-6 flex justify-end gap-4"><button type="button" onClick={handleCloseModal} className="px-4 py-2 bg-gray-200 rounded">إلغاء</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">حفظ</button></div>
                         </form>
                     </div>
                 </div>

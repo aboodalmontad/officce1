@@ -490,6 +490,53 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             localStorage.setItem(`lawyerAppAutoBackupEnabled_${userId}`, String(isAutoBackupEnabled));
         }
     }, [userId, isAutoSyncEnabled, isAutoBackupEnabled]);
+    
+    const exportData = React.useCallback(() => {
+        try {
+            const dataToExport = dataRef.current;
+            const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const date = new Date().toISOString().split('T')[0];
+            a.download = `lawyer_app_backup_${date}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            return true;
+        } catch (error) {
+            console.error("Failed to export data:", error);
+            return false;
+        }
+    }, []);
+
+    // Automatic daily backup effect
+    React.useEffect(() => {
+        if (isDataLoading || !userId) return;
+
+        const performAutoBackup = () => {
+            if (!isAutoBackupEnabledRef.current) return;
+            
+            const LAST_BACKUP_KEY = `lawyerAppLastBackup_${userId}`;
+            const lastBackupDate = localStorage.getItem(LAST_BACKUP_KEY);
+            const todayStr = new Date().toISOString().split('T')[0];
+
+            if (lastBackupDate !== todayStr) {
+                console.log("Performing automatic daily backup...");
+                if (exportData()) {
+                    localStorage.setItem(LAST_BACKUP_KEY, todayStr);
+                } else {
+                    console.error("Automatic daily backup failed.");
+                }
+            }
+        };
+        
+        // Run once, shortly after the app is loaded and idle.
+        const timer = setTimeout(performAutoBackup, 10000); // Wait 10s after load
+        return () => clearTimeout(timer);
+    }, [isDataLoading, userId, exportData]);
+
 
     // Effect for real-time data synchronization
     React.useEffect(() => {
@@ -576,11 +623,10 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         isDataLoading,
         isAuthLoading,
         isAutoSyncEnabled,
-        // FIX: Correctly alias the state setter to match the context interface.
         setAutoSyncEnabled: setIsAutoSyncEnabled,
         isAutoBackupEnabled,
-        // FIX: Correctly alias the state setter to match the context interface.
         setAutoBackupEnabled: setIsAutoBackupEnabled,
+        exportData,
         triggeredAlerts,
         dismissAlert: React.useCallback((appointmentId: string) => { setTriggeredAlerts(prev => prev.filter(a => a.id !== appointmentId)); }, []),
         showUnpostponedSessionsModal,
