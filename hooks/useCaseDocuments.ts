@@ -1,51 +1,59 @@
 import * as React from 'react';
-import { openDB, IDBPDatabase } from 'idb';
+import { getSupabaseClient } from '../supabaseClient';
+import { CaseDocument } from '../types';
+import { useOnlineStatus } from './useOnlineStatus';
 
-export interface DocumentRecord {
-  id: string;
-  caseId: string;
-  file: File;
-  name: string;
-  type: string;
-  addedAt: Date;
-}
-
-const DB_NAME = 'LawyerAppLocalDB';
-const DB_VERSION = 1;
-const STORE_NAME = 'caseDocuments';
-
-async function getDb(): Promise<IDBPDatabase> {
-  return openDB(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-        store.createIndex('caseId', 'caseId');
-      }
-    },
-  });
-}
+const BUCKET_NAME = 'case-documents';
 
 export const useCaseDocuments = (caseId: string) => {
-  const [documents, setDocuments] = React.useState<DocumentRecord[]>([]);
+  const [documents, setDocuments] = React.useState<CaseDocument[]>([]);
   const [loading, setLoading] = React.useState<boolean>(true);
   const [error, setError] = React.useState<string | null>(null);
+  const isOnline = useOnlineStatus();
+  const supabase = getSupabaseClient();
 
   React.useEffect(() => {
     let isMounted = true;
     async function loadDocuments() {
-      if (!caseId) return;
+      if (!caseId || !supabase) return;
+
+      if (!isOnline) {
+        setError("لا يمكن الوصول إلى الوثائق. يرجى التحقق من اتصالك بالإنترنت.");
+        setLoading(false);
+        setDocuments([]);
+        return;
+      }
+      
       setLoading(true);
       setError(null);
+      
       try {
-        const db = await getDb();
-        const caseDocs = await db.getAllFromIndex(STORE_NAME, 'caseId', caseId);
-        // Sort by newest first
-        caseDocs.sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime());
+        const { data: docMetadata, error: fetchError } = await supabase
+          .from('case_documents')
+          .select('*')
+          .eq('case_id', caseId)
+          .order('created_at', { ascending: false });
+
+        if (fetchError) throw fetchError;
+
         if (isMounted) {
-            setDocuments(caseDocs);
+            const docsWithUrls = await Promise.all(
+                docMetadata.map(async (doc) => {
+                    const { data, error: urlError } = await supabase.storage
+                        .from(BUCKET_NAME)
+                        .createSignedUrl(doc.file_path, 3600); // URL valid for 1 hour
+                    if (urlError) {
+                        console.error(`Failed to get signed URL for ${doc.file_name}:`, urlError);
+                        return { ...doc, publicUrl: '' };
+                    }
+                    return { ...doc, publicUrl: data.signedUrl };
+                })
+            );
+            setDocuments(docsWithUrls);
         }
-      } catch (error) {
-          console.error("Failed to load documents from IndexedDB:", error);
+
+      } catch (err: any) {
+          console.error("Failed to load documents from Supabase:", err);
           if (isMounted) {
               setError("فشل تحميل الوثائق.");
           }
@@ -58,63 +66,106 @@ export const useCaseDocuments = (caseId: string) => {
     loadDocuments();
 
     return () => { isMounted = false; }
-  }, [caseId]);
+  }, [caseId, supabase, isOnline]);
 
   const addDocuments = async (files: FileList) => {
-    if (!files || files.length === 0) return;
-
-    const newDocs: DocumentRecord[] = Array.from(files).map(file => ({
-        id: `doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        caseId,
-        file,
-        name: file.name,
-        type: file.type,
-        addedAt: new Date(),
-    }));
+    if (!files || files.length === 0 || !supabase || !isOnline) {
+        if (!isOnline) setError("لا يمكن إضافة وثائق. يرجى التحقق من اتصالك بالإنترنت.");
+        return;
+    }
     
-    const newDocIds = new Set(newDocs.map(d => d.id));
-
-    // Optimistic UI update
-    setDocuments(prev => [...newDocs.slice().reverse(), ...prev]);
     setError(null);
+    setLoading(true);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+        setError("المستخدم غير مسجل. لا يمكن رفع الملفات.");
+        setLoading(false);
+        return;
+    }
+
+    const uploadPromises = Array.from(files).map(async (file) => {
+      const filePath = `${user.id}/${caseId}/${Date.now()}-${file.name}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from(BUCKET_NAME)
+        .upload(filePath, file);
+
+      if (uploadError) {
+        throw new Error(`فشل رفع الملف ${file.name}: ${uploadError.message}`);
+      }
+
+      const { error: insertError } = await supabase
+        .from('case_documents')
+        .insert({
+          user_id: user.id,
+          case_id: caseId,
+          file_name: file.name,
+          file_path: filePath,
+          mime_type: file.type,
+        });
+
+      if (insertError) {
+        // Attempt to clean up the orphaned file in storage.
+        await supabase.storage.from(BUCKET_NAME).remove([filePath]);
+        throw new Error(`فشل حفظ بيانات الملف ${file.name}: ${insertError.message}`);
+      }
+    });
 
     try {
-        const db = await getDb();
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const addPromises = newDocs.map(doc => tx.store.add(doc));
-        await Promise.all(addPromises);
-        await tx.done;
+        await Promise.all(uploadPromises);
+        // Refetch to get the new list with signed URLs
+        const { data: newDocs, error: refetchError } = await supabase
+            .from('case_documents').select('*').eq('case_id', caseId).order('created_at', { ascending: false });
+        if(refetchError) throw refetchError;
+        
+        const docsWithUrls = await Promise.all(
+            newDocs.map(async (doc) => {
+                const { data, error: urlError } = await supabase.storage.from(BUCKET_NAME).createSignedUrl(doc.file_path, 3600);
+                return { ...doc, publicUrl: urlError ? '' : data.signedUrl };
+            })
+        );
+        setDocuments(docsWithUrls);
+
     } catch (err: any) {
-        console.error("Failed to add documents to IndexedDB:", err);
-        // Revert on error using a functional update to avoid stale state.
-        setDocuments(prev => prev.filter(doc => !newDocIds.has(doc.id))); 
-        let userMessage = 'فشل إضافة الوثائق.';
-        if (err.name === 'QuotaExceededError') {
-            userMessage = 'فشل إضافة الوثائق. قد تكون مساحة التخزين المتاحة للتطبيق قد امتلأت.';
-        }
-        setError(userMessage);
+        console.error("Failed to add documents to Supabase:", err);
+        setError(err.message || 'فشل إضافة وثيقة واحدة أو أكثر.');
+    } finally {
+        setLoading(false);
     }
   };
 
-  const deleteDocument = async (id: string) => {
-    // Find the document to delete for potential revert.
-    const docToDelete = documents.find(d => d.id === id);
-    if (!docToDelete) return;
-
+  const deleteDocument = async (doc: CaseDocument) => {
+    if (!supabase || !isOnline) {
+        if(!isOnline) setError("لا يمكن حذف الوثيقة. يرجى التحقق من اتصالك بالإنترنت.");
+        return;
+    }
+    
     // Optimistically remove the document.
-    setDocuments(prev => prev.filter(doc => doc.id !== id));
+    setDocuments(prev => prev.filter(d => d.id !== doc.id));
     setError(null);
 
     try {
-        const db = await getDb();
-        await db.delete(STORE_NAME, id);
+        const { error: storageError } = await supabase.storage
+            .from(BUCKET_NAME)
+            .remove([doc.file_path]);
+
+        if (storageError) throw new Error(`فشل حذف الملف من المخزن: ${storageError.message}`);
+        
+        const { error: dbError } = await supabase
+            .from('case_documents')
+            .delete()
+            .eq('id', doc.id);
+
+        if (dbError) throw new Error(`فشل حذف بيانات الملف: ${dbError.message}`);
+
     } catch (err: any) {
-        console.error("Failed to delete document from IndexedDB:", err);
+        console.error("Failed to delete document from Supabase:", err);
         // Revert on error by re-adding the document and re-sorting.
-        setDocuments(prev => [...prev, docToDelete].sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime()));
+        setDocuments(prev => [...prev, doc].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
         setError('فشل حذف الوثيقة.');
     }
   };
 
-  return { documents, loading, error, addDocuments, deleteDocument };
+  return { documents, loading, error, addDocuments, deleteDocument, isOnline };
 };

@@ -133,3 +133,14 @@ export interface SiteFinancialEntry {
   profile_full_name?: string;
   updated_at?: Date;
 }
+
+export interface CaseDocument {
+  id: string; // uuid
+  case_id: string;
+  user_id: string;
+  file_name: string;
+  file_path: string;
+  mime_type: string;
+  created_at: string; // ISO string
+  publicUrl?: string; // For temporary access
+}

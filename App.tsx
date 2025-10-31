@@ -340,63 +340,74 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     // This effect handles fetching the user profile and managing auth state.
     React.useEffect(() => {
         const fetchAndSetProfile = async () => {
-            // If there's no session, we're logged out. Clear data and stop loading.
             if (!session) {
                 setProfile(null);
                 setAuthError(null);
                 setIsAuthLoading(false);
-                 sessionStorage.removeItem(UNPOSTPONED_MODAL_SHOWN_KEY);
+                sessionStorage.removeItem(UNPOSTPONED_MODAL_SHOWN_KEY);
                 return;
             }
 
-            // A session exists. Start the verification/loading process.
             setAuthError(null);
             const userId = session.user.id;
             const PROFILE_CACHE_KEY = `lawyerAppProfile_${userId}`;
 
             try {
-                // 1. Try to load profile from local cache first for a faster UI.
                 let profileFromCache: Profile | null = null;
                 try {
                     const cachedProfileRaw = localStorage.getItem(PROFILE_CACHE_KEY);
                     if (cachedProfileRaw) {
                         profileFromCache = JSON.parse(cachedProfileRaw);
-                        // If we have a cached profile, show it immediately.
                         setProfile(profileFromCache);
                     }
                 } catch (e) {
                     console.error("Failed to parse cached profile. Clearing cache.", e);
-                    localStorage.removeItem(PROFILE_CACHE_KEY); // Clear corrupted data
+                    localStorage.removeItem(PROFILE_CACHE_KEY);
                 }
                 
-                // 2. If online, attempt to fetch the latest profile from the server.
                 if (isOnline) {
-                    setIsAuthLoading(true); // Set loading true only when fetching from network
-                    const { data, error, status } = await supabase!.from('profiles').select('*').eq('id', userId).single();
-                    
+                    setIsAuthLoading(true);
+
+                    let data: Profile | null = null;
+                    let error: any = null;
+                    let attempts = 0;
+                    const maxAttempts = 10;
+                    const retryDelay = 1500; // 1.5 seconds
+
+                    while (attempts < maxAttempts) {
+                        attempts++;
+                        const { data: fetchedData, error: fetchError, status } = await supabase!.from('profiles').select('*').eq('id', userId).single();
+
+                        if (fetchedData) {
+                            data = fetchedData;
+                            break; // Success, exit loop
+                        }
+
+                        if (fetchError && status !== 406) {
+                            error = fetchError;
+                            console.error(`Profile fetch attempt ${attempts} failed with a persistent error:`, fetchError);
+                            break; // Persistent error, exit loop
+                        }
+
+                        console.warn(`Profile fetch attempt ${attempts}: Profile not found for user ${userId}. Retrying in ${retryDelay}ms...`);
+                        await new Promise(resolve => setTimeout(resolve, retryDelay));
+                    }
+
                     if (data) {
-                        // Success: update state and cache.
                         setProfile(data);
                         localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(data));
-                        // Save user object for offline login profile creation
                         localStorage.setItem(LAST_USER_CACHE_KEY, JSON.stringify(session.user));
-                    } else if (error && status !== 406) {
-                        // A real error occurred, and we have no cached data to fall back on.
-                        if (!profileFromCache) {
-                            throw new Error('فشل الاتصال بالخادم لجلب ملفك الشخصي. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.');
+                    } else if (error) {
+                         if (!profileFromCache) {
+                            throw new Error(`فشل الاتصال بالخادم لجلب ملفك الشخصي: ${error.message}`);
                         } else {
-                            // We have a cache, so we can continue. Log the error for debugging.
                             console.warn("Failed to refresh profile, using cached version. Error:", error.message);
                         }
-                    } else if (!data && !profileFromCache) {
-                        // Authenticated but no profile found and nothing in cache. This is a critical error.
-                         throw new Error("User is authenticated, but no profile was found.");
+                    } else if (!profileFromCache) {
+                        // This error is now thrown after multiple retries.
+                        throw new Error("User is authenticated, but no profile was found after several retries. This might indicate an issue with the account setup trigger on the backend.");
                     }
                 } else if (!profileFromCache) {
-                    // Offline and no cached profile, but we might have a stale session from Supabase's cache.
-                    // Instead of throwing an error which leads to an error screen,
-                    // we treat this as an unverified session. By setting the profile to null,
-                    // the app will gracefully fall back to the LoginPage on the next render.
                     console.warn("Offline with a session but no cached profile. Falling back to login page.");
                     setProfile(null);
                 }
@@ -404,9 +415,9 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
             } catch (e: any) {
                 console.error("Error in profile loading sequence:", e);
                 setAuthError(e.message);
-                setProfile(null); // Clear profile on critical error
+                setProfile(null);
             } finally {
-                setIsAuthLoading(false); // Always stop the main "Checking identity" loader.
+                setIsAuthLoading(false);
             }
         };
 

@@ -1,28 +1,15 @@
 import * as React from 'react';
-import { useCaseDocuments, DocumentRecord } from '../hooks/useCaseDocuments';
-import { DocumentArrowUpIcon, TrashIcon, EyeIcon, DocumentTextIcon, PhotoIcon, XMarkIcon, ExclamationTriangleIcon, ArrowPathIcon, CameraIcon } from './icons';
-import { renderAsync } from 'docx-preview';
+import { useCaseDocuments } from '../hooks/useCaseDocuments';
+import { CaseDocument } from '../types';
+import { DocumentArrowUpIcon, TrashIcon, DocumentTextIcon, XMarkIcon, ExclamationTriangleIcon, ArrowPathIcon, CameraIcon, NoSymbolIcon } from './icons';
+import * as docxPreview from 'docx-preview';
 
 interface CaseDocumentsProps {
     caseId: string;
 }
 
-const FilePreview: React.FC<{ doc: DocumentRecord, onPreview: (doc: DocumentRecord) => void, onDelete: (doc: DocumentRecord) => void }> = ({ doc, onPreview, onDelete }) => {
-    const [thumbnailUrl, setThumbnailUrl] = React.useState<string | null>(null);
-
-    React.useEffect(() => {
-        let objectUrl: string | null = null;
-        if (doc.type.startsWith('image/')) {
-            objectUrl = URL.createObjectURL(doc.file);
-            setThumbnailUrl(objectUrl);
-        }
-
-        return () => {
-            if (objectUrl) {
-                URL.revokeObjectURL(objectUrl);
-            }
-        };
-    }, [doc.file, doc.type]);
+const FilePreview: React.FC<{ doc: CaseDocument, onPreview: (doc: CaseDocument) => void, onDelete: (doc: CaseDocument) => void }> = ({ doc, onPreview, onDelete }) => {
+    const isImage = doc.mime_type.startsWith('image/');
     
     return (
         <div className="relative group border rounded-lg overflow-hidden bg-gray-50 flex flex-col aspect-w-1 aspect-h-1">
@@ -35,8 +22,8 @@ const FilePreview: React.FC<{ doc: DocumentRecord, onPreview: (doc: DocumentReco
                 className="flex-grow flex items-center justify-center cursor-pointer overflow-hidden"
                 onClick={() => onPreview(doc)}
             >
-                {thumbnailUrl ? (
-                    <img src={thumbnailUrl} alt={doc.name} className="object-cover w-full h-full" />
+                {isImage && doc.publicUrl ? (
+                    <img src={doc.publicUrl} alt={doc.file_name} className="object-cover w-full h-full" />
                 ) : (
                     <div className="flex-grow flex items-center justify-center bg-gray-200 w-full h-full">
                         <DocumentTextIcon className="w-12 h-12 text-gray-400" />
@@ -44,31 +31,34 @@ const FilePreview: React.FC<{ doc: DocumentRecord, onPreview: (doc: DocumentReco
                 )}
             </div>
             <div className="p-2 bg-white/80 backdrop-blur-sm border-t">
-                <p className="text-xs font-medium text-gray-800 truncate" title={doc.name}>{doc.name}</p>
-                <p className="text-xs text-gray-500">{(doc.file.size / 1024).toFixed(1)} KB</p>
+                <p className="text-xs font-medium text-gray-800 truncate" title={doc.file_name}>{doc.file_name}</p>
             </div>
         </div>
     );
 };
 
-const TextPreview: React.FC<{ file: File; name: string }> = ({ file, name }) => {
+const TextPreview: React.FC<{ fileUrl: string; fileName: string }> = ({ fileUrl, fileName }) => {
     const [content, setContent] = React.useState<string | null>(null);
     const [error, setError] = React.useState<string | null>(null);
 
     React.useEffect(() => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            setContent(e.target?.result as string);
-        };
-        reader.onerror = () => {
-            setError('خطأ في قراءة الملف.');
-        };
-        reader.readAsText(file);
-    }, [file]);
+        async function loadText() {
+            try {
+                const response = await fetch(fileUrl);
+                if (!response.ok) throw new Error('Network response was not ok');
+                const text = await response.text();
+                setContent(text);
+            } catch (err) {
+                console.error("Error fetching text file for preview:", err);
+                setError('خطأ في تحميل الملف.');
+            }
+        }
+        loadText();
+    }, [fileUrl]);
 
     return (
         <div className="w-[80vw] h-[90vh] bg-gray-100 p-4 rounded-lg overflow-auto flex flex-col" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold border-b border-gray-300 pb-2 mb-4 text-gray-800 flex-shrink-0">{name}</h3>
+            <h3 className="text-lg font-semibold border-b border-gray-300 pb-2 mb-4 text-gray-800 flex-shrink-0">{fileName}</h3>
             <div className="flex-grow bg-white p-6 rounded shadow-inner overflow-auto">
                 {content === null && !error && <div className="text-center p-8 text-gray-600">جاري تحميل المحتوى...</div>}
                 {error && <div className="text-center p-8 text-red-600">{error}</div>}
@@ -78,41 +68,52 @@ const TextPreview: React.FC<{ file: File; name: string }> = ({ file, name }) => 
     );
 };
 
-const DocxPreview: React.FC<{ file: File; name: string }> = ({ file, name }) => {
+const DocxPreview: React.FC<{ fileUrl: string; fileName: string }> = ({ fileUrl, fileName }) => {
     const previewContainerRef = React.useRef<HTMLDivElement>(null);
     const [isLoading, setIsLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
 
     React.useEffect(() => {
         const container = previewContainerRef.current;
-        if (file && container) {
+        if (fileUrl && container) {
             setIsLoading(true);
             setError(null);
 
             while (container.firstChild) {
                 container.removeChild(container.firstChild);
             }
-
-            // Check for legacy .doc format by MIME type or extension
-            if (file.type === 'application/msword' || name.toLowerCase().endsWith('.doc')) {
-                setError('معاينة ملفات .doc القديمة غير مدعومة حالياً. يرجى فتح الملف ببرنامج Microsoft Word.');
-                setIsLoading(false);
-                return;
-            }
             
-            renderAsync(file, container)
-                .then(() => setIsLoading(false))
+            if (fileName.toLowerCase().endsWith('.doc')) {
+                 setError('معاينة ملفات .doc القديمة غير مدعومة حالياً. يرجى فتح الملف ببرنامج Microsoft Word.');
+                 setIsLoading(false);
+                 return;
+            }
+
+            fetch(fileUrl)
+                .then(res => {
+                    if (!res.ok) throw new Error('Failed to fetch file for preview');
+                    return res.blob();
+                })
+                .then(blob => {
+                    docxPreview.renderAsync(blob, container)
+                        .then(() => setIsLoading(false))
+                        .catch(err => {
+                            console.error("Error rendering .docx file:", err);
+                            setError('فشل عرض الملف. قد يكون الملف تالفاً أو بصيغة غير مدعومة.');
+                            setIsLoading(false);
+                        });
+                })
                 .catch(err => {
-                    console.error("Error rendering .docx file:", err);
-                    setError('فشل عرض الملف. قد يكون الملف تالفاً أو بصيغة غير مدعومة.');
-                    setIsLoading(false);
+                     console.error("Error fetching .docx file:", err);
+                     setError('فشل تحميل الملف للمعاينة.');
+                     setIsLoading(false);
                 });
         }
-    }, [file, name]);
+    }, [fileUrl, fileName]);
 
     return (
         <div className="w-[80vw] h-[90vh] bg-gray-100 p-4 rounded-lg overflow-auto flex flex-col" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold border-b border-gray-300 pb-2 mb-4 text-gray-800 flex-shrink-0">{name}</h3>
+            <h3 className="text-lg font-semibold border-b border-gray-300 pb-2 mb-4 text-gray-800 flex-shrink-0">{fileName}</h3>
             <div className="flex-grow bg-white p-6 rounded shadow-inner overflow-auto">
                 {isLoading && <div className="text-center p-8 text-gray-600">جاري تحميل المعاينة...</div>}
                 {error && <div className="text-center p-8 text-red-600">{error}</div>}
@@ -142,17 +143,14 @@ const CameraModal: React.FC<CameraModalProps> = ({ onClose, onSave }) => {
         let isMounted = true;
         async function startCamera() {
             try {
-                // For a better user experience, first check permission status if the API is available.
                 if ('permissions' in navigator) {
                     const status = await navigator.permissions.query({ name: 'camera' as PermissionName });
                     if (status.state === 'denied') {
                         setError("تم رفض الوصول إلى الكاميرا. يرجى تمكينها يدوياً من إعدادات المتصفح للمتابعة.");
                         return;
                     }
-                    // If state is 'prompt' or 'granted', getUserMedia will handle it correctly.
                 }
                 
-                // Prefer the rear camera
                 const constraints = { video: { facingMode: 'environment' } };
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 if (isMounted && videoRef.current) {
@@ -161,7 +159,6 @@ const CameraModal: React.FC<CameraModalProps> = ({ onClose, onSave }) => {
                 }
             } catch (err: any) {
                 console.error("Camera access failed:", err);
-                // Handle different error types from getUserMedia
                 if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
                     setError("تم رفض الوصول إلى الكاميرا. يرجى تمكينها يدوياً من إعدادات المتصفح للمتابعة.");
                 } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
@@ -264,10 +261,10 @@ const CameraModal: React.FC<CameraModalProps> = ({ onClose, onSave }) => {
 
 
 const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
-    const { documents, loading, error, addDocuments, deleteDocument } = useCaseDocuments(caseId);
+    const { documents, loading, error, addDocuments, deleteDocument, isOnline } = useCaseDocuments(caseId);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
-    const [previewDoc, setPreviewDoc] = React.useState<DocumentRecord | null>(null);
-    const [docToDelete, setDocToDelete] = React.useState<DocumentRecord | null>(null);
+    const [previewDoc, setPreviewDoc] = React.useState<CaseDocument | null>(null);
+    const [docToDelete, setDocToDelete] = React.useState<CaseDocument | null>(null);
     const [isDragging, setIsDragging] = React.useState(false);
     const [isCameraOpen, setIsCameraOpen] = React.useState(false);
 
@@ -296,31 +293,8 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
         setIsDragging(enter);
     };
 
-    const handlePreview = (doc: DocumentRecord) => {
-        const lowerCaseName = doc.name.toLowerCase();
-        const wordMimeTypes = [
-            'application/msword', // .doc
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' // .docx
-        ];
-        const isWordFile = wordMimeTypes.includes(doc.type) || lowerCaseName.endsWith('.docx') || lowerCaseName.endsWith('.doc');
-
-        const isModalPreviewable = 
-            doc.type.startsWith('image/') ||
-            doc.type === 'application/pdf' ||
-            doc.type.startsWith('video/') ||
-            doc.type.startsWith('audio/') ||
-            doc.type.startsWith('text/') ||
-            isWordFile;
-
-        if (isModalPreviewable) {
-            setPreviewDoc(doc);
-        } else {
-            // For all other types, open in a new tab
-            const url = URL.createObjectURL(doc.file);
-            window.open(url, '_blank');
-            // Revoke after a delay to allow the new tab to open
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-        }
+    const handlePreview = (doc: CaseDocument) => {
+        setPreviewDoc(doc);
     };
     
     const handleSavePhoto = async (photoFile: File) => {
@@ -329,21 +303,16 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
         await addDocuments(dataTransfer.files);
         setIsCameraOpen(false);
     };
-
-    const previewUrl = React.useMemo(() => {
-        if (previewDoc && !previewDoc.type.startsWith('text/') && !previewDoc.name.toLowerCase().match(/\.(docx|doc)$/)) {
-            return URL.createObjectURL(previewDoc.file);
-        }
-        return null;
-    }, [previewDoc]);
-
-    React.useEffect(() => {
-        return () => {
-            if (previewUrl) {
-                URL.revokeObjectURL(previewUrl);
-            }
-        };
-    }, [previewUrl]);
+    
+    if (!isOnline) {
+        return (
+            <div className="p-4 text-center text-yellow-800 bg-yellow-50 rounded-lg border border-yellow-200">
+                <NoSymbolIcon className="w-12 h-12 mx-auto mb-4 text-yellow-500" />
+                <h3 className="font-semibold">أنت غير متصل بالإنترنت</h3>
+                <p className="text-sm">ميزة الوثائق تتطلب اتصالاً بالإنترنت للمزامنة. يرجى التحقق من اتصالك والمحاولة مرة أخرى.</p>
+            </div>
+        );
+    }
 
     return (
         <div 
@@ -413,36 +382,40 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
                     </button>
                     
                     <div onClick={(e) => e.stopPropagation()} className="max-h-full max-w-full flex items-center justify-center">
-                        {previewDoc.type.startsWith('image/') && previewUrl && (
-                            <img src={previewUrl} alt={previewDoc.name} className="max-h-full max-w-full object-contain rounded-lg" />
-                        )}
-                        
-                        {previewDoc.type === 'application/pdf' && previewUrl && (
-                             <iframe src={previewUrl} title={previewDoc.name} className="w-[80vw] h-[90vh] bg-white border-none rounded-lg"></iframe>
-                        )}
+                        {previewDoc.publicUrl && (
+                             <>
+                                {previewDoc.mime_type.startsWith('image/') && (
+                                    <img src={previewDoc.publicUrl} alt={previewDoc.file_name} className="max-h-full max-w-full object-contain rounded-lg" />
+                                )}
+                                
+                                {previewDoc.mime_type === 'application/pdf' && (
+                                    <iframe src={previewDoc.publicUrl} title={previewDoc.file_name} className="w-[80vw] h-[90vh] bg-white border-none rounded-lg"></iframe>
+                                )}
 
-                        {previewDoc.type.startsWith('video/') && previewUrl && (
-                             <video src={previewUrl} controls autoPlay className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg" />
-                        )}
+                                {previewDoc.mime_type.startsWith('video/') && (
+                                    <video src={previewDoc.publicUrl} controls autoPlay className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg" />
+                                )}
 
-                        {previewDoc.type.startsWith('audio/') && previewUrl && (
-                            <div className="bg-white p-8 rounded-lg shadow-xl">
-                                <h3 className="text-lg font-semibold text-gray-800 mb-4">{previewDoc.name}</h3>
-                                <audio src={previewUrl} controls autoPlay className="w-full" />
-                            </div>
-                        )}
+                                {previewDoc.mime_type.startsWith('audio/') && (
+                                    <div className="bg-white p-8 rounded-lg shadow-xl">
+                                        <h3 className="text-lg font-semibold text-gray-800 mb-4">{previewDoc.file_name}</h3>
+                                        <audio src={previewDoc.publicUrl} controls autoPlay className="w-full" />
+                                    </div>
+                                )}
 
-                        {previewDoc.type.startsWith('text/') && (
-                            <TextPreview file={previewDoc.file} name={previewDoc.name} />
-                        )}
-                        
-                        {(
-                            previewDoc.type === 'application/msword' || 
-                            previewDoc.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-                            previewDoc.name.toLowerCase().endsWith('.doc') ||
-                            previewDoc.name.toLowerCase().endsWith('.docx')
-                        ) && (
-                            <DocxPreview file={previewDoc.file} name={previewDoc.name} />
+                                {previewDoc.mime_type.startsWith('text/') && (
+                                    <TextPreview fileUrl={previewDoc.publicUrl} fileName={previewDoc.file_name} />
+                                )}
+                                
+                                {(
+                                    previewDoc.mime_type === 'application/msword' || 
+                                    previewDoc.mime_type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                                    previewDoc.file_name.toLowerCase().endsWith('.doc') ||
+                                    previewDoc.file_name.toLowerCase().endsWith('.docx')
+                                ) && (
+                                    <DocxPreview fileUrl={previewDoc.publicUrl} fileName={previewDoc.file_name} />
+                                )}
+                            </>
                         )}
                     </div>
                 </div>
@@ -454,11 +427,11 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
                         <div className="text-center">
                             <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4"><ExclamationTriangleIcon className="h-8 w-8 text-red-600" /></div>
                             <h3 className="text-2xl font-bold text-gray-900">تأكيد حذف الوثيقة</h3>
-                            <p className="text-gray-600 my-4">هل أنت متأكد من حذف الملف "{docToDelete.name}"؟ لا يمكن التراجع عن هذا الإجراء.</p>
+                            <p className="text-gray-600 my-4">هل أنت متأكد من حذف الملف "{docToDelete.file_name}"؟ لا يمكن التراجع عن هذا الإجراء.</p>
                         </div>
                         <div className="mt-6 flex justify-center gap-4">
                             <button type="button" className="px-6 py-2 bg-gray-200 rounded-lg" onClick={() => setDocToDelete(null)}>إلغاء</button>
-                            <button type="button" className="px-6 py-2 bg-red-600 text-white rounded-lg" onClick={() => { deleteDocument(docToDelete.id); setDocToDelete(null); }}>نعم، قم بالحذف</button>
+                            <button type="button" className="px-6 py-2 bg-red-600 text-white rounded-lg" onClick={() => { deleteDocument(docToDelete); setDocToDelete(null); }}>نعم، قم بالحذف</button>
                         </div>
                     </div>
                 </div>

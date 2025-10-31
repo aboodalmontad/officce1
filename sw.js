@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lawyer-app-cache-v15';
+const CACHE_NAME = 'lawyer-app-cache-v20';
 // The list of URLs to cache has been expanded to include all critical,
 // external dependencies. This ensures the app is fully functional offline
 // immediately after the service worker is installed, preventing failures
@@ -17,15 +17,14 @@ const urlsToCache = [
   'https://fonts.gstatic.com/s/tajawal/v10/Iura6YBj_oCad4k1nzGVC45I.woff2',
   'https://fonts.gstatic.com/s/tajawal/v10/Iura6YBj_oCad4k1nzGjC45I.woff2',
   // Pinning specific versions from esm.sh for better cache stability
-  'https://esm.sh/v135/@google/genai@1.20.0/es2022/genai.mjs',
-  'https://esm.sh/v135/@supabase/supabase-js@2.44.4/es2022/supabase-js.mjs',
-  'https://esm.sh/v135/recharts@2.12.7/es2022/recharts.mjs',
-  // Updated React versions to match importmap (React 19)
-  'https://esm.sh/v135/react@19.1.1/es2022/react.mjs',
-  'https://esm.sh/v135/react@19.1.1/es2022/jsx-runtime.mjs',
-  'https://esm.sh/v135/react-dom@19.1.1/es2022/client.mjs',
-  'https://esm.sh/idb@^8.0.0',
-  'https://esm.sh/docx-preview@^0.1.20',
+  'https://esm.sh/@google/genai@1.20.0',
+  'https://esm.sh/@supabase/supabase-js@2.44.4',
+  'https://esm.sh/recharts@2.12.7',
+  'https://esm.sh/react@18.3.1',
+  'https://esm.sh/react-dom@18.3.1/client',
+  'https://esm.sh/react@18.3.1/jsx-runtime',
+  'https://esm.sh/idb@8.0.0',
+  'https://esm.sh/docx-preview@0.1.20',
 ];
 
 self.addEventListener('install', event => {
