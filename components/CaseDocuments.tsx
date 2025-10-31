@@ -139,19 +139,36 @@ const CameraModal: React.FC<CameraModalProps> = ({ onClose, onSave }) => {
     const [error, setError] = React.useState<string | null>(null);
 
     React.useEffect(() => {
-        let didCancel = false;
+        let isMounted = true;
         async function startCamera() {
             try {
+                // For a better user experience, first check permission status if the API is available.
+                if ('permissions' in navigator) {
+                    const status = await navigator.permissions.query({ name: 'camera' as PermissionName });
+                    if (status.state === 'denied') {
+                        setError("تم رفض الوصول إلى الكاميرا. يرجى تمكينها يدوياً من إعدادات المتصفح للمتابعة.");
+                        return;
+                    }
+                    // If state is 'prompt' or 'granted', getUserMedia will handle it correctly.
+                }
+                
                 // Prefer the rear camera
                 const constraints = { video: { facingMode: 'environment' } };
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                if (!didCancel && videoRef.current) {
+                if (isMounted && videoRef.current) {
                     videoRef.current.srcObject = stream;
                     streamRef.current = stream;
                 }
-            } catch (err) {
+            } catch (err: any) {
                 console.error("Camera access failed:", err);
-                setError("لا يمكن الوصول إلى الكاميرا. يرجى التحقق من الأذونات.");
+                // Handle different error types from getUserMedia
+                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                    setError("تم رفض الوصول إلى الكاميرا. يرجى تمكينها يدوياً من إعدادات المتصفح للمتابعة.");
+                } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                    setError("لم يتم العثور على كاميرا. يرجى التأكد من توصيل كاميرا وأنها تعمل بشكل صحيح.");
+                } else {
+                    setError("لا يمكن الوصول إلى الكاميرا بسبب خطأ غير متوقع. حاول تحديث الصفحة.");
+                }
             }
         }
 
@@ -161,7 +178,7 @@ const CameraModal: React.FC<CameraModalProps> = ({ onClose, onSave }) => {
         }
 
         return () => {
-            didCancel = true;
+            isMounted = false;
             if (streamRef.current) {
                 streamRef.current.getTracks().forEach(track => track.stop());
                 streamRef.current = null;
@@ -254,21 +271,21 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
     const [isDragging, setIsDragging] = React.useState(false);
     const [isCameraOpen, setIsCameraOpen] = React.useState(false);
 
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
-            addDocuments(e.target.files);
+            await addDocuments(e.target.files);
         }
         if (e.target) {
             e.target.value = '';
         }
     };
     
-    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragging(false);
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            addDocuments(e.dataTransfer.files);
+            await addDocuments(e.dataTransfer.files);
             e.dataTransfer.clearData();
         }
     };
@@ -306,10 +323,10 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
         }
     };
     
-    const handleSavePhoto = (photoFile: File) => {
+    const handleSavePhoto = async (photoFile: File) => {
         const dataTransfer = new DataTransfer();
         dataTransfer.items.add(photoFile);
-        addDocuments(dataTransfer.files);
+        await addDocuments(dataTransfer.files);
         setIsCameraOpen(false);
     };
 
