@@ -1,8 +1,8 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // Hardcoded Supabase credentials provided by the user.
-const supabaseUrl = "https://qzpsmriupcfpwbsbcdwq.supabase.co";
-const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6cHNtcml1cGNmcHdic2JjZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3OTgwMDUsImV4cCI6MjA3NjM3NDAwNX0.LItA3_LP0QQYBEPTdS1A3VGAnPnqdujOfEfQD-Oq_WU";
+const supabaseUrl = "https://gvafdhyudvdymletqjee.supabase.co";
+const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd2YWZkaHl1ZHZkeW1sZXRxamVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE5MzA0NzYsImV4cCI6MjA3NzUwNjQ3Nn0.PuoD-Mayi8cTscKG9CuQWA_qQU8x8lCeprI63jh5qCE";
 
 // Singleton instance of the Supabase client.
 let supabase: SupabaseClient | null = null;

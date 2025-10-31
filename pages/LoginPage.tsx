@@ -159,7 +159,8 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
             setAuthFailed(true);
             return;
         }
-        const email = `sy${phone}@email.com`;
+        // Remove the '+' from the E.164 phone number to create a safer email format.
+        const email = `sy${phone.substring(1)}@email.com`;
     
         if (!supabase) {
             setError("Supabase client is not available.");

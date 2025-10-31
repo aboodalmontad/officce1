@@ -97,13 +97,13 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
   -- This function robustly creates/updates a user's profile upon signup.
-  -- It derives the local phone number (e.g., 09...) from the fake email (e.g., sy+9639...@email.com)
+  -- It derives the local phone number (e.g., 09...) from the fake email (e.g., sy9639...@email.com)
   -- by stripping the prefixes and suffix, making it independent of client-side metadata.
   INSERT INTO public.profiles (id, full_name, mobile_number, created_at)
   VALUES (
     new.id,
     new.raw_user_meta_data->>'full_name',
-    '0' || regexp_replace(new.email, '^sy\\\\+963|@email\\\\.com$', '', 'g'),
+    '0' || regexp_replace(new.email, '^sy963|@email\\.com$', '', 'g'),
     new.created_at
   )
   ON CONFLICT (id) DO UPDATE SET
@@ -219,8 +219,8 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 DO $$
 DECLARE
     admin_phone_local TEXT := '0987654321'; -- <-- غيّر رقم هاتف المدير هنا
-    admin_phone_e164 TEXT := '+963' || RIGHT(admin_phone_local, 9);
-    admin_email TEXT := 'sy' || admin_phone_e164 || '@email.com'; -- بريد وهمي بالصيغة الجديدة
+    admin_phone_no_plus TEXT := '963' || RIGHT(admin_phone_local, 9);
+    admin_email TEXT := 'sy' || admin_phone_no_plus || '@email.com'; -- بريد وهمي بالصيغة الجديدة
     admin_password TEXT := 'changeme123'; -- <-- غيّر كلمة المرور هنا إلى كلمة مرور قوية
     admin_full_name TEXT := 'المدير العام';
     admin_user_id uuid;

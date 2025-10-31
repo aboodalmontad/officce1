@@ -777,12 +777,65 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
     }
 
     const handleSessionContextMenu = (event: React.MouseEvent, session: Session) => {
+        // Find the full context for the session
+        let client, caseItem, stage;
+        for (const c of clients) {
+            for (const cs of c.cases) {
+                const s = cs.stages.find(st => st.id === session.stageId);
+                if (s) {
+                    client = c;
+                    caseItem = cs;
+                    stage = s;
+                    break;
+                }
+            }
+            if (stage) break;
+        }
+
+        let description = '';
+        let message = '';
+
+        if (client && caseItem && stage) {
+            const details = [
+                `*الموكل:* ${client.name}`,
+                `*الخصم:* ${caseItem.opponentName}`,
+                `*القضية:* ${caseItem.subject}`,
+                `*المحكمة:* ${stage.court}`,
+                `*رقم الأساس:* ${stage.caseNumber}`,
+                `*تاريخ الجلسة:* ${formatDate(session.date)}`,
+                `*المكلف بالحضور:* ${session.assignee || 'غير محدد'}`,
+                `*سبب التأجيل السابق:* ${session.postponementReason || 'لا يوجد'}`
+            ];
+            
+            if (session.stageDecisionDate) {
+                details.push('---');
+                details.push(`*تم حسم المرحلة:*`);
+                details.push(`*تاريخ الحسم:* ${formatDate(new Date(session.stageDecisionDate))}`);
+                if (stage.decisionNumber) details.push(`*رقم القرار:* ${stage.decisionNumber}`);
+                if (stage.decisionSummary) details.push(`*ملخص القرار:* ${stage.decisionSummary}`);
+            }
+
+            description = `متابعة جلسة قضائية:\n- ${details.join('\n- ')}`;
+            message = `*ملخص جلسة قضائية:*\n${details.join('\n')}`;
+
+        } else {
+            // Fallback to the old, less detailed message
+            description = `متابعة جلسة قضية (${session.clientName} ضد ${session.opponentName}) يوم ${formatDate(session.date)} في محكمة ${session.court} (أساس: ${session.caseNumber}).\nسبب التأجيل السابق: ${session.postponementReason || 'لا يوجد'}.\nالمكلف بالحضور: ${session.assignee}.`;
+            message = [
+                `*جلسة قضائية:*`,
+                `*القضية:* ${session.clientName} ضد ${session.opponentName}`,
+                `*المحكمة:* ${session.court} (أساس: ${session.caseNumber})`,
+                `*التاريخ:* ${formatDate(session.date)}`,
+                `*المسؤول:* ${session.assignee || 'غير محدد'}`,
+                `*سبب التأجيل السابق:* ${session.postponementReason || 'لا يوجد'}`
+            ].join('\n');
+        }
+
          const menuItems: MenuItem[] = [
             {
                 label: 'إرسال إلى المهام الإدارية',
                 icon: <BuildingLibraryIcon className="w-4 h-4" />,
                 onClick: () => {
-                    const description = `متابعة جلسة قضية (${session.clientName} ضد ${session.opponentName}) يوم ${formatDate(session.date)} في محكمة ${session.court} (أساس: ${session.caseNumber}).\nسبب التأجيل السابق: ${session.postponementReason || 'لا يوجد'}.\nالمكلف بالحضور: ${session.assignee}.`;
                     onOpenAdminTaskModal({
                         task: description,
                         assignee: session.assignee,
@@ -793,14 +846,6 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                 label: 'مشاركة عبر واتساب',
                 icon: <ShareIcon className="w-4 h-4" />,
                 onClick: () => {
-                    const message = [
-                        `*جلسة قضائية:*`,
-                        `*القضية:* ${session.clientName} ضد ${session.opponentName}`,
-                        `*المحكمة:* ${session.court} (أساس: ${session.caseNumber})`,
-                        `*التاريخ:* ${formatDate(session.date)}`,
-                        `*المسؤول:* ${session.assignee || 'غير محدد'}`,
-                        `*سبب التأجيل السابق:* ${session.postponementReason || 'لا يوجد'}`
-                    ].join('\n');
                     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
                     window.open(whatsappUrl, '_blank');
                 }

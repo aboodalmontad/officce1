@@ -39,11 +39,35 @@ const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props:
     const longPressTimer = React.useRef<number | null>(null);
 
     const handleContextMenu = (event: React.MouseEvent) => {
+        const latestSession = stage.sessions.length > 0 ? stage.sessions.reduce((latest, current) => new Date(current.date) > new Date(latest.date) ? current : latest) : null;
+
+        const details = [
+            `*الموكل:* ${client.name}`,
+            `*الخصم:* ${caseItem.opponentName}`,
+            `*القضية:* ${caseItem.subject}`,
+            `*المحكمة:* ${stage.court}`,
+            `*رقم الأساس:* ${stage.caseNumber}`
+        ];
+
+        if (latestSession) {
+            details.push(`*تاريخ آخر جلسة:* ${formatDate(latestSession.date)}`);
+        }
+
+        if (stage.decisionDate) {
+            details.push('---');
+            details.push(`*تم حسم المرحلة:*`);
+            details.push(`*تاريخ الحسم:* ${formatDate(new Date(stage.decisionDate))}`);
+            if (stage.decisionNumber) details.push(`*رقم القرار:* ${stage.decisionNumber}`);
+            if (stage.decisionSummary) details.push(`*ملخص القرار:* ${stage.decisionSummary}`);
+        }
+
+        const description = `متابعة مرحلة قضائية:\n- ${details.join('\n- ')}`;
+        const message = `*ملخص مرحلة قضائية:*\n${details.join('\n')}`;
+        
         const menuItems: MenuItem[] = [{
             label: 'إرسال إلى المهام الإدارية',
             icon: <BuildingLibraryIcon className="w-4 h-4" />,
             onClick: () => {
-                const description = `متابعة مرحلة قضية "${caseItem.subject}" في محكمة ${stage.court} (أساس: ${stage.caseNumber}).`;
                 props.onOpenAdminTaskModal({ task: description });
             }
         },
@@ -51,12 +75,6 @@ const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props:
             label: 'مشاركة عبر واتساب',
             icon: <ShareIcon className="w-4 h-4" />,
             onClick: () => {
-                const message = [
-                    `*مرحلة قضائية:*`,
-                    `*القضية:* ${caseItem.subject}`,
-                    `*المحكمة:* ${stage.court}`,
-                    `*رقم الأساس:* ${stage.caseNumber}`
-                ].join('\n');
                 const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
                 window.open(whatsappUrl, '_blank');
             }
@@ -81,12 +99,32 @@ const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props:
 
 
     const handleSessionContextMenu = (event: React.MouseEvent, session: Session) => {
-        const statusMap: Record<Case['status'], string> = { active: 'نشطة', closed: 'مغلقة', on_hold: 'معلقة' };
+        const details = [
+            `*الموكل:* ${client.name}`,
+            `*الخصم:* ${caseItem.opponentName}`,
+            `*القضية:* ${caseItem.subject}`,
+            `*المحكمة:* ${stage.court}`,
+            `*رقم الأساس:* ${stage.caseNumber}`,
+            `*تاريخ الجلسة:* ${formatDate(session.date)}`,
+            `*المكلف بالحضور:* ${session.assignee || 'غير محدد'}`,
+            `*سبب التأجيل السابق:* ${session.postponementReason || 'لا يوجد'}`
+        ];
+
+        if (stage.decisionDate) {
+            details.push('---');
+            details.push(`*تم حسم المرحلة:*`);
+            details.push(`*تاريخ الحسم:* ${formatDate(new Date(stage.decisionDate))}`);
+            if (stage.decisionNumber) details.push(`*رقم القرار:* ${stage.decisionNumber}`);
+            if (stage.decisionSummary) details.push(`*ملخص القرار:* ${stage.decisionSummary}`);
+        }
+
+        const description = `متابعة جلسة قضائية:\n- ${details.join('\n- ')}`;
+        const message = `*ملخص جلسة قضائية:*\n${details.join('\n')}`;
+
         const menuItems: MenuItem[] = [{
             label: 'إرسال إلى المهام الإدارية',
             icon: <BuildingLibraryIcon className="w-4 h-4" />,
             onClick: () => {
-                const description = `متابعة جلسة يوم ${formatDate(session.date)}:\n- الموكل: ${client.name}\n- القضية: ${caseItem.subject} (ضد: ${caseItem.opponentName})\n- المحكمة: ${stage.court} (أساس: ${stage.caseNumber})\n- سبب التأجيل السابق: ${session.postponementReason || 'لا يوجد'}\n- المكلف بالحضور: ${session.assignee || 'غير محدد'}`;
                 props.onOpenAdminTaskModal({ 
                     task: description,
                     assignee: session.assignee,
@@ -97,22 +135,6 @@ const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props:
             label: 'مشاركة عبر واتساب',
             icon: <ShareIcon className="w-4 h-4" />,
             onClick: () => {
-                const message = [
-                    `*ملخص جلسة قضائية:*`,
-                    `*الموكل:* ${client.name}`,
-                    `*القضية:* ${caseItem.subject}`,
-                    `*الخصم:* ${caseItem.opponentName}`,
-                    `*حالة القضية:* ${statusMap[caseItem.status]}`,
-                    `---`,
-                    `*المرحلة:*`,
-                    `*المحكمة:* ${stage.court}`,
-                    `*رقم الأساس:* ${stage.caseNumber}`,
-                    `---`,
-                    `*الجلسة:*`,
-                    `*التاريخ:* ${formatDate(session.date)}`,
-                    `*المكلف بالحضور:* ${session.assignee || 'غير محدد'}`,
-                    `*سبب التأجيل السابق:* ${session.postponementReason || 'لا يوجد'}`
-                ].join('\n');
                 const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
                 window.open(whatsappUrl, '_blank');
             }
@@ -219,7 +241,48 @@ const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeVie
     };
 
     const handleContextMenu = (event: React.MouseEvent) => {
-        const statusMap = { active: 'نشطة', closed: 'مغلقة', on_hold: 'معلقة'};
+        const statusMap: Record<Case['status'], string> = { active: 'نشطة', closed: 'مغلقة', on_hold: 'معلقة' };
+        
+        const details = [
+            `*الموكل:* ${client.name}`,
+            `*الخصم:* ${caseItem.opponentName}`,
+            `*القضية:* ${caseItem.subject}`,
+            `*الحالة:* ${statusMap[caseItem.status]}`
+        ];
+
+        let latestStage: Stage | null = null;
+        let latestSession: Session | null = null;
+        if (caseItem.stages.length > 0) {
+            const allSessions = caseItem.stages.flatMap(s => s.sessions);
+            if (allSessions.length > 0) {
+                latestSession = allSessions.reduce((latest, current) => new Date(current.date) > new Date(latest.date) ? current : latest);
+                latestStage = caseItem.stages.find(s => s.sessions.some(sess => sess.id === latestSession!.id)) || null;
+            } else {
+                latestStage = caseItem.stages[caseItem.stages.length - 1];
+            }
+        }
+        
+        if (latestStage) {
+            details.push('---');
+            details.push('*آخر مرحلة:*');
+            details.push(`*المحكمة:* ${latestStage.court}`);
+            details.push(`*رقم الأساس:* ${latestStage.caseNumber}`);
+
+            if (latestSession) {
+                details.push(`*تاريخ آخر جلسة:* ${formatDate(latestSession.date)}`);
+            }
+            
+            if (latestStage.decisionDate) {
+                details.push(`*تم حسم المرحلة:*`);
+                details.push(`*تاريخ الحسم:* ${formatDate(new Date(latestStage.decisionDate))}`);
+                if (latestStage.decisionNumber) details.push(`*رقم القرار:* ${latestStage.decisionNumber}`);
+                if (latestStage.decisionSummary) details.push(`*ملخص القرار:* ${latestStage.decisionSummary}`);
+            }
+        }
+        
+        const description = `متابعة قضية:\n- ${details.join('\n- ')}`;
+        const message = `*ملخص قضية:*\n${details.join('\n')}`;
+
         const menuItems: MenuItem[] = [{
             label: 'إنشاء فاتورة لهذه القضية',
             icon: <DocumentTextIcon className="w-4 h-4" />,
@@ -228,7 +291,6 @@ const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeVie
             label: 'إرسال إلى المهام الإدارية',
             icon: <BuildingLibraryIcon className="w-4 h-4" />,
             onClick: () => {
-                const description = `متابعة قضية "${caseItem.subject}" (الموكل: ${client.name} ضد ${caseItem.opponentName}).\nالحالة: ${statusMap[caseItem.status]}.\nالاتفاق المالي: ${caseItem.feeAgreement || 'لم يحدد'}.`;
                 props.onOpenAdminTaskModal({ task: description });
             }
         },
@@ -236,14 +298,6 @@ const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeVie
             label: 'مشاركة عبر واتساب',
             icon: <ShareIcon className="w-4 h-4" />,
             onClick: () => {
-                const message = [
-                    `*ملف قضية:*`,
-                    `*الموضوع:* ${caseItem.subject}`,
-                    `*الموكل:* ${client.name}`,
-                    `*الخصم:* ${caseItem.opponentName}`,
-                    `*الحالة:* ${statusMap[caseItem.status]}`,
-                    `*الاتفاق المالي:* ${caseItem.feeAgreement || 'لم يحدد'}`
-                ].join('\n');
                 const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
                 window.open(whatsappUrl, '_blank');
             }
