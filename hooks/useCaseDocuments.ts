@@ -80,9 +80,19 @@ export const useCaseDocuments = (caseId: string) => {
           filter: `case_id=eq.${caseId}`
         },
         (payload) => {
-          console.log('Real-time change received for documents, reloading.', payload);
-          // Refetch documents to get updated list with new signed URLs
-          loadDocuments(false); // Pass false to avoid showing the main loading spinner on updates
+          console.log('Real-time document change received:', payload);
+          if (payload.eventType === 'DELETE') {
+            const deletedDocId = payload.old.id;
+            if (deletedDocId) {
+                // For other clients, this removes the document instantly without a full refetch.
+                // For the client that initiated the delete, this is a harmless no-op
+                // as the document was already removed optimistically.
+                setDocuments(prev => prev.filter(doc => doc.id !== deletedDocId));
+            }
+          } else {
+            // For INSERT or UPDATE, we must refetch the whole list to generate new signed URLs.
+            loadDocuments(false);
+          }
         }
       )
       .subscribe();
@@ -111,7 +121,8 @@ export const useCaseDocuments = (caseId: string) => {
     }
 
     const uploadPromises = Array.from(files).map(async (file) => {
-      const filePath = `${user.id}/${caseId}/${Date.now()}-${file.name}`;
+      const sanitizedFileName = encodeURIComponent(file.name);
+      const filePath = `${user.id}/${caseId}/${Date.now()}-${sanitizedFileName}`;
       
       const { error: uploadError } = await supabase.storage
         .from(BUCKET_NAME)
@@ -159,7 +170,7 @@ export const useCaseDocuments = (caseId: string) => {
         return;
     }
     
-    // Optimistically remove the document for instant UI feedback.
+    // Optimistically remove the document for instant UI feedback on the client performing the action.
     setDocuments(prev => prev.filter(d => d.id !== doc.id));
     setError(null);
 
@@ -171,8 +182,7 @@ export const useCaseDocuments = (caseId: string) => {
         // If storage deletion fails, we should stop and revert.
         if (storageError) throw new Error(`فشل حذف الملف من المخزن: ${storageError.message}`);
         
-        // Deleting from the database will trigger the real-time subscription,
-        // which will then update the state for all clients.
+        // Deleting from the database will trigger the real-time subscription for all clients.
         const { error: dbError } = await supabase
             .from('case_documents')
             .delete()

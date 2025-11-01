@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useCaseDocuments } from '../hooks/useCaseDocuments';
 import { CaseDocument } from '../types';
-import { DocumentArrowUpIcon, TrashIcon, DocumentTextIcon, XMarkIcon, ExclamationTriangleIcon, ArrowPathIcon, CameraIcon, NoSymbolIcon } from './icons';
+import { DocumentArrowUpIcon, TrashIcon, DocumentTextIcon, XMarkIcon, ExclamationTriangleIcon, ArrowPathIcon, CameraIcon, NoSymbolIcon, ArrowDownTrayIcon } from './icons';
 import * as docxPreview from 'docx-preview';
 
 interface CaseDocumentsProps {
@@ -10,6 +10,7 @@ interface CaseDocumentsProps {
 
 const FilePreview: React.FC<{ doc: CaseDocument, onPreview: (doc: CaseDocument) => void, onDelete: (doc: CaseDocument) => void }> = ({ doc, onPreview, onDelete }) => {
     const isImage = doc.mime_type.startsWith('image/');
+    const isPdf = doc.mime_type === 'application/pdf' || doc.file_name.toLowerCase().endsWith('.pdf');
     
     return (
         <div className="relative group border rounded-lg overflow-hidden bg-gray-50 flex flex-col aspect-w-1 aspect-h-1">
@@ -25,8 +26,15 @@ const FilePreview: React.FC<{ doc: CaseDocument, onPreview: (doc: CaseDocument) 
                 {isImage && doc.publicUrl ? (
                     <img src={doc.publicUrl} alt={doc.file_name} className="object-cover w-full h-full" />
                 ) : (
-                    <div className="flex-grow flex items-center justify-center bg-gray-200 w-full h-full">
-                        <DocumentTextIcon className="w-12 h-12 text-gray-400" />
+                    <div className="flex-grow flex items-center justify-center bg-gray-200 w-full h-full relative">
+                        {isPdf ? (
+                            <>
+                                <DocumentTextIcon className="w-12 h-12 text-red-500" />
+                                <span className="absolute bottom-1 text-xs font-bold text-red-800 bg-white/50 px-1 rounded">PDF</span>
+                            </>
+                        ) : (
+                             <DocumentTextIcon className="w-12 h-12 text-gray-400" />
+                        )}
                     </div>
                 )}
             </div>
@@ -81,12 +89,6 @@ const DocxPreview: React.FC<{ fileUrl: string; fileName: string }> = ({ fileUrl,
 
             while (container.firstChild) {
                 container.removeChild(container.firstChild);
-            }
-            
-            if (fileName.toLowerCase().endsWith('.doc')) {
-                 setError('معاينة ملفات .doc القديمة غير مدعومة حالياً. يرجى فتح الملف ببرنامج Microsoft Word.');
-                 setIsLoading(false);
-                 return;
             }
 
             fetch(fileUrl)
@@ -216,32 +218,37 @@ const CameraModal: React.FC<CameraModalProps> = ({ onClose, onSave }) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className="bg-gray-800 p-4 rounded-lg shadow-xl w-full max-w-2xl relative" onClick={e => e.stopPropagation()}>
-                <button onClick={onClose} className="absolute top-2 right-2 text-white p-2 bg-black/50 rounded-full hover:bg-black/75 z-10">
+        <div className="fixed inset-0 bg-black z-50 flex items-center justify-center md:p-4" onClick={onClose}>
+            <div 
+                className="bg-gray-900 w-full h-full md:max-w-3xl md:h-auto md:rounded-lg shadow-xl relative flex flex-col" 
+                onClick={e => e.stopPropagation()}
+            >
+                <button onClick={onClose} className="absolute top-4 right-4 text-white p-2 bg-black/50 rounded-full hover:bg-black/75 z-20">
                     <XMarkIcon className="w-6 h-6"/>
                 </button>
                 
                 {error ? (
-                    <div className="text-center p-8 text-red-400">
-                        <ExclamationTriangleIcon className="w-12 h-12 mx-auto mb-4"/>
-                        <p>{error}</p>
+                    <div className="flex-grow flex items-center justify-center text-center p-8 text-red-400">
+                        <div>
+                            <ExclamationTriangleIcon className="w-12 h-12 mx-auto mb-4"/>
+                            <p>{error}</p>
+                        </div>
                     </div>
                 ) : (
-                    <div className="space-y-4">
-                        <div className="relative w-full aspect-video bg-black rounded overflow-hidden">
+                    <>
+                        <div className="relative w-full flex-grow bg-black md:rounded-t-lg overflow-hidden">
                             {mode === 'streaming' && (
-                                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-contain"></video>
+                                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>
                             )}
                             {mode === 'preview' && capturedImage && (
-                                <img src={capturedImage} alt="Preview" className="w-full h-full object-contain" />
+                                <img src={capturedImage} alt="Preview" className="w-full h-full object-cover" />
                             )}
                         </div>
                         
-                        <div className="flex justify-center items-center gap-4">
+                        <div className="flex-shrink-0 flex justify-center items-center gap-8 p-4 bg-black/50 md:rounded-b-lg">
                             {mode === 'streaming' && (
                                 <button onClick={handleCapture} className="p-4 bg-white rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-white" aria-label="التقاط صورة">
-                                    <div className="w-8 h-8 bg-red-600 rounded-full border-4 border-white"></div>
+                                    <div className="w-10 h-10 bg-red-600 rounded-full border-4 border-white"></div>
                                 </button>
                             )}
                             {mode === 'preview' && (
@@ -251,10 +258,28 @@ const CameraModal: React.FC<CameraModalProps> = ({ onClose, onSave }) => {
                                 </>
                             )}
                         </div>
-                    </div>
+                    </>
                 )}
                 <canvas ref={canvasRef} className="hidden"></canvas>
             </div>
+        </div>
+    );
+};
+
+const UnsupportedPreview: React.FC<{ doc: CaseDocument }> = ({ doc }) => {
+    return (
+        <div className="w-[80vw] max-w-lg h-auto bg-gray-100 p-8 rounded-lg flex flex-col items-center justify-center text-center" onClick={e => e.stopPropagation()}>
+            <DocumentTextIcon className="w-16 h-16 text-gray-400 mb-4" />
+            <h3 className="text-xl font-semibold mb-2 text-gray-800">{doc.file_name}</h3>
+            <p className="text-gray-600 mb-6">المعاينة غير مدعومة لهذا النوع من الملفات ({doc.file_name.split('.').pop()}). يمكنك تنزيل الملف لفتحه باستخدام برنامج متوافق.</p>
+            <a 
+                href={doc.publicUrl} 
+                download={doc.file_name}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+            >
+                <ArrowDownTrayIcon className="w-5 h-5" />
+                <span>تنزيل الملف</span>
+            </a>
         </div>
     );
 };
@@ -388,7 +413,7 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
                                     <img src={previewDoc.publicUrl} alt={previewDoc.file_name} className="max-h-full max-w-full object-contain rounded-lg" />
                                 )}
                                 
-                                {previewDoc.mime_type === 'application/pdf' && (
+                                {(previewDoc.mime_type === 'application/pdf' || previewDoc.file_name.toLowerCase().endsWith('.pdf')) && (
                                     <iframe src={previewDoc.publicUrl} title={previewDoc.file_name} className="w-[80vw] h-[90vh] bg-white border-none rounded-lg"></iframe>
                                 )}
 
@@ -408,9 +433,14 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
                                 )}
                                 
                                 {(
-                                    previewDoc.mime_type === 'application/msword' || 
+                                    previewDoc.mime_type === 'application/msword' ||
+                                    previewDoc.file_name.toLowerCase().endsWith('.doc')
+                                ) && (
+                                    <UnsupportedPreview doc={previewDoc} />
+                                )}
+                                
+                                {(
                                     previewDoc.mime_type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-                                    previewDoc.file_name.toLowerCase().endsWith('.doc') ||
                                     previewDoc.file_name.toLowerCase().endsWith('.docx')
                                 ) && (
                                     <DocxPreview fileUrl={previewDoc.publicUrl} fileName={previewDoc.file_name} />
