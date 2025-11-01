@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lawyer-app-cache-v27';
+const CACHE_NAME = 'lawyer-app-cache-v28';
 // The list of URLs to cache has been expanded to include all critical,
 // external dependencies. This ensures the app is fully functional offline
 // immediately after the service worker is installed, preventing failures
@@ -58,66 +58,49 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // We only want to handle GET requests.
-  if (event.request.method !== 'GET') {
+  if (event.request.method !== 'GET' || event.request.url.includes('supabase.co')) {
     return;
   }
 
-  // Supabase API calls should always go to the network and not be cached.
-  if (event.request.url.includes('supabase.co')) {
-    return;
-  }
+  const responsePromise = (async () => {
+    const cache = await caches.open(CACHE_NAME);
 
-  // For navigation requests (e.g., loading the main page), use a Network-first strategy.
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      (async () => {
-        try {
-          // Try to fetch from the network first.
-          const networkResponse = await fetch(event.request);
-          return networkResponse;
-        } catch (error) {
-          // If the network fails, serve the cached index.html as a fallback.
-          console.log('Network request for navigation failed, serving from cache.');
-          const cache = await caches.open(CACHE_NAME);
-          // './' is the key we used to cache index.html
-          const cachedResponse = await cache.match('./');
-          return cachedResponse || new Response("You are offline and the app shell is not cached.", { status: 500, statusText: "Offline Fallback Not Found" });
-        }
-      })()
-    );
-    return;
-  }
-  
-  // For all other requests (assets like JS, CSS, fonts), use a Cache-first strategy.
-  event.respondWith(
-    caches.open(CACHE_NAME).then(async (cache) => {
-      // 1. Check if the request is in the cache.
-      const cachedResponse = await cache.match(event.request);
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-
-      // 2. If not in cache, fetch from the network.
+    // Network-first strategy for navigation requests
+    if (event.request.mode === 'navigate') {
       try {
         const networkResponse = await fetch(event.request);
-        
-        // We cache successful responses (status 200) and opaque responses (for no-cors CDNs).
-        if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque')) {
-          const responseToCache = networkResponse.clone();
-          await cache.put(event.request, responseToCache);
-        }
-        
+        // On success, cache the response and return it
+        cache.put(event.request, networkResponse.clone());
         return networkResponse;
       } catch (error) {
-        // 3. If the network fails (e.g., offline), provide a fallback.
-        console.error('Fetch failed and not in cache:', event.request.url, error);
-        return new Response('Asset not available offline.', {
-          status: 404,
-          statusText: 'Not Found',
-          headers: { 'Content-Type': 'text/plain' },
-        });
+        // On failure, try the cache for the request, then fallback to root
+        console.log('Network failed for navigation, trying cache for:', event.request.url);
+        const cachedResponse = await cache.match(event.request);
+        if (cachedResponse) return cachedResponse;
+        
+        const rootResponse = await cache.match('./');
+        return rootResponse || new Response("You are offline and this page is not cached.", { status: 404, headers: { "Content-Type": "text/html" } });
       }
-    })
-  );
+    }
+
+    // Cache-first strategy for all other assets
+    const cachedResponse = await cache.match(event.request);
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+
+    // Asset not in cache, fetch from network and cache it
+    try {
+      const networkResponse = await fetch(event.request);
+      if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque')) {
+        cache.put(event.request, networkResponse.clone());
+      }
+      return networkResponse;
+    } catch (error) {
+      console.error('Asset fetch failed:', event.request.url, error);
+      return new Response('Asset not found.', { status: 404 });
+    }
+  })();
+
+  event.respondWith(responsePromise);
 });
