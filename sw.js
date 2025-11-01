@@ -17,14 +17,15 @@ const urlsToCache = [
   'https://fonts.gstatic.com/s/tajawal/v10/Iura6YBj_oCad4k1nzGVC45I.woff2',
   'https://fonts.gstatic.com/s/tajawal/v10/Iura6YBj_oCad4k1nzGjC45I.woff2',
   // Pinning specific versions from esm.sh for better cache stability
-  'https://esm.sh/@google/genai@1.20.0',
-  'https://esm.sh/@supabase/supabase-js@2.44.4',
-  'https://esm.sh/recharts@2.12.7',
+  // Using bundled versions for more robust caching.
+  'https://esm.sh/@google/genai@1.20.0?bundle',
+  'https://esm.sh/@supabase/supabase-js@2.44.4?bundle',
+  'https://esm.sh/recharts@2.12.7?bundle',
   'https://esm.sh/react@18.3.1',
   'https://esm.sh/react-dom@18.3.1/client',
   'https://esm.sh/react@18.3.1/jsx-runtime',
-  'https://esm.sh/idb@8.0.0',
-  'https://esm.sh/docx-preview@0.3.2',
+  'https://esm.sh/idb@8.0.0?bundle',
+  'https://esm.sh/docx-preview@0.3.2?bundle',
 ];
 
 self.addEventListener('install', event => {
