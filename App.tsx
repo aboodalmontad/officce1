@@ -21,6 +21,7 @@ import { getSupabaseClient } from './supabaseClient';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import AppointmentNotifier from './components/AppointmentNotifier';
 import UnpostponedSessionsModal from './components/UnpostponedSessionsModal';
+import Logo from './components/Logo';
 
 
 // --- Data Context for avoiding prop drilling ---
@@ -177,7 +178,8 @@ const Navbar: React.FC<{
     return (
         <header className="bg-white shadow-md p-2 sm:p-4 flex justify-between items-center no-print sticky top-0 z-30">
             <nav className="flex items-center gap-1 sm:gap-4 flex-wrap">
-                <button onClick={() => onNavigate('home')} className="flex items-center" aria-label="العودة إلى الصفحة الرئيسية">
+                <button onClick={() => onNavigate('home')} className="flex items-center gap-2" aria-label="العودة إلى الصفحة الرئيسية">
+                    <Logo />
                     <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
                 </button>
                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
@@ -402,7 +404,11 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                         localStorage.setItem(LAST_USER_CACHE_KEY, JSON.stringify(session.user));
                     } else if (error) {
                          if (!profileFromCache) {
-                            throw new Error(`فشل الاتصال بالخادم لجلب ملفك الشخصي: ${error.message}`);
+                            let detailedError = `فشل الاتصال بالخادم لجلب ملفك الشخصي: ${error.message}`;
+                            if (String(error.message).toLowerCase().includes('failed to fetch')) {
+                                detailedError = `فشل الاتصال بالخادم. قد يكون السبب هو ضعف الشبكة، أو أن نطاق التطبيق (domain) غير مضاف إلى قائمة CORS Origins في إعدادات Supabase API.`;
+                            }
+                            throw new Error(detailedError);
                         } else {
                             console.warn("Failed to refresh profile, using cached version. Error:", error.message);
                         }

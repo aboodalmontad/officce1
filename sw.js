@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lawyer-app-cache-v26';
+const CACHE_NAME = 'lawyer-app-cache-v27';
 // The list of URLs to cache has been expanded to include all critical,
 // external dependencies. This ensures the app is fully functional offline
 // immediately after the service worker is installed, preventing failures
@@ -64,16 +64,35 @@ self.addEventListener('fetch', event => {
   }
 
   // Supabase API calls should always go to the network and not be cached.
-  // The JS library itself is hosted on esm.sh and will be cached.
   if (event.request.url.includes('supabase.co')) {
-    // We don't call event.respondWith, so the browser handles it as usual (network).
     return;
   }
 
-  // For all other GET requests, use a robust cache-first strategy.
+  // For navigation requests (e.g., loading the main page), use a Network-first strategy.
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      (async () => {
+        try {
+          // Try to fetch from the network first.
+          const networkResponse = await fetch(event.request);
+          return networkResponse;
+        } catch (error) {
+          // If the network fails, serve the cached index.html as a fallback.
+          console.log('Network request for navigation failed, serving from cache.');
+          const cache = await caches.open(CACHE_NAME);
+          // './' is the key we used to cache index.html
+          const cachedResponse = await cache.match('./');
+          return cachedResponse || new Response("You are offline and the app shell is not cached.", { status: 500, statusText: "Offline Fallback Not Found" });
+        }
+      })()
+    );
+    return;
+  }
+  
+  // For all other requests (assets like JS, CSS, fonts), use a Cache-first strategy.
   event.respondWith(
     caches.open(CACHE_NAME).then(async (cache) => {
-      // 1. Try to find a response in the cache.
+      // 1. Check if the request is in the cache.
       const cachedResponse = await cache.match(event.request);
       if (cachedResponse) {
         return cachedResponse;
@@ -84,9 +103,7 @@ self.addEventListener('fetch', event => {
         const networkResponse = await fetch(event.request);
         
         // We cache successful responses (status 200) and opaque responses (for no-cors CDNs).
-        // This is important for caching assets like tailwindcss.
         if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque')) {
-          // Clone the response because it can only be consumed once.
           const responseToCache = networkResponse.clone();
           await cache.put(event.request, responseToCache);
         }
@@ -94,21 +111,10 @@ self.addEventListener('fetch', event => {
         return networkResponse;
       } catch (error) {
         // 3. If the network fails (e.g., offline), provide a fallback.
-        console.error('Fetch failed; returning offline fallback if available for:', event.request.url, error);
-
-        // For navigation requests (i.e., loading a page), return the cached root file.
-        if (event.request.mode === 'navigate') {
-          const fallbackResponse = await cache.match('./');
-          if (fallbackResponse) {
-            return fallbackResponse;
-          }
-        }
-        
-        // For other failed requests (images, scripts, etc.), there's no specific fallback,
-        // so we return a generic error response to make debugging easier.
-        return new Response('Network error: The resource could not be fetched and is not in the cache.', {
-          status: 408, // Request Timeout
-          statusText: 'Request Timeout',
+        console.error('Fetch failed and not in cache:', event.request.url, error);
+        return new Response('Asset not available offline.', {
+          status: 404,
+          statusText: 'Not Found',
           headers: { 'Content-Type': 'text/plain' },
         });
       }
