@@ -6,14 +6,12 @@ import CaseAccounting from './CaseAccounting';
 import { formatDate } from '../utils/dateUtils';
 import { MenuItem } from './ContextMenu';
 import CaseDocuments from './CaseDocuments';
+import { useData } from '../App';
 
 type ExpandedState = { [key: string]: boolean };
 
 interface ClientsTreeViewProps {
-    clients: Client[];
-    setClients: (updater: (prevClients: Client[]) => Client[]) => void;
-    accountingEntries: AccountingEntry[];
-    setAccountingEntries: (updater: (prev: AccountingEntry[]) => AccountingEntry[]) => void;
+    clients: (Client & { cases: (Case & { stages: (Stage & { sessions: Session[] })[] })[] })[];
     onAddCase: (clientId: string) => void;
     onEditCase: (caseItem: Case, client: Client) => void;
     onDeleteCase: (caseId: string, clientId: string) => void;
@@ -27,15 +25,18 @@ interface ClientsTreeViewProps {
     onEditClient: (client: Client) => void;
     onDeleteClient: (clientId: string) => void;
     onPrintClientStatement: (clientId: string) => void;
-    assistants: string[];
     onUpdateSession: (sessionId: string, updatedFields: Partial<Session>) => void;
+    onUpdateCase: (caseId: string, updatedFields: Partial<Case>) => void;
     onDecide: (session: Session) => void;
     showContextMenu: (event: React.MouseEvent, menuItems: MenuItem[]) => void;
     onOpenAdminTaskModal: (initialData?: any) => void;
     onCreateInvoice: (clientId: string, caseId?: string) => void;
+    assistants: string[];
+    accountingEntries: AccountingEntry[];
+    setAccountingEntries: (updater: React.SetStateAction<AccountingEntry[]>) => void;
 }
 
-const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props: ClientsTreeViewProps; expanded: boolean; onToggle: () => void }> = ({ stage, caseItem, client, props, expanded, onToggle }) => {
+const StageItem: React.FC<{ stage: (Stage & { sessions: Session[] }); caseItem: Case; client: Client; props: Omit<ClientsTreeViewProps, 'clients'>; expanded: boolean; onToggle: () => void }> = ({ stage, caseItem, client, props, expanded, onToggle }) => {
     const longPressTimer = React.useRef<number | null>(null);
 
     const handleContextMenu = (event: React.MouseEvent) => {
@@ -222,22 +223,19 @@ const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props:
     );
 };
 
-const StageItemContainer: React.FC<{ stage: Stage; caseItem: Case; client: Client; props: ClientsTreeViewProps }> = ({ stage, caseItem, client, props }) => {
+const StageItemContainer: React.FC<{ stage: (Stage & { sessions: Session[] }); caseItem: Case; client: Client; props: Omit<ClientsTreeViewProps, 'clients'> }> = ({ stage, caseItem, client, props }) => {
     const [isExpanded, setIsExpanded] = React.useState(false);
     return <StageItem stage={stage} caseItem={caseItem} client={client} props={props} expanded={isExpanded} onToggle={() => setIsExpanded(!isExpanded)} />
 }
 
-const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeViewProps; expanded: boolean; onToggle: () => void }> = ({ caseItem, client, props, expanded, onToggle }) => {
+const CaseItem: React.FC<{ caseItem: (Case & { stages: (Stage & { sessions: Session[] })[] }); client: Client; props: Omit<ClientsTreeViewProps, 'clients'>; expanded: boolean; onToggle: () => void }> = ({ caseItem, client, props, expanded, onToggle }) => {
     const [activeTab, setActiveTab] = React.useState<'stages' | 'accounting' | 'documents'>('stages');
-    const caseAccountingEntries = props.accountingEntries.filter(e => e.caseId === caseItem.id);
     const longPressTimer = React.useRef<number | null>(null);
 
+    const { accountingEntries, setAccountingEntries } = useData();
+
     const handleFeeChange = (newFee: string) => {
-        props.setClients(clients => clients.map(c => c.id === client.id ? {
-            ...c,
-            updated_at: new Date(),
-            cases: c.cases.map(cs => cs.id === caseItem.id ? {...cs, feeAgreement: newFee, updated_at: new Date()} : cs)
-        } : c));
+        props.onUpdateCase(caseItem.id, { feeAgreement: newFee, updated_at: new Date() });
     };
 
     const handleContextMenu = (event: React.MouseEvent) => {
@@ -362,8 +360,8 @@ const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeVie
                         <CaseAccounting
                             caseData={caseItem}
                             client={client}
-                            caseAccountingEntries={props.accountingEntries.filter(e => e.caseId === caseItem.id)}
-                            setAccountingEntries={props.setAccountingEntries}
+                            caseAccountingEntries={accountingEntries.filter(e => e.caseId === caseItem.id)}
+                            setAccountingEntries={setAccountingEntries}
                             onFeeAgreementChange={handleFeeChange}
                         />
                     )}
@@ -376,12 +374,12 @@ const CaseItem: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeVie
     );
 };
 
-const CaseItemContainer: React.FC<{ caseItem: Case; client: Client; props: ClientsTreeViewProps }> = ({ caseItem, client, props }) => {
+const CaseItemContainer: React.FC<{ caseItem: (Case & { stages: (Stage & { sessions: Session[] })[] }); client: Client; props: Omit<ClientsTreeViewProps, 'clients'> }> = ({ caseItem, client, props }) => {
     const [isExpanded, setIsExpanded] = React.useState(false);
     return <CaseItem caseItem={caseItem} client={client} props={props} expanded={isExpanded} onToggle={() => setIsExpanded(!isExpanded)} />
 }
 
-const ClientItem: React.FC<{ client: Client; props: ClientsTreeViewProps; expanded: boolean; onToggle: () => void; }> = ({ client, props, expanded, onToggle }) => {
+const ClientItem: React.FC<{ client: (Client & { cases: (Case & { stages: (Stage & { sessions: Session[] })[] })[] }); props: Omit<ClientsTreeViewProps, 'clients'>; expanded: boolean; onToggle: () => void; }> = ({ client, props, expanded, onToggle }) => {
     const longPressTimer = React.useRef<number | null>(null);
     
     const handleContextMenu = (event: React.MouseEvent) => {
@@ -466,24 +464,25 @@ const ClientItem: React.FC<{ client: Client; props: ClientsTreeViewProps; expand
     );
 };
 
-const ClientsTreeView: React.FC<ClientsTreeViewProps> = (props) => {
+const ClientsTreeView: React.FC<Omit<ClientsTreeViewProps, 'setCases'>> = (props) => {
     const [expanded, setExpanded] = React.useState<ExpandedState>({});
+    const { clients: clientsTree, ...restProps } = props;
 
     const toggle = (id: string) => {
         setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
     };
 
-    if (props.clients.length === 0) {
-        return <p className="p-6 text-center text-gray-500">لا يوجد موكلون لعرضهم. ابدأ بإضافة موكل جديد.</p>;
+    if (clientsTree.length === 0) {
+        return <p className="p-6 text-center text-gray-500">لا يوجد موكلون يطابقون بحثك.</p>;
     }
 
     return (
         <div className="p-4 space-y-4">
-            {props.clients.map(client => (
+            {clientsTree.map(client => (
                 <ClientItem 
                     key={client.id} 
                     client={client} 
-                    props={props} 
+                    props={restProps} 
                     expanded={!!expanded[client.id]} 
                     onToggle={() => toggle(client.id)}
                 />
@@ -492,4 +491,4 @@ const ClientsTreeView: React.FC<ClientsTreeViewProps> = (props) => {
     );
 };
 
-export default ClientsTreeView;
+export default React.memo(ClientsTreeView);

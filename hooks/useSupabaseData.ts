@@ -52,14 +52,24 @@ const getInitialData = (): AppData => ({
 
 // --- IndexedDB Setup ---
 const DB_NAME = 'LawyerAppData';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Bump version for schema change
 const DATA_STORE_NAME = 'appData';
+const DOCS_STORE_NAME = 'documents';
 
-async function getDb(): Promise<IDBPDatabase> {
+
+export async function getDb(): Promise<IDBPDatabase> {
   return openDB(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains(DATA_STORE_NAME)) {
-        db.createObjectStore(DATA_STORE_NAME);
+    upgrade(db, oldVersion) {
+      if (oldVersion < 1) {
+          if (!db.objectStoreNames.contains(DATA_STORE_NAME)) {
+            db.createObjectStore(DATA_STORE_NAME);
+          }
+      }
+      if (oldVersion < 2) {
+          if (!db.objectStoreNames.contains(DOCS_STORE_NAME)) {
+            // This store will hold objects of type { metadata: CaseDocument, blob: Blob }
+            db.createObjectStore(DOCS_STORE_NAME, { keyPath: 'metadata.id' });
+          }
       }
     },
   });
@@ -102,6 +112,7 @@ const validateAndHydrate = (data: any): AppData => {
         updated_at: sanitizeOptionalDate(client.updated_at),
         cases: safeArray(client.cases, (caseItem: any, caseIndex: number): Case => ({
             id: caseItem.id || `case-${Date.now()}-${caseIndex}`,
+            clientId: client.id,
             subject: String(caseItem.subject || 'قضية بدون موضوع'),
             clientName: String((caseItem.client_name ?? caseItem.clientName) || client.name || 'موكل غير مسمى'),
             opponentName: sanitizeString(caseItem.opponent_name ?? caseItem.opponentName),
@@ -110,6 +121,7 @@ const validateAndHydrate = (data: any): AppData => {
             updated_at: sanitizeOptionalDate(caseItem.updated_at),
             stages: safeArray(caseItem.stages, (stage: any, stageIndex: number): Stage => ({
                 id: stage.id || `stage-${Date.now()}-${stageIndex}`,
+                caseId: caseItem.id,
                 court: String(stage.court || 'محكمة غير محددة'),
                 caseNumber: sanitizeString(stage.case_number ?? stage.caseNumber),
                 firstSessionDate: sanitizeOptionalDate(stage.first_session_date ?? stage.firstSessionDate),
@@ -122,6 +134,8 @@ const validateAndHydrate = (data: any): AppData => {
                     }
                     return {
                         id: session.id || `session-${Date.now()}-${sessionIndex}`,
+                        // FIX: Added missing stageId property.
+                        stageId: stage.id,
                         court: String(session.court || stage.court || 'محكمة غير محددة'),
                         caseNumber: ('case_number' in session || 'caseNumber' in session) ? sanitizeString(session.case_number ?? session.caseNumber) : sanitizeString(stage.case_number ?? stage.caseNumber),
                         date: sessionDate,
@@ -614,7 +628,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         setAssistants: (updater) => setData(prev => ({...prev, assistants: typeof updater === 'function' ? updater(prev.assistants) : updater})),
         setFullData: handleDataSynced,
         allSessions: React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.map(s => ({...s, stageId: st.id, stageDecisionDate: st.decisionDate})) ))), [data.clients]),
-        unpostponedSessions: React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.filter(s => !s.isPostponed && isBeforeToday(s.date) && !st.decisionDate)))) , [data.clients]),
+        // FIX: unpostponedSessions implementation now matches its type by adding stageId and stageDecisionDate.
+        unpostponedSessions: React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.filter(s => !s.isPostponed && isBeforeToday(s.date) && !st.decisionDate).map(s => ({...s, stageId: st.id, stageDecisionDate: st.decisionDate}))))) , [data.clients]),
         syncStatus,
         manualSync: manualSyncRef.current,
         lastSyncError,
@@ -663,6 +678,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                             
                             const newSession: Session = {
                                 id: `session-${Date.now()}`,
+                                // FIX: Added missing stageId property.
+                                stageId: sessionToUpdate.stageId,
                                 court: sessionToUpdate.court,
                                 caseNumber: sessionToUpdate.caseNumber,
                                 date: newDate,

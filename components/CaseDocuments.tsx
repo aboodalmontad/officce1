@@ -286,7 +286,7 @@ const UnsupportedPreview: React.FC<{ doc: CaseDocument }> = ({ doc }) => {
 
 
 const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
-    const { documents, loading, error, addDocuments, deleteDocument, isOnline } = useCaseDocuments(caseId);
+    const { documents, loading, error, addDocuments, deleteDocument } = useCaseDocuments(caseId);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
     const [previewDoc, setPreviewDoc] = React.useState<CaseDocument | null>(null);
     const [docToDelete, setDocToDelete] = React.useState<CaseDocument | null>(null);
@@ -328,16 +328,6 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
         await addDocuments(dataTransfer.files);
         setIsCameraOpen(false);
     };
-    
-    if (!isOnline) {
-        return (
-            <div className="p-4 text-center text-yellow-800 bg-yellow-50 rounded-lg border border-yellow-200">
-                <NoSymbolIcon className="w-12 h-12 mx-auto mb-4 text-yellow-500" />
-                <h3 className="font-semibold">أنت غير متصل بالإنترنت</h3>
-                <p className="text-sm">ميزة الوثائق تتطلب اتصالاً بالإنترنت للمزامنة. يرجى التحقق من اتصالك والمحاولة مرة أخرى.</p>
-            </div>
-        );
-    }
 
     return (
         <div 
@@ -377,8 +367,8 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
             </div> 
 
             {error && (
-                <div className="p-4 text-sm text-red-800 bg-red-100 rounded-lg flex items-start gap-3">
-                    <ExclamationTriangleIcon className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                 <div className={`p-4 text-sm rounded-lg flex items-start gap-3 ${error.includes('أنت غير متصل') ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
+                    <ExclamationTriangleIcon className={`w-5 h-5 flex-shrink-0 mt-0.5 ${error.includes('أنت غير متصل') ? 'text-yellow-500' : 'text-red-500'}`} />
                     <div>{error}</div>
                 </div>
             )}

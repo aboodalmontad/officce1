@@ -1,7 +1,7 @@
 import { Client, AdminTask, Appointment, AccountingEntry, Invoice, Case, Stage, Session, InvoiceItem } from '../types';
 
 // Default list of assistants for assignment dropdowns
-export const mockAssistants: string[] = ['أحمد', 'فاطمة', 'سارة', 'بدون تخصيص'];
+export const mockAssistants: string[] = ['أحمد', 'فاطمة', 'سارة', 'بدون تخصص'];
 
 const today = new Date();
 const createDate = (daysOffset: number = 0, hours: number = 0, minutes: number = 0): Date => {
@@ -11,112 +11,129 @@ const createDate = (daysOffset: number = 0, hours: number = 0, minutes: number =
     return date;
 };
 
-// --- Mock Sessions ---
-const session1_1_1: Session = {
-    id: 'session-1',
-    court: 'محكمة البداية المدنية الأولى',
-    caseNumber: '123/2023',
-    date: createDate(-10),
-    clientName: 'عبد الرحمن قضماني',
-    opponentName: 'شركة الإسكان الحديثة',
-    isPostponed: true,
-    postponementReason: 'لتقديم المستندات',
-    nextSessionDate: createDate(5),
-    nextPostponementReason: 'لإبراز الوكالة',
-    assignee: 'أحمد',
-};
-
-const session1_1_2: Session = {
-    id: 'session-2',
-    court: 'محكمة البداية المدنية الأولى',
-    caseNumber: '123/2023',
-    date: createDate(5),
-    clientName: 'عبد الرحمن قضماني',
-    opponentName: 'شركة الإسكان الحديثة',
-    isPostponed: false,
-    postponementReason: 'لإبراز الوكالة',
-    assignee: 'أحمد',
-};
-
-const session2_1_1: Session = {
-    id: 'session-3',
-    court: 'محكمة العمل',
-    caseNumber: '45/2024',
-    date: createDate(2),
-    clientName: 'فاطمة الزهراء',
-    opponentName: 'المؤسسة التجارية المتحدة',
-    isPostponed: false,
-    assignee: 'فاطمة',
-};
-
-// --- Mock Stages ---
-const stage1_1: Stage = {
-    id: 'stage-1',
-    court: 'محكمة البداية المدنية الأولى',
-    caseNumber: '123/2023',
-    firstSessionDate: createDate(-10),
-    sessions: [session1_1_1, session1_1_2],
-};
-
-const stage2_1: Stage = {
-    id: 'stage-2',
-    court: 'محكمة العمل',
-    caseNumber: '45/2024',
-    firstSessionDate: createDate(2),
-    sessions: [session2_1_1],
-};
-
-// --- Mock Cases ---
-const case1: Case = {
-    id: 'case-1',
-    subject: 'نزاع عقاري على ملكية',
-    clientName: 'عبد الرحمن قضماني',
-    opponentName: 'شركة الإسكان الحديثة',
-    stages: [stage1_1],
-    feeAgreement: '10% من قيمة العقار عند الحكم النهائي',
-    status: 'active',
-};
-
-const case2: Case = {
-    id: 'case-2',
-    subject: 'قضية عمالية - فصل تعسفي',
-    clientName: 'فاطمة الزهراء',
-    opponentName: 'المؤسسة التجارية المتحدة',
-    stages: [stage2_1],
-    feeAgreement: '500,000 ل.س مقدماً و 1,000,000 ل.س عند صدور الحكم',
-    status: 'active',
-};
-
-const case3: Case = {
-    id: 'case-3',
-    subject: 'قضية إيجارية مغلقة',
-    clientName: 'عبد الرحمن قضماني',
-    opponentName: 'مستأجر سابق',
-    stages: [],
-    feeAgreement: 'مبلغ مقطوع 250,000 ل.س',
-    status: 'closed',
-};
-
-
 // --- Mock Clients ---
 export const mockClients: Client[] = [
     {
         id: 'client-1',
         name: 'عبد الرحمن قضماني',
         contactInfo: '0987654321 - a.kadmani@email.com',
-        cases: [case1, case3],
+        // FIX: Added missing 'cases' property to satisfy the Client type.
+        cases: [],
     },
     {
         id: 'client-2',
         name: 'فاطمة الزهراء',
         contactInfo: '0912345678 - fatima.z@email.com',
-        cases: [case2],
+        // FIX: Added missing 'cases' property to satisfy the Client type.
+        cases: [],
     },
      {
         id: 'client-3',
         name: 'محمد الشامي',
         contactInfo: '0933445566',
+        // FIX: Added missing 'cases' property to satisfy the Client type.
         cases: [],
+    },
+];
+
+// --- Mock Cases ---
+export const mockCases: Case[] = [
+    {
+        id: 'case-1',
+        clientId: 'client-1',
+        subject: 'نزاع عقاري على ملكية',
+        clientName: 'عبد الرحمن قضماني',
+        opponentName: 'شركة الإسكان الحديثة',
+        feeAgreement: '10% من قيمة العقار عند الحكم النهائي',
+        status: 'active',
+        // FIX: Added missing 'stages' property to satisfy the Case type.
+        stages: [],
+    },
+    {
+        id: 'case-2',
+        clientId: 'client-2',
+        subject: 'قضية عمالية - فصل تعسفي',
+        clientName: 'فاطمة الزهراء',
+        opponentName: 'المؤسسة التجارية المتحدة',
+        feeAgreement: '500,000 ل.س مقدماً و 1,000,000 ل.س عند صدور الحكم',
+        status: 'active',
+        // FIX: Added missing 'stages' property to satisfy the Case type.
+        stages: [],
+    },
+    {
+        id: 'case-3',
+        clientId: 'client-1',
+        subject: 'قضية إيجارية مغلقة',
+        clientName: 'عبد الرحمن قضماني',
+        opponentName: 'مستأجر سابق',
+        feeAgreement: 'مبلغ مقطوع 250,000 ل.س',
+        status: 'closed',
+        // FIX: Added missing 'stages' property to satisfy the Case type.
+        stages: [],
+    },
+];
+
+// --- Mock Stages ---
+export const mockStages: Stage[] = [
+    {
+        id: 'stage-1',
+        caseId: 'case-1',
+        court: 'محكمة البداية المدنية الأولى',
+        caseNumber: '123/2023',
+        firstSessionDate: createDate(-10),
+        // FIX: Added missing 'sessions' property to satisfy the Stage type.
+        sessions: [],
+    },
+    {
+        id: 'stage-2',
+        caseId: 'case-2',
+        court: 'محكمة العمل',
+        caseNumber: '45/2024',
+        firstSessionDate: createDate(2),
+        // FIX: Added missing 'sessions' property to satisfy the Stage type.
+        sessions: [],
+    },
+];
+
+
+// --- Mock Sessions ---
+export const mockSessions: Session[] = [
+    {
+        id: 'session-1',
+        stageId: 'stage-1',
+        court: 'محكمة البداية المدنية الأولى',
+        caseNumber: '123/2023',
+        date: createDate(-10),
+        clientName: 'عبد الرحمن قضماني',
+        opponentName: 'شركة الإسكان الحديثة',
+        isPostponed: true,
+        postponementReason: 'لتقديم المستندات',
+        nextSessionDate: createDate(5),
+        nextPostponementReason: 'لإبراز الوكالة',
+        assignee: 'أحمد',
+    },
+    {
+        id: 'session-2',
+        stageId: 'stage-1',
+        court: 'محكمة البداية المدنية الأولى',
+        caseNumber: '123/2023',
+        date: createDate(5),
+        clientName: 'عبد الرحمن قضماني',
+        opponentName: 'شركة الإسكان الحديثة',
+        isPostponed: false,
+        postponementReason: 'لإبراز الوكالة',
+        assignee: 'أحمد',
+    },
+    {
+        id: 'session-3',
+        stageId: 'stage-2',
+        court: 'محكمة العمل',
+        caseNumber: '45/2024',
+        date: createDate(2),
+        clientName: 'فاطمة الزهراء',
+        opponentName: 'المؤسسة التجارية المتحدة',
+        isPostponed: false,
+        assignee: 'فاطمة',
     },
 ];
 
@@ -237,6 +254,9 @@ export const mockInvoices: Invoice[] = [
 // --- Main mock data getter ---
 export const getMockData = () => ({
     clients: mockClients,
+    cases: mockCases,
+    stages: mockStages,
+    sessions: mockSessions,
     adminTasks: mockAdminTasks,
     appointments: mockAppointments,
     accountingEntries: mockAccountingEntries,
