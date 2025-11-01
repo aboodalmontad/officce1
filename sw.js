@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lawyer-app-cache-v20';
+const CACHE_NAME = 'lawyer-app-cache-v21';
 // The list of URLs to cache has been expanded to include all critical,
 // external dependencies. This ensures the app is fully functional offline
 // immediately after the service worker is installed, preventing failures
@@ -24,7 +24,7 @@ const urlsToCache = [
   'https://esm.sh/react-dom@18.3.1/client',
   'https://esm.sh/react@18.3.1/jsx-runtime',
   'https://esm.sh/idb@8.0.0',
-  'https://esm.sh/docx-preview@0.1.20',
+  'https://esm.sh/docx-preview@0.3.2',
 ];
 
 self.addEventListener('install', event => {
