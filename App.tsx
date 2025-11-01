@@ -322,11 +322,14 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         if (!supabase) return;
         
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
-            // Using a functional update for setSession avoids needing `session` in the dependency array.
-            // This prevents re-subscribing on every session change.
-            // We also check if the user or token has actually changed to prevent re-renders on token refresh events.
             setSession(currentSession => {
-                const hasChanged = newSession?.user.id !== currentSession?.user.id || newSession?.access_token !== currentSession?.access_token;
+                const newSessionUser = newSession?.user;
+                const currentSessionUser = currentSession?.user;
+
+                // A meaningful change occurred if there was no session and now there is,
+                // or if there was a session and now there isn't, or if the user ID changed.
+                const hasChanged = (!!newSessionUser !== !!currentSessionUser) || (newSessionUser?.id !== currentSessionUser?.id);
+                
                 return hasChanged ? newSession : currentSession;
             });
         });
@@ -385,7 +388,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
 
                         if (fetchError && status !== 406) {
                             error = fetchError;
-                            console.error(`Profile fetch attempt ${attempts} failed with a persistent error:`, fetchError);
+                            console.error(`Profile fetch attempt ${attempts} failed with a persistent error:`, JSON.stringify(fetchError, null, 2));
                             break; // Persistent error, exit loop
                         }
 
@@ -531,7 +534,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     }
     
     if (supabaseData.isDataLoading) {
-        return <FullScreenLoader text="جاري تحميل بيانات المكتب..." />;
+        return <FullScreenLoader text="جاري تحميل البيانات المحلية..." />;
     }
     
     if (!profile.is_approved && profile.role !== 'admin') {

@@ -286,7 +286,7 @@ const UnsupportedPreview: React.FC<{ doc: CaseDocument }> = ({ doc }) => {
 
 
 const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
-    const { documents, loading, error, addDocuments, deleteDocument } = useCaseDocuments(caseId);
+    const { documents, loading, isSyncing, error, addDocuments, deleteDocument } = useCaseDocuments(caseId);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
     const [previewDoc, setPreviewDoc] = React.useState<CaseDocument | null>(null);
     const [docToDelete, setDocToDelete] = React.useState<CaseDocument | null>(null);
@@ -366,6 +366,13 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
                 </button>
             </div> 
 
+             {isSyncing && !loading && (
+                <div className="flex justify-center items-center p-2 text-sm text-blue-600 animate-fade-in">
+                    <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                    <p className="ms-2">جاري المزامنة مع السحابة...</p>
+                </div>
+            )}
+
             {error && (
                  <div className={`p-4 text-sm rounded-lg flex items-start gap-3 ${error.includes('أنت غير متصل') ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
                     <ExclamationTriangleIcon className={`w-5 h-5 flex-shrink-0 mt-0.5 ${error.includes('أنت غير متصل') ? 'text-yellow-500' : 'text-red-500'}`} />
@@ -376,7 +383,7 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
             {loading ? (
                 <div className="flex justify-center items-center p-8">
                     <ArrowPathIcon className="w-6 h-6 text-gray-500 animate-spin" />
-                    <p className="ms-2 text-gray-600">جاري تحميل الوثائق...</p>
+                    <p className="ms-2 text-gray-600">جاري تحميل الوثائق المحلية...</p>
                 </div>
             ) : documents.length === 0 ? (
                 <p className="text-center text-gray-500 py-8">لا توجد وثائق لهذه القضية بعد.</p>
@@ -397,46 +404,41 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
                     </button>
                     
                     <div onClick={(e) => e.stopPropagation()} className="max-h-full max-w-full flex items-center justify-center">
-                        {previewDoc.publicUrl && (
-                             <>
-                                {previewDoc.mime_type.startsWith('image/') && (
-                                    <img src={previewDoc.publicUrl} alt={previewDoc.file_name} className="max-h-full max-w-full object-contain rounded-lg" />
-                                )}
-                                
-                                {(previewDoc.mime_type === 'application/pdf' || previewDoc.file_name.toLowerCase().endsWith('.pdf')) && (
-                                    <iframe src={previewDoc.publicUrl} title={previewDoc.file_name} className="w-[80vw] h-[90vh] bg-white border-none rounded-lg"></iframe>
-                                )}
+                        {(() => {
+                            if (!previewDoc.publicUrl) {
+                                return <UnsupportedPreview doc={previewDoc} />;
+                            }
 
-                                {previewDoc.mime_type.startsWith('video/') && (
-                                    <video src={previewDoc.publicUrl} controls autoPlay className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg" />
-                                )}
+                            const mimeType = previewDoc.mime_type.toLowerCase();
+                            const fileName = previewDoc.file_name.toLowerCase();
 
-                                {previewDoc.mime_type.startsWith('audio/') && (
+                            if (mimeType.startsWith('image/')) {
+                                return <img src={previewDoc.publicUrl} alt={previewDoc.file_name} className="max-h-full max-w-full object-contain rounded-lg" />;
+                            }
+                            if (mimeType === 'application/pdf' || fileName.endsWith('.pdf')) {
+                                return <iframe src={previewDoc.publicUrl} title={previewDoc.file_name} className="w-[80vw] h-[90vh] bg-white border-none rounded-lg"></iframe>;
+                            }
+                            if (mimeType.startsWith('video/')) {
+                                return <video src={previewDoc.publicUrl} controls autoPlay className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg" />;
+                            }
+                            if (mimeType.startsWith('audio/')) {
+                                return (
                                     <div className="bg-white p-8 rounded-lg shadow-xl">
                                         <h3 className="text-lg font-semibold text-gray-800 mb-4">{previewDoc.file_name}</h3>
                                         <audio src={previewDoc.publicUrl} controls autoPlay className="w-full" />
                                     </div>
-                                )}
+                                );
+                            }
+                            if (mimeType.startsWith('text/')) {
+                                return <TextPreview fileUrl={previewDoc.publicUrl} fileName={previewDoc.file_name} />;
+                            }
+                            if (mimeType.includes('word') || fileName.endsWith('.doc') || fileName.endsWith('.docx')) {
+                                return <DocxPreview fileUrl={previewDoc.publicUrl} fileName={previewDoc.file_name} />;
+                            }
 
-                                {previewDoc.mime_type.startsWith('text/') && (
-                                    <TextPreview fileUrl={previewDoc.publicUrl} fileName={previewDoc.file_name} />
-                                )}
-                                
-                                {(
-                                    previewDoc.mime_type === 'application/msword' ||
-                                    previewDoc.file_name.toLowerCase().endsWith('.doc')
-                                ) && (
-                                    <UnsupportedPreview doc={previewDoc} />
-                                )}
-                                
-                                {(
-                                    previewDoc.mime_type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-                                    previewDoc.file_name.toLowerCase().endsWith('.docx')
-                                ) && (
-                                    <DocxPreview fileUrl={previewDoc.publicUrl} fileName={previewDoc.file_name} />
-                                )}
-                            </>
-                        )}
+                            // Fallback for any other type
+                            return <UnsupportedPreview doc={previewDoc} />;
+                        })()}
                     </div>
                 </div>
             )}

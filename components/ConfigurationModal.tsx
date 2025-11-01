@@ -46,10 +46,11 @@ RETURNS boolean AS $$
 DECLARE
     user_role TEXT;
 BEGIN
-    -- This function runs with the privileges of the user who defines it (postgres via SECURITY DEFINER),
-    -- allowing it to bypass RLS on the profiles table to check the user's role.
-    -- The search_path must include 'auth' to resolve auth.uid().
+    -- This function uses a transaction-scoped role change to bypass RLS and prevent recursion.
+    -- It runs with SECURITY DEFINER privileges (as the 'postgres' user).
+    SET LOCAL role postgres;
     SELECT role INTO user_role FROM public.profiles WHERE id = auth.uid();
+    RESET role; -- Reset role back to the original for the rest of the transaction.
     RETURN COALESCE(user_role, 'user') = 'admin';
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;

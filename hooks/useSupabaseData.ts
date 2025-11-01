@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem } from '../types';
 import { useOnlineStatus } from './useOnlineStatus';
-import { User } from '@supabase/supabase-js';
+import { User, RealtimeChannel } from '@supabase/supabase-js';
 import { AppData as OnlineAppData } from './useOnlineData';
 import { useSync, SyncStatus as SyncStatusType } from './useSync';
 import { getSupabaseClient } from '../supabaseClient';
@@ -294,6 +294,9 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     isAutoSyncEnabledRef.current = isAutoSyncEnabled;
     const isAutoBackupEnabledRef = React.useRef(isAutoBackupEnabled);
     isAutoBackupEnabledRef.current = isAutoBackupEnabled;
+    const isSyncingRef = React.useRef(syncStatus === 'syncing');
+    isSyncingRef.current = syncStatus === 'syncing';
+
 
     const onDeletionsSynced = React.useCallback((syncedDeletions: Partial<DeletedIds>) => {
         setDeletedIds(prev => {
@@ -553,65 +556,89 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
 
     // Effect for real-time data synchronization
+    const channelRef = React.useRef<RealtimeChannel | null>(null);
     React.useEffect(() => {
-        if (!user || !isOnline || isAuthLoading || isDataLoading) {
+        const supabase = getSupabaseClient();
+        let debounceTimer: number | null = null;
+    
+        const cleanup = () => {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            if (channelRef.current && supabase) {
+                const channel = channelRef.current;
+                console.log(`Cleaning up real-time channel '${channel.topic}'.`);
+                supabase.removeChannel(channel).catch(error => {
+                    console.error(`Failed to remove real-time channel '${channel.topic}':`, error);
+                });
+                channelRef.current = null;
+            }
+        };
+    
+        if (!supabase || !userId) {
+            cleanup();
             return;
         }
+    
+        const channelId = `user-data-channel-${userId}`;
+        
+        // Avoid re-subscribing if channel already exists and is in a good state
+        if (channelRef.current && channelRef.current.topic.includes(channelId) && (channelRef.current.state === 'joined' || channelRef.current.state === 'joining')) {
+             return;
+        }
 
-        const supabase = getSupabaseClient();
-        if (!supabase) return;
+        // If we proceed, it means we need a new subscription.
+        cleanup(); // Clean up any previous, potentially failed channel.
 
-        let debounceTimer: number | null = null;
+        console.log(`Setting up new real-time channel: ${channelId}`);
+        const newChannel = supabase.channel(channelId);
+        channelRef.current = newChannel;
+    
         const debouncedRefresh = () => {
             if (debounceTimer) clearTimeout(debounceTimer);
             debounceTimer = window.setTimeout(() => {
-                if (syncStatus === 'syncing') {
+                if (isSyncingRef.current) {
                     console.log('Real-time refresh skipped: a sync is already in progress.');
                     return;
                 }
                 console.log('Real-time change detected, refreshing data...');
                 fetchAndRefreshRef.current();
-            }, 1500); // 1.5s debounce to batch updates
+            }, 1500);
         };
-
-        const channel = supabase.channel(`user-data-channel-${user.id}`);
-        
-        channel
-            .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                filter: `user_id=eq.${user.id}`
-            }, payload => {
-                console.log('Real-time change on user table:', payload.table);
+    
+        const tables = [
+            'clients', 'cases', 'stages', 'sessions', 'admin_tasks',
+            'appointments', 'accounting_entries', 'assistants',
+            'invoices', 'invoice_items', 'case_documents'
+        ];
+    
+        tables.forEach(table => {
+            newChannel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `user_id=eq.${userId}` }, payload => {
+                console.log(`Real-time change on table '${payload.table}', reloading.`);
                 debouncedRefresh();
-            })
-            .on('postgres_changes', {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'profiles',
-                filter: `id=eq.${user.id}`
-            }, payload => {
-                console.log('Real-time change on user profile.');
-                debouncedRefresh();
-            })
-            .subscribe((status, err) => {
-                if (status === 'SUBSCRIBED') {
-                    console.log(`Real-time channel subscribed for user ${user.id}`);
-                } else if (status === 'CHANNEL_ERROR' || err) {
-                    console.error('Real-time subscription error:', err);
-                    setLastSyncError('فشل الاتصال بمزامنة الوقت الفعلي.');
-                }
             });
-
-        return () => {
-            if (debounceTimer) clearTimeout(debounceTimer);
-            if (channel) {
-                supabase.removeChannel(channel).catch(error => {
-                    console.error("Failed to remove real-time channel:", error);
-                });
+        });
+    
+        newChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` }, payload => {
+            console.log('Real-time change on user profile, reloading.');
+            debouncedRefresh();
+        });
+    
+        newChannel.subscribe((status, err) => {
+            if (status === 'SUBSCRIBED') {
+                console.log(`Real-time channel '${channelId}' subscribed successfully.`);
+                if (isOnline) {
+                    fetchAndRefreshRef.current();
+                }
+            } else if (status === 'CHANNEL_ERROR' || err) {
+                console.error(`Real-time subscription error on channel '${channelId}':`, err);
+                setLastSyncError('فشل الاتصال بمزامنة الوقت الفعلي.');
+            } else {
+                console.log(`Real-time channel status for '${channelId}': ${status}`);
             }
-        };
-    }, [user, isOnline, isAuthLoading, isDataLoading, syncStatus]);
+        });
+    
+        return cleanup;
+    }, [userId]);
+
 
     return {
         clients: data.clients,
