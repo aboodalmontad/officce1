@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lawyer-app-cache-v28';
+const CACHE_NAME = 'lawyer-app-cache-v29';
 // The list of URLs to cache has been expanded to include all critical,
 // external dependencies. This ensures the app is fully functional offline
 // immediately after the service worker is installed, preventing failures
@@ -58,49 +58,54 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  if (event.request.method !== 'GET' || event.request.url.includes('supabase.co')) {
-    return;
-  }
+    // Let non-GET requests and Supabase API calls pass through.
+    if (event.request.method !== 'GET' || event.request.url.includes('supabase.co')) {
+        return;
+    }
 
-  const responsePromise = (async () => {
-    const cache = await caches.open(CACHE_NAME);
-
-    // Network-first strategy for navigation requests
+    // Use a more robust network-first strategy for navigation requests (the app shell).
     if (event.request.mode === 'navigate') {
-      try {
-        const networkResponse = await fetch(event.request);
-        // On success, cache the response and return it
-        cache.put(event.request, networkResponse.clone());
-        return networkResponse;
-      } catch (error) {
-        // On failure, try the cache for the request, then fallback to root
-        console.log('Network failed for navigation, trying cache for:', event.request.url);
-        const cachedResponse = await cache.match(event.request);
-        if (cachedResponse) return cachedResponse;
-        
-        const rootResponse = await cache.match('./');
-        return rootResponse || new Response("You are offline and this page is not cached.", { status: 404, headers: { "Content-Type": "text/html" } });
-      }
+        event.respondWith(
+            (async () => {
+                try {
+                    const networkResponse = await fetch(event.request);
+                    // If successful, cache the response for next time and return it.
+                    const cache = await caches.open(CACHE_NAME);
+                    cache.put(event.request, networkResponse.clone());
+                    return networkResponse;
+                } catch (error) {
+                    // If the network fails, serve the main app page from the cache. This is the core of offline functionality.
+                    console.log('Network fetch failed for navigation; serving from cache.');
+                    const cache = await caches.open(CACHE_NAME);
+                    return await cache.match('./index.html') || await cache.match('./');
+                }
+            })()
+        );
+        return;
     }
 
-    // Cache-first strategy for all other assets
-    const cachedResponse = await cache.match(event.request);
-    if (cachedResponse) {
-      return cachedResponse;
-    }
+    // For all other requests (assets like JS, CSS, fonts), use a cache-first strategy for speed.
+    event.respondWith(
+        caches.open(CACHE_NAME).then(async (cache) => {
+            // Check if the request is already in the cache.
+            const cachedResponse = await cache.match(event.request);
+            if (cachedResponse) {
+                return cachedResponse;
+            }
 
-    // Asset not in cache, fetch from network and cache it
-    try {
-      const networkResponse = await fetch(event.request);
-      if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque')) {
-        cache.put(event.request, networkResponse.clone());
-      }
-      return networkResponse;
-    } catch (error) {
-      console.error('Asset fetch failed:', event.request.url, error);
-      return new Response('Asset not found.', { status: 404 });
-    }
-  })();
-
-  event.respondWith(responsePromise);
+            // If not in cache, fetch from the network.
+            try {
+                const networkResponse = await fetch(event.request);
+                // If the fetch is successful, clone the response and store it in the cache for next time.
+                if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque')) {
+                    cache.put(event.request, networkResponse.clone());
+                }
+                return networkResponse;
+            } catch (error) {
+                // If the asset can't be fetched either, return a simple error response.
+                console.error('Asset fetch failed:', event.request.url, error);
+                return new Response(`Asset (${event.request.url}) not available offline.`, { status: 404 });
+            }
+        })
+    );
 });
