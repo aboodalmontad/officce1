@@ -337,11 +337,44 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             return newDeleted;
         });
     }, []);
+    
+    const getDocumentFile = React.useCallback(async (docId: string): Promise<File | null> => {
+        const db = await getDb();
+        const file = await db.get(DOCS_FILES_STORE_NAME, docId);
+        if (file instanceof File || file instanceof Blob) {
+            return file as File;
+        }
+        return null;
+    }, []);
 
-    // Fix: Changed parameter type from Partial<OnlineAppData> to AppData and removed unused import.
     const handleDataSynced = React.useCallback(async (syncedData: AppData) => {
         const currentLocalDocuments = dataRef.current.documents;
-        const validatedData = validateAndHydrate({ ...syncedData, documents: currentLocalDocuments });
+        const localDocMap = new Map(currentLocalDocuments.map(doc => [doc.id, doc]));
+        
+        // FIX: remoteDoc might not have `localState`. This map function must always return an object with `localState`.
+        // By typing `remoteDoc` as `any`, we prevent compiler errors, and by ensuring `localState` is always added,
+        // we fix the logic and stabilize type inference, which likely caused the original error on `localDoc.localState`.
+        const syncedDocsWithLocalState = (syncedData.documents || []).map((remoteDoc: any) => {
+            const localDoc = localDocMap.get(remoteDoc.id);
+            if (localDoc) {
+                if (localDoc.localState === 'pending_upload' || localDoc.localState === 'error') {
+                    return { ...remoteDoc, localState: localDoc.localState };
+                }
+                // If local doc exists and is not in a special state, the version from sync is considered synced.
+                return { ...remoteDoc, localState: 'synced' };
+            } else {
+                // New doc from remote, needs to be downloaded.
+                return { ...remoteDoc, localState: 'pending_download' };
+            }
+        });
+
+        currentLocalDocuments.forEach(localDoc => {
+            if (!syncedDocsWithLocalState.some(d => d.id === localDoc.id)) {
+                syncedDocsWithLocalState.push(localDoc);
+            }
+        });
+
+        const validatedData = validateAndHydrate({ ...syncedData, documents: syncedDocsWithLocalState });
         
         isInitialLoadAfterHydrate.current = true;
         setData(validatedData);
@@ -386,23 +419,15 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     
     // Effect to automatically sync data when changes are made while online.
     React.useEffect(() => {
-        // Guard against running on initial load or while other operations are in progress.
         if (isDataLoading || isAuthLoading || !userId) {
             return;
         }
 
-        // Conditions to trigger auto-sync:
-        // - Data has been modified locally (isDirty).
-        // - The application is online.
-        // - Auto-sync feature is enabled by the user.
-        // - No sync is currently in progress.
         if (isDirty && isOnline && isAutoSyncEnabled && syncStatus !== 'syncing') {
             const handler = setTimeout(() => {
                 console.log("Auto-syncing dirty data...");
                 manualSyncRef.current();
             }, 5000); // 5-second delay to bundle changes
-
-            // Clean up the timeout if dependencies change, resetting the debounce timer.
             return () => clearTimeout(handler);
         }
     }, [isDirty, isOnline, isAutoSyncEnabled, syncStatus, isDataLoading, isAuthLoading, userId]);
@@ -547,6 +572,86 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             localStorage.setItem(`lawyerAppAutoBackupEnabled_${userId}`, String(isAutoBackupEnabled));
         }
     }, [userId, isAutoSyncEnabled, isAutoBackupEnabled]);
+    
+    // File Synchronization Controller Effect
+    React.useEffect(() => {
+        if (isDataLoading || !userId || !isOnline) return;
+
+        const fileSyncController = async () => {
+            console.log("File sync controller running...");
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+
+            const docsToProcess = dataRef.current.documents.filter(doc => doc.localState === 'pending_upload' || doc.localState === 'pending_download');
+            if (docsToProcess.length === 0) return;
+            
+            console.log(`Found ${docsToProcess.length} documents to process.`);
+
+            for (const doc of docsToProcess) {
+                if (doc.localState === 'pending_upload') {
+                    try {
+                        const file = await getDocumentFile(doc.id);
+                        if (!file) throw new Error(`File blob not found in IndexedDB for doc ${doc.id}`);
+
+                        const storagePath = `${userId}/${doc.caseId}/${doc.id}-${doc.name}`;
+                        
+                        const { error: uploadError } = await supabase.storage
+                            .from('documents')
+                            .upload(storagePath, file, { upsert: true });
+
+                        if (uploadError) throw uploadError;
+
+                        setData(prev => {
+                            const newDocs = prev.documents.map(d =>
+                                d.id === doc.id ? { ...d, localState: 'synced', storagePath: storagePath, updated_at: new Date() } : d
+                            );
+                            return { ...prev, documents: newDocs };
+                        });
+                        console.log(`Successfully uploaded ${doc.name}`);
+
+                    } catch (error) {
+                        console.error(`Failed to upload document ${doc.id}:`, error);
+                        setData(prev => {
+                            const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'error' } : d);
+                            return { ...prev, documents: newDocs };
+                        });
+                    }
+                } else if (doc.localState === 'pending_download') {
+                    try {
+                        if (!doc.storagePath) throw new Error(`Cannot download doc ${doc.id}, storagePath is missing.`);
+                        
+                        const { data: blob, error: downloadError } = await supabase.storage
+                            .from('documents')
+                            .download(doc.storagePath);
+
+                        if (downloadError) throw downloadError;
+                        if (!blob) throw new Error("Downloaded blob is null.");
+
+                        const db = await getDb();
+                        await db.put(DOCS_FILES_STORE_NAME, blob, doc.id);
+
+                        setData(prev => {
+                            const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'synced' } : d);
+                            return { ...prev, documents: newDocs };
+                        });
+                         console.log(`Successfully downloaded ${doc.name}`);
+
+                    } catch (error) {
+                        console.error(`Failed to download document ${doc.id}:`, error);
+                        setData(prev => {
+                            const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'error' } : d);
+                            return { ...prev, documents: newDocs };
+                        });
+                    }
+                }
+            }
+        };
+
+        const intervalId = setInterval(fileSyncController, 30000); // Run every 30 seconds
+        fileSyncController(); // Run immediately on load/online
+        
+        return () => clearInterval(intervalId);
+    }, [isDataLoading, userId, isOnline, getDocumentFile]);
     
     const exportData = React.useCallback(() => {
         try {
@@ -698,6 +803,13 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         // Optimistic UI update
         setData(prev => ({ ...prev, documents: prev.documents.filter(d => d.id !== docToDelete.id) }));
 
+        // Add to deletedIds for remote sync
+        setDeletedIds(prev => ({
+            ...prev,
+            documents: [...prev.documents, docToDelete.id],
+            documentPaths: docToDelete.storagePath ? [...prev.documentPaths, docToDelete.storagePath] : prev.documentPaths
+        }));
+        
         try {
             const db = await getDb();
             await db.delete(DOCS_FILES_STORE_NAME, docToDelete.id);
@@ -711,15 +823,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             // Re-throw error for the component
             throw new Error("فشل حذف الوثيقة من قاعدة البيانات المحلية.");
         }
-    }, []);
-
-    const getDocumentFile = React.useCallback(async (docId: string): Promise<File | null> => {
-        const db = await getDb();
-        const file = await db.get(DOCS_FILES_STORE_NAME, docId);
-        if (file instanceof File || file instanceof Blob) {
-            return file as File;
-        }
-        return null;
     }, []);
 
     return {
