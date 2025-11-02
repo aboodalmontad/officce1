@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Client, Case, Stage, Session, AccountingEntry } from '../types';
+import { Client, Case, Stage, Session, AccountingEntry, CaseDocument } from '../types';
 import { PlusIcon, PencilIcon, TrashIcon, PrintIcon, ChevronLeftIcon, UserIcon, FolderIcon, ClipboardDocumentIcon, CalendarDaysIcon, GavelIcon, BuildingLibraryIcon, ShareIcon, DocumentTextIcon, DocumentDuplicateIcon } from './icons';
 import SessionsTable from './SessionsTable';
 import CaseAccounting from './CaseAccounting';
@@ -205,7 +205,7 @@ const StageItem: React.FC<{ stage: Stage; caseItem: Case; client: Client; props:
                         الجلسات
                     </h5>
                     <SessionsTable
-                        sessions={stage.sessions}
+                        sessions={stage.sessions.map(s => ({ ...s, stageId: stage.id, stageDecisionDate: stage.decisionDate }))}
                         onPostpone={props.onPostponeSession}
                         onEdit={(session) => props.onEditSession(session, stage, caseItem, client)}
                         onDelete={(sessionId) => props.onDeleteSession(sessionId, stage.id, caseItem.id, client.id)}

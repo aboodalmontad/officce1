@@ -133,3 +133,16 @@ export interface SiteFinancialEntry {
   profile_full_name?: string;
   updated_at?: Date;
 }
+
+export interface CaseDocument {
+  id: string;
+  caseId: string;
+  userId: string;
+  name: string;
+  type: string;
+  size: number;
+  addedAt: Date;
+  storagePath: string; // e.g., 'user-uuid/case-id/doc-id-filename.pdf'
+  localState: 'synced' | 'pending_upload' | 'pending_download' | 'error'; 
+  updated_at?: Date;
+}

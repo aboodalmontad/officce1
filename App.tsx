@@ -16,7 +16,7 @@ import { useSupabaseData, SyncStatus, AppData } from './hooks/useSupabaseData';
 import { UserIcon, CalculatorIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, ExclamationTriangleIcon, PowerIcon, HomeIcon } from './components/icons';
 import ContextMenu, { MenuItem } from './components/ContextMenu';
 import AdminTaskModal from './components/AdminTaskModal';
-import { AdminTask, Profile, Session, Client, Appointment, AccountingEntry, Invoice } from './types';
+import { AdminTask, Profile, Session, Client, Appointment, AccountingEntry, Invoice, CaseDocument } from './types';
 import { getSupabaseClient } from './supabaseClient';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import AppointmentNotifier from './components/AppointmentNotifier';
@@ -31,6 +31,7 @@ interface IDataContext extends AppData {
     setAccountingEntries: (updater: React.SetStateAction<AccountingEntry[]>) => void;
     setInvoices: (updater: React.SetStateAction<Invoice[]>) => void;
     setAssistants: (updater: React.SetStateAction<string[]>) => void;
+    setDocuments: (updater: React.SetStateAction<CaseDocument[]>) => void;
     allSessions: (Session & { stageId?: string, stageDecisionDate?: Date })[];
     unpostponedSessions: (Session & { stageId?: string, stageDecisionDate?: Date })[];
     setFullData: (data: any) => void;
@@ -57,6 +58,9 @@ interface IDataContext extends AppData {
     deleteAccountingEntry: (entryId: string) => void;
     deleteInvoice: (invoiceId: string) => void;
     deleteAssistant: (name: string) => void;
+    deleteDocument: (doc: CaseDocument) => Promise<void>;
+    addDocuments: (caseId: string, files: FileList) => Promise<void>;
+    getDocumentFile: (docId: string) => Promise<File | null>;
     postponeSession: (sessionId: string, newDate: Date, newReason: string) => void;
     showUnpostponedSessionsModal: boolean;
     setShowUnpostponedSessionsModal: (show: boolean) => void;

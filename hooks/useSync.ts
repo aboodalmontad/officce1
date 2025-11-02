@@ -1,17 +1,24 @@
 import * as React from 'react';
 import { User } from '@supabase/supabase-js';
-import { AppData, checkSupabaseSchema, fetchDataFromSupabase, upsertDataToSupabase, FlatData, deleteDataFromSupabase, transformRemoteToLocal } from './useOnlineData';
+// Fix: Rename imported AppData to SyncableAppData to distinguish it from the local AppData type.
+import { AppData as SyncableAppData, checkSupabaseSchema, fetchDataFromSupabase, upsertDataToSupabase, FlatData, deleteDataFromSupabase, transformRemoteToLocal } from './useOnlineData';
 import { getSupabaseClient } from '../supabaseClient';
-import { Client, Case, Stage, Session } from '../types';
+// Fix: Import CaseDocument to define the complete local data structure.
+import { Client, Case, Stage, Session, CaseDocument } from '../types';
 import { DeletedIds } from './useSupabaseData';
 
 export type SyncStatus = 'loading' | 'syncing' | 'synced' | 'error' | 'unconfigured' | 'uninitialized';
 
+// Fix: Define a new AppData type that represents the full local state, including documents.
+type AppData = SyncableAppData & { documents: CaseDocument[] };
+
 interface UseSyncProps {
     user: User | null;
+    // Fix: Use the new AppData type for localData.
     localData: AppData;
     deletedIds: DeletedIds;
-    onDataSynced: (mergedData: AppData) => void;
+    // Fix: onDataSynced handles only the syncable part of the data.
+    onDataSynced: (mergedData: SyncableAppData) => void;
     onDeletionsSynced: (syncedDeletions: Partial<DeletedIds>) => void;
     onSyncStatusChange: (status: SyncStatus, error: string | null) => void;
     isOnline: boolean;
@@ -20,28 +27,34 @@ interface UseSyncProps {
 }
 
 // Flattens the nested client data structure into separate arrays for each entity type.
+// Fix: The 'data' parameter is now correctly typed as the full local AppData.
 const flattenData = (data: AppData): FlatData => {
-    const cases = data.clients.flatMap(c => c.cases.map(cs => ({ ...cs, client_id: c.id })));
+    // Destructure to explicitly ignore documents, which are handled locally.
+    // This line is now correct because AppData has a 'documents' property.
+    const { documents, ...syncableData } = data;
+    
+    const cases = syncableData.clients.flatMap(c => c.cases.map(cs => ({ ...cs, client_id: c.id })));
     const stages = cases.flatMap(cs => cs.stages.map(st => ({ ...st, case_id: cs.id })));
     const sessions = stages.flatMap(st => st.sessions.map(s => ({ ...s, stage_id: st.id })));
-    const invoice_items = data.invoices.flatMap(inv => inv.items.map(item => ({ ...item, invoice_id: inv.id })));
+    const invoice_items = syncableData.invoices.flatMap(inv => inv.items.map(item => ({ ...item, invoice_id: inv.id })));
 
     return {
-        clients: data.clients.map(({ cases, ...client }) => client),
+        clients: syncableData.clients.map(({ cases, ...client }) => client),
         cases: cases.map(({ stages, ...caseItem }) => caseItem),
         stages: stages.map(({ sessions, ...stage }) => stage),
         sessions,
-        admin_tasks: data.adminTasks,
-        appointments: data.appointments,
-        accounting_entries: data.accountingEntries,
-        assistants: data.assistants.map(name => ({ name })),
-        invoices: data.invoices.map(({ items, ...inv }) => inv),
+        admin_tasks: syncableData.adminTasks,
+        appointments: syncableData.appointments,
+        accounting_entries: syncableData.accountingEntries,
+        assistants: syncableData.assistants.map(name => ({ name })),
+        invoices: syncableData.invoices.map(({ items, ...inv }) => inv),
         invoice_items,
     };
 };
 
 // Reconstructs the nested client data structure from flat arrays.
-const constructData = (flatData: Partial<FlatData>): AppData => {
+// Fix: The return type is now SyncableAppData, which doesn't include 'documents'.
+const constructData = (flatData: Partial<FlatData>): SyncableAppData => {
     const sessionMap = new Map<string, Session[]>();
     (flatData.sessions || []).forEach(s => {
         const stageId = (s as any).stage_id;
@@ -79,6 +92,8 @@ const constructData = (flatData: Partial<FlatData>): AppData => {
         accountingEntries: (flatData.accounting_entries || []) as any,
         assistants: (flatData.assistants || []).map(a => a.name),
         invoices: (flatData.invoices || []).map(inv => ({...inv, items: invoiceItemMap.get(inv.id) || []})) as any,
+        // Fix: Removed 'documents' property as it's not part of the syncable data structure.
+        // documents are handled locally in useSupabaseData.ts.
     };
 };
 

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem } from '../types';
+import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem, CaseDocument } from '../types';
 import { useOnlineStatus } from './useOnlineStatus';
 import { User } from '@supabase/supabase-js';
 import { AppData as OnlineAppData } from './useOnlineData';
@@ -19,6 +19,7 @@ export type AppData = {
     accountingEntries: AccountingEntry[];
     invoices: Invoice[];
     assistants: string[];
+    documents: CaseDocument[];
 };
 
 export type DeletedIds = {
@@ -47,19 +48,33 @@ const getInitialData = (): AppData => ({
     accountingEntries: [] as AccountingEntry[],
     invoices: [] as Invoice[],
     assistants: [...defaultAssistants],
+    documents: [] as CaseDocument[],
 });
 
 
 // --- IndexedDB Setup ---
 const DB_NAME = 'LawyerAppData';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Bumped version for new stores
 const DATA_STORE_NAME = 'appData';
+const DOCS_FILES_STORE_NAME = 'caseDocumentFiles';
+const DOCS_METADATA_STORE_NAME = 'caseDocumentMetadata';
+
 
 async function getDb(): Promise<IDBPDatabase> {
   return openDB(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains(DATA_STORE_NAME)) {
-        db.createObjectStore(DATA_STORE_NAME);
+    upgrade(db, oldVersion) {
+      if (oldVersion < 1) {
+        if (!db.objectStoreNames.contains(DATA_STORE_NAME)) {
+          db.createObjectStore(DATA_STORE_NAME);
+        }
+      }
+      if (oldVersion < 2) {
+        if (!db.objectStoreNames.contains(DOCS_FILES_STORE_NAME)) {
+            db.createObjectStore(DOCS_FILES_STORE_NAME);
+        }
+        if (!db.objectStoreNames.contains(DOCS_METADATA_STORE_NAME)) {
+            db.createObjectStore(DOCS_METADATA_STORE_NAME);
+        }
       }
     },
   });
@@ -85,6 +100,29 @@ const sanitizeOptionalDate = (date: any): Date | undefined => {
     const d = new Date(date);
     return !isNaN(d.getTime()) ? d : undefined;
 };
+
+const validateDocuments = (docs: any): CaseDocument[] => {
+    return safeArray(docs, (doc: any, index: number): CaseDocument | null => {
+        const addedAt = sanitizeOptionalDate(doc.addedAt);
+        if (!addedAt) {
+            console.warn('Filtering out document with invalid addedAt date:', doc);
+            return null;
+        }
+        return {
+            id: doc.id || `doc-${Date.now()}-${index}`,
+            caseId: String(doc.caseId || ''),
+            userId: String(doc.userId || ''),
+            name: String(doc.name || 'document.bin'),
+            type: String(doc.type || 'application/octet-stream'),
+            size: typeof doc.size === 'number' ? doc.size : 0,
+            addedAt: addedAt,
+            storagePath: String(doc.storagePath || ''),
+            localState: ['synced', 'pending_upload', 'pending_download', 'error'].includes(doc.localState) ? doc.localState : 'error',
+            updated_at: sanitizeOptionalDate(doc.updated_at),
+        };
+    }).filter((d): d is CaseDocument => d !== null);
+};
+
 
 const validateAndHydrate = (data: any): AppData => {
     const defaults = getInitialData();
@@ -238,6 +276,7 @@ const validateAndHydrate = (data: any): AppData => {
         accountingEntries: validatedAccountingEntries,
         invoices: validatedInvoices,
         assistants: validatedAssistants,
+        documents: validateDocuments(data.documents),
     };
 };
 
@@ -294,14 +333,19 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         });
     }, []);
 
-    const handleDataSynced = React.useCallback(async (syncedData: AppData) => {
-        const validatedData = validateAndHydrate(syncedData);
-        isInitialLoadAfterHydrate.current = true; // Prevent marking as dirty on sync
+    const handleDataSynced = React.useCallback(async (syncedData: Partial<OnlineAppData>) => {
+        const currentLocalDocuments = dataRef.current.documents;
+        const validatedData = validateAndHydrate({ ...syncedData, documents: currentLocalDocuments });
+        
+        isInitialLoadAfterHydrate.current = true;
         setData(validatedData);
+        
         if (userId) {
             try {
                 const db = await getDb();
-                await db.put(DATA_STORE_NAME, validatedData, `${APP_DATA_KEY}_${userId}`);
+                const { documents: docsToSave, ...restOfData } = validatedData;
+                await db.put(DATA_STORE_NAME, restOfData, `${APP_DATA_KEY}_${userId}`);
+                await db.put(DOCS_METADATA_STORE_NAME, docsToSave, `documents_${userId}`);
                 setIsDirty(false);
             } catch (e) {
                 console.error('Failed to save synced data to IndexedDB', e);
@@ -377,6 +421,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             try {
                 const db = await getDb();
                 const rawData = await db.get(DATA_STORE_NAME, getLocalStorageKey());
+                const rawDocuments = await db.get(DOCS_METADATA_STORE_NAME, `documents_${userId}`);
+
 
                 const rawDeleted = localStorage.getItem(`lawyerAppDeletedIds_${userId}`);
                 setDeletedIds(rawDeleted ? JSON.parse(rawDeleted) : getInitialDeletedIds());
@@ -385,15 +431,18 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 const autoBackupEnabled = localStorage.getItem(`lawyerAppAutoBackupEnabled_${userId}`);
                 setIsAutoBackupEnabled(autoBackupEnabled === null ? true : autoBackupEnabled === 'true');
 
-                if (rawData) {
-                    const parsedData = rawData; 
+                const combinedData = { ...(rawData || {}), documents: rawDocuments || [] };
+
+                if (combinedData) {
+                    const parsedData = combinedData; 
                     const isEffectivelyEmpty =
                         !parsedData ||
                         (Array.isArray(parsedData.clients) && parsedData.clients.length === 0 &&
                         Array.isArray(parsedData.adminTasks) && parsedData.adminTasks.length === 0 &&
                         Array.isArray(parsedData.appointments) && parsedData.appointments.length === 0 &&
                         Array.isArray(parsedData.accountingEntries) && parsedData.accountingEntries.length === 0 &&
-                        Array.isArray(parsedData.invoices) && parsedData.invoices.length === 0);
+                        Array.isArray(parsedData.invoices) && parsedData.invoices.length === 0 &&
+                        Array.isArray(parsedData.documents) && parsedData.documents.length === 0);
         
                     if (isEffectivelyEmpty) {
                         hadCacheOnLoad.current = false;
@@ -472,7 +521,9 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             console.log('Debounced save: Persisting data to local storage...');
             try {
                 const db = await getDb();
-                await db.put(DATA_STORE_NAME, dataRef.current, getLocalStorageKey());
+                const { documents: docsToSave, ...restOfData } = dataRef.current;
+                await db.put(DATA_STORE_NAME, restOfData, getLocalStorageKey());
+                await db.put(DOCS_METADATA_STORE_NAME, docsToSave, `documents_${userId}`);
                 localStorage.setItem(`lawyerAppDeletedIds_${userId}`, JSON.stringify(deletedIds));
                 localStorage.setItem(`lawyerAppIsDirty_${userId}`, String(isDirtyRef.current));
             } catch (e) {
@@ -599,6 +650,72 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         };
     }, [user, isOnline, isAuthLoading, isDataLoading, syncStatus]);
 
+    const addDocuments = React.useCallback(async (caseId: string, files: FileList) => {
+        if (!userId) throw new Error("User not authenticated");
+
+        const newDocs: CaseDocument[] = [];
+        const newDocFiles: { docId: string; file: File }[] = [];
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const docId = `doc-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 9)}`;
+            const newDoc: CaseDocument = {
+                id: docId, caseId, userId, name: file.name, type: file.type, size: file.size,
+                addedAt: new Date(), storagePath: '', localState: 'pending_upload', updated_at: new Date(),
+            };
+            newDocs.push(newDoc);
+            newDocFiles.push({ docId, file });
+        }
+
+        // Optimistic UI update
+        setData(prev => ({ ...prev, documents: [...prev.documents, ...newDocs] }));
+
+        try {
+            const db = await getDb();
+            const tx = db.transaction(DOCS_FILES_STORE_NAME, 'readwrite');
+            await Promise.all(newDocFiles.map(({ docId, file }) => tx.store.put(file, docId)));
+            await tx.done;
+        } catch (error) {
+            console.error("Failed to save documents to IndexedDB:", error);
+            // Revert UI change on failure
+            setData(prev => ({
+                ...prev,
+                documents: prev.documents.filter(doc => !newDocs.some(nd => nd.id === doc.id))
+            }));
+            // Re-throw the error so the component can display a message
+            throw new Error("فشل حفظ الوثيقة في قاعدة البيانات المحلية.");
+        }
+    }, [userId]);
+
+    const deleteDocument = React.useCallback(async (doc: CaseDocument) => {
+        const docToDelete = doc;
+        // Optimistic UI update
+        setData(prev => ({ ...prev, documents: prev.documents.filter(d => d.id !== docToDelete.id) }));
+
+        try {
+            const db = await getDb();
+            await db.delete(DOCS_FILES_STORE_NAME, docToDelete.id);
+        } catch (error) {
+            console.error("Failed to delete document from IndexedDB:", error);
+            // Revert UI change on failure
+            setData(prev => ({
+                ...prev,
+                documents: [...prev.documents, docToDelete] 
+            }));
+            // Re-throw error for the component
+            throw new Error("فشل حذف الوثيقة من قاعدة البيانات المحلية.");
+        }
+    }, []);
+
+    const getDocumentFile = React.useCallback(async (docId: string): Promise<File | null> => {
+        const db = await getDb();
+        const file = await db.get(DOCS_FILES_STORE_NAME, docId);
+        if (file instanceof File || file instanceof Blob) {
+            return file as File;
+        }
+        return null;
+    }, []);
+
     return {
         clients: data.clients,
         adminTasks: data.adminTasks,
@@ -606,15 +723,19 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         accountingEntries: data.accountingEntries,
         invoices: data.invoices,
         assistants: data.assistants,
+        documents: data.documents,
         setClients: (updater) => setData(prev => ({...prev, clients: typeof updater === 'function' ? updater(prev.clients) : updater})),
         setAdminTasks: (updater) => setData(prev => ({...prev, adminTasks: typeof updater === 'function' ? updater(prev.adminTasks) : updater})),
         setAppointments: (updater) => setData(prev => ({...prev, appointments: typeof updater === 'function' ? updater(prev.appointments) : updater})),
         setAccountingEntries: (updater) => setData(prev => ({...prev, accountingEntries: typeof updater === 'function' ? updater(prev.accountingEntries) : updater})),
         setInvoices: (updater) => setData(prev => ({...prev, invoices: typeof updater === 'function' ? updater(prev.invoices) : updater})),
         setAssistants: (updater) => setData(prev => ({...prev, assistants: typeof updater === 'function' ? updater(prev.assistants) : updater})),
-        setFullData: handleDataSynced,
+        setDocuments: (updater) => setData(prev => ({ ...prev, documents: typeof updater === 'function' ? updater(prev.documents) : updater })),
+        setFullData: (fullData) => {
+            handleDataSynced(fullData);
+        },
         allSessions: React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.map(s => ({...s, stageId: st.id, stageDecisionDate: st.decisionDate})) ))), [data.clients]),
-        unpostponedSessions: React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.filter(s => !s.isPostponed && isBeforeToday(s.date) && !st.decisionDate)))) , [data.clients]),
+        unpostponedSessions: React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.filter(s => !s.isPostponed && isBeforeToday(s.date) && !st.decisionDate).map(s => ({...s, stageId: st.id, stageDecisionDate: st.decisionDate}))))) , [data.clients]),
         syncStatus,
         manualSync: manualSyncRef.current,
         lastSyncError,
@@ -640,6 +761,9 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         deleteAccountingEntry: React.useCallback((entryId: string) => { setDeletedIds(prev => ({...prev, accountingEntries: [...prev.accountingEntries, entryId]})); setData(prev => ({...prev, accountingEntries: prev.accountingEntries.filter(e => e.id !== entryId)})); }, []),
         deleteInvoice: React.useCallback((invoiceId: string) => { setDeletedIds(prev => ({...prev, invoices: [...prev.invoices, invoiceId]})); setData(prev => ({...prev, invoices: prev.invoices.filter(i => i.id !== invoiceId)})); }, []),
         deleteAssistant: React.useCallback((name: string) => { setDeletedIds(prev => ({...prev, assistants: [...prev.assistants, name]})); setData(prev => ({...prev, assistants: prev.assistants.filter(a => a !== name)})); }, []),
+        addDocuments,
+        deleteDocument,
+        getDocumentFile,
         postponeSession: React.useCallback((sessionId: string, newDate: Date, newReason: string) => {
             setData(prev => {
                 const newClients = prev.clients.map(client => ({

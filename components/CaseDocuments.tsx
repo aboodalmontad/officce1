@@ -1,5 +1,7 @@
 import * as React from 'react';
-import { useCaseDocuments, DocumentRecord } from '../hooks/useCaseDocuments';
+// Fix: Replaced deprecated useCaseDocuments hook and DocumentRecord type with useData hook and CaseDocument type.
+import { useData } from '../App';
+import { CaseDocument } from '../types';
 import { DocumentArrowUpIcon, TrashIcon, EyeIcon, DocumentTextIcon, PhotoIcon, XMarkIcon, ExclamationTriangleIcon, ArrowPathIcon, CameraIcon } from './icons';
 import { renderAsync } from 'docx-preview';
 
@@ -7,14 +9,21 @@ interface CaseDocumentsProps {
     caseId: string;
 }
 
-const FilePreview: React.FC<{ doc: DocumentRecord, onPreview: (doc: DocumentRecord) => void, onDelete: (doc: DocumentRecord) => void }> = ({ doc, onPreview, onDelete }) => {
+const FilePreview: React.FC<{ doc: CaseDocument, onPreview: (doc: CaseDocument) => void, onDelete: (doc: CaseDocument) => void }> = ({ doc, onPreview, onDelete }) => {
     const [thumbnailUrl, setThumbnailUrl] = React.useState<string | null>(null);
+    // Fix: Get document fetching utility from useData context.
+    const { getDocumentFile } = useData();
 
     React.useEffect(() => {
         let objectUrl: string | null = null;
         if (doc.type.startsWith('image/')) {
-            objectUrl = URL.createObjectURL(doc.file);
-            setThumbnailUrl(objectUrl);
+            // Fix: Fetch the file blob to create a preview URL for images.
+            getDocumentFile(doc.id).then(file => {
+                if(file) {
+                    objectUrl = URL.createObjectURL(file);
+                    setThumbnailUrl(objectUrl);
+                }
+            });
         }
 
         return () => {
@@ -22,7 +31,7 @@ const FilePreview: React.FC<{ doc: DocumentRecord, onPreview: (doc: DocumentReco
                 URL.revokeObjectURL(objectUrl);
             }
         };
-    }, [doc.file, doc.type]);
+    }, [doc.id, doc.type, getDocumentFile]);
     
     return (
         <div className="relative group border rounded-lg overflow-hidden bg-gray-50 flex flex-col aspect-w-1 aspect-h-1">
@@ -45,7 +54,8 @@ const FilePreview: React.FC<{ doc: DocumentRecord, onPreview: (doc: DocumentReco
             </div>
             <div className="p-2 bg-white/80 backdrop-blur-sm border-t">
                 <p className="text-xs font-medium text-gray-800 truncate" title={doc.name}>{doc.name}</p>
-                <p className="text-xs text-gray-500">{(doc.file.size / 1024).toFixed(1)} KB</p>
+                {/* Fix: Use size from CaseDocument, as `file` object is no longer directly available. */}
+                <p className="text-xs text-gray-500">{(doc.size / 1024).toFixed(1)} KB</p>
             </div>
         </div>
     );
@@ -247,12 +257,46 @@ const CameraModal: React.FC<CameraModalProps> = ({ onClose, onSave }) => {
 
 
 const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
-    const { documents, loading, error, addDocuments, deleteDocument } = useCaseDocuments(caseId);
+    // Fix: use useData hook for state management, replacing deprecated useCaseDocuments.
+    const { documents: allDocuments, addDocuments: addDocumentsContext, deleteDocument: deleteDocumentContext, getDocumentFile } = useData();
+    const documents = React.useMemo(() => allDocuments.filter(doc => doc.caseId === caseId), [allDocuments, caseId]);
+
     const fileInputRef = React.useRef<HTMLInputElement>(null);
-    const [previewDoc, setPreviewDoc] = React.useState<DocumentRecord | null>(null);
-    const [docToDelete, setDocToDelete] = React.useState<DocumentRecord | null>(null);
+    // Fix: State now holds the CaseDocument and the fetched File object for preview.
+    const [previewState, setPreviewState] = React.useState<{ doc: CaseDocument; file: File } | null>(null);
+    const [docToDelete, setDocToDelete] = React.useState<CaseDocument | null>(null);
     const [isDragging, setIsDragging] = React.useState(false);
     const [isCameraOpen, setIsCameraOpen] = React.useState(false);
+    // Fix: Added local loading and error states for better user feedback during async operations.
+    const [loading, setLoading] = React.useState(false);
+    const [error, setError] = React.useState<string | null>(null);
+
+    // Fix: Wrapper function for adding documents to handle local loading/error state.
+    const addDocuments = async (files: FileList) => {
+        setLoading(true);
+        setError(null);
+        try {
+            await addDocumentsContext(caseId, files);
+        } catch (e: any) {
+            setError(e.message || "Failed to add documents.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Fix: Wrapper function for deleting documents to handle local loading/error state.
+    const deleteDocument = async (doc: CaseDocument) => {
+        setLoading(true);
+        setError(null);
+        try {
+            await deleteDocumentContext(doc);
+            setDocToDelete(null); // Close modal on success
+        } catch(e: any) {
+            setError(e.message || 'Failed to delete document.');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
@@ -279,7 +323,14 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
         setIsDragging(enter);
     };
 
-    const handlePreview = (doc: DocumentRecord) => {
+    // Fix: handlePreview is now async and fetches the file before showing the preview modal.
+    const handlePreview = async (doc: CaseDocument) => {
+        const file = await getDocumentFile(doc.id);
+        if (!file) {
+            setError(`Could not retrieve file for preview: ${doc.name}`);
+            return;
+        }
+
         const lowerCaseName = doc.name.toLowerCase();
         const wordMimeTypes = [
             'application/msword', // .doc
@@ -296,10 +347,10 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
             isWordFile;
 
         if (isModalPreviewable) {
-            setPreviewDoc(doc);
+            setPreviewState({ doc, file });
         } else {
             // For all other types, open in a new tab
-            const url = URL.createObjectURL(doc.file);
+            const url = URL.createObjectURL(file);
             window.open(url, '_blank');
             // Revoke after a delay to allow the new tab to open
             setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -314,11 +365,12 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
     };
 
     const previewUrl = React.useMemo(() => {
-        if (previewDoc && !previewDoc.type.startsWith('text/') && !previewDoc.name.toLowerCase().match(/\.(docx|doc)$/)) {
-            return URL.createObjectURL(previewDoc.file);
+        // Fix: Generate preview URL from the file object in previewState.
+        if (previewState && !previewState.doc.type.startsWith('text/') && !previewState.doc.name.toLowerCase().match(/\.(docx|doc)$/)) {
+            return URL.createObjectURL(previewState.file);
         }
         return null;
-    }, [previewDoc]);
+    }, [previewState]);
 
     React.useEffect(() => {
         return () => {
@@ -389,43 +441,43 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
 
             {isCameraOpen && <CameraModal onClose={() => setIsCameraOpen(false)} onSave={handleSavePhoto} />}
 
-            {previewDoc && (
-                <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewDoc(null)}>
-                    <button className="absolute top-4 right-4 text-white p-2 bg-black/50 rounded-full hover:bg-black/75 z-10" onClick={() => setPreviewDoc(null)}>
+            {previewState && (
+                <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewState(null)}>
+                    <button className="absolute top-4 right-4 text-white p-2 bg-black/50 rounded-full hover:bg-black/75 z-10" onClick={() => setPreviewState(null)}>
                         <XMarkIcon className="w-6 h-6"/>
                     </button>
                     
                     <div onClick={(e) => e.stopPropagation()} className="max-h-full max-w-full flex items-center justify-center">
-                        {previewDoc.type.startsWith('image/') && previewUrl && (
-                            <img src={previewUrl} alt={previewDoc.name} className="max-h-full max-w-full object-contain rounded-lg" />
+                        {previewState.doc.type.startsWith('image/') && previewUrl && (
+                            <img src={previewUrl} alt={previewState.doc.name} className="max-h-full max-w-full object-contain rounded-lg" />
                         )}
                         
-                        {previewDoc.type === 'application/pdf' && previewUrl && (
-                             <iframe src={previewUrl} title={previewDoc.name} className="w-[80vw] h-[90vh] bg-white border-none rounded-lg"></iframe>
+                        {previewState.doc.type === 'application/pdf' && previewUrl && (
+                             <iframe src={previewUrl} title={previewState.doc.name} className="w-[80vw] h-[90vh] bg-white border-none rounded-lg"></iframe>
                         )}
 
-                        {previewDoc.type.startsWith('video/') && previewUrl && (
+                        {previewState.doc.type.startsWith('video/') && previewUrl && (
                              <video src={previewUrl} controls autoPlay className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg" />
                         )}
 
-                        {previewDoc.type.startsWith('audio/') && previewUrl && (
+                        {previewState.doc.type.startsWith('audio/') && previewUrl && (
                             <div className="bg-white p-8 rounded-lg shadow-xl">
-                                <h3 className="text-lg font-semibold text-gray-800 mb-4">{previewDoc.name}</h3>
+                                <h3 className="text-lg font-semibold text-gray-800 mb-4">{previewState.doc.name}</h3>
                                 <audio src={previewUrl} controls autoPlay className="w-full" />
                             </div>
                         )}
 
-                        {previewDoc.type.startsWith('text/') && (
-                            <TextPreview file={previewDoc.file} name={previewDoc.name} />
+                        {previewState.doc.type.startsWith('text/') && (
+                            <TextPreview file={previewState.file} name={previewState.doc.name} />
                         )}
                         
                         {(
-                            previewDoc.type === 'application/msword' || 
-                            previewDoc.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-                            previewDoc.name.toLowerCase().endsWith('.doc') ||
-                            previewDoc.name.toLowerCase().endsWith('.docx')
+                            previewState.doc.type === 'application/msword' || 
+                            previewState.doc.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                            previewState.doc.name.toLowerCase().endsWith('.doc') ||
+                            previewState.doc.name.toLowerCase().endsWith('.docx')
                         ) && (
-                            <DocxPreview file={previewDoc.file} name={previewDoc.name} />
+                            <DocxPreview file={previewState.file} name={previewState.doc.name} />
                         )}
                     </div>
                 </div>
@@ -441,7 +493,10 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
                         </div>
                         <div className="mt-6 flex justify-center gap-4">
                             <button type="button" className="px-6 py-2 bg-gray-200 rounded-lg" onClick={() => setDocToDelete(null)}>إلغاء</button>
-                            <button type="button" className="px-6 py-2 bg-red-600 text-white rounded-lg" onClick={() => { deleteDocument(docToDelete.id); setDocToDelete(null); }}>نعم، قم بالحذف</button>
+                            {/* Fix: Pass the entire document object to deleteDocument and handle loading state. */}
+                            <button type="button" className="px-6 py-2 bg-red-600 text-white rounded-lg" disabled={loading} onClick={() => deleteDocument(docToDelete)}>
+                                {loading ? 'جاري الحذف...' : 'نعم، قم بالحذف'}
+                            </button>
                         </div>
                     </div>
                 </div>
