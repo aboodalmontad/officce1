@@ -88,7 +88,7 @@ const TextPreview: React.FC<{ file: File; name: string }> = ({ file, name }) => 
     }, [file]);
 
     return (
-        <div className="w-[80vw] h-[90vh] bg-gray-100 p-4 rounded-lg overflow-auto flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="w-full h-full bg-gray-100 p-4 rounded-lg overflow-auto flex flex-col">
             <h3 className="text-lg font-semibold border-b border-gray-300 pb-2 mb-4 text-gray-800 flex-shrink-0">{name}</h3>
             <div className="flex-grow bg-white p-6 rounded shadow-inner overflow-auto">
                 {content === null && !error && <div className="text-center p-8 text-gray-600">جاري تحميل المحتوى...</div>}
@@ -127,7 +127,7 @@ const DocxPreview: React.FC<{ file: File; name: string }> = ({ file, name }) => 
     }, [file, name]);
 
     return (
-        <div className="w-[80vw] h-[90vh] bg-gray-100 p-4 rounded-lg overflow-auto flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="w-full h-full bg-gray-100 p-4 rounded-lg overflow-auto flex flex-col">
             <h3 className="text-lg font-semibold border-b border-gray-300 pb-2 mb-4 text-gray-800 flex-shrink-0">{name}</h3>
             <div className="flex-grow bg-white p-6 rounded shadow-inner overflow-auto">
                 {isLoading && <div className="text-center p-8 text-gray-600">جاري تحميل المعاينة...</div>}
@@ -207,6 +207,50 @@ const CameraModal: React.FC<CameraModalProps> = ({ onClose, onSave }) => {
     );
 };
 
+const Previewer: React.FC<{ doc: CaseDocument; file: File; onClose: () => void }> = ({ doc, file, onClose }) => {
+    const previewUrl = React.useMemo(() => URL.createObjectURL(file), [file]);
+    React.useEffect(() => () => URL.revokeObjectURL(previewUrl), [previewUrl]);
+
+    const lowerCaseName = doc.name.toLowerCase();
+    const isWordFile = ['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(doc.type) || lowerCaseName.endsWith('.docx') || lowerCaseName.endsWith('.doc');
+    const isTextFile = doc.type.startsWith('text/');
+    const isImageFile = doc.type.startsWith('image/');
+    const isPdfFile = doc.type === 'application/pdf';
+    const isVideoFile = doc.type.startsWith('video/');
+    const isAudioFile = doc.type.startsWith('audio/');
+
+    let content;
+    if (isImageFile) {
+        content = <img src={previewUrl} alt={doc.name} className="max-h-full max-w-full object-contain rounded-lg" />;
+    } else if (isPdfFile) {
+        content = <iframe src={previewUrl} title={doc.name} className="w-full h-full bg-white border-none rounded-lg"></iframe>;
+    } else if (isVideoFile) {
+        content = <video src={previewUrl} controls autoPlay className="max-h-full max-w-full object-contain rounded-lg" />;
+    } else if (isAudioFile) {
+        content = <div className="bg-white p-8 rounded-lg shadow-xl"><h3 className="text-lg font-semibold text-gray-800 mb-4">{doc.name}</h3><audio src={previewUrl} controls autoPlay className="w-full" /></div>;
+    } else if (isTextFile) {
+        content = <TextPreview file={file} name={doc.name} />;
+    } else if (isWordFile) {
+        content = <DocxPreview file={file} name={doc.name} />;
+    } else {
+        content = <iframe src={previewUrl} title={doc.name} className="w-full h-full bg-white border-none rounded-lg"></iframe>;
+    }
+
+    const isFullVwVh = isPdfFile || isTextFile || isWordFile || !(isImageFile || isVideoFile || isAudioFile);
+    const contentWrapperClasses = isFullVwVh ? "w-[80vw] h-[90vh] flex flex-col" : "max-h-full max-w-full flex items-center justify-center";
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <button className="absolute top-4 right-4 text-white p-2 bg-black/50 rounded-full hover:bg-black/75 z-10" onClick={onClose}>
+                <XMarkIcon className="w-6 h-6" />
+            </button>
+            <div onClick={(e) => e.stopPropagation()} className={contentWrapperClasses}>
+                {content}
+            </div>
+        </div>
+    );
+};
+
 
 const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
     const { documents: allDocuments, addDocuments: addDocumentsContext, deleteDocument: deleteDocumentContext, getDocumentFile } = useData();
@@ -245,20 +289,10 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
         }
         const file = await getDocumentFile(doc.id);
         if (!file) { setError(`لا يمكن عرض الملف: ${doc.name}. قد يكون قيد التنزيل أو حدث خطأ.`); return; }
-
-        const lowerCaseName = doc.name.toLowerCase();
-        const wordMimeTypes = ['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-        const isWordFile = wordMimeTypes.includes(doc.type) || lowerCaseName.endsWith('.docx') || lowerCaseName.endsWith('.doc');
-
-        const isModalPreviewable = doc.type.startsWith('image/') || doc.type === 'application/pdf' || doc.type.startsWith('video/') || doc.type.startsWith('audio/') || doc.type.startsWith('text/') || isWordFile;
-
-        if (isModalPreviewable) setPreviewState({ doc, file });
-        else { const url = URL.createObjectURL(file); window.open(url, '_blank'); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+        setPreviewState({ doc, file });
     };
     
     const handleSavePhoto = (photoFile: File) => { const dataTransfer = new DataTransfer(); dataTransfer.items.add(photoFile); addDocuments(dataTransfer.files); setIsCameraOpen(false); };
-    const previewUrl = React.useMemo(() => (previewState && !previewState.doc.type.startsWith('text/') && !previewState.doc.name.toLowerCase().match(/\.(docx|doc)$/)) ? URL.createObjectURL(previewState.file) : null, [previewState]);
-    React.useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
     return (
         <div className={`p-4 space-y-4 transition-colors ${isDragging ? 'bg-blue-50' : ''}`} onDrop={handleDrop} onDragOver={(e) => handleDragEvents(e, true)} onDragEnter={(e) => handleDragEvents(e, true)} onDragLeave={(e) => handleDragEvents(e, false)}>
@@ -269,7 +303,7 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
             : documents.length === 0 ? <p className="text-center text-gray-500 py-8">لا توجد وثائق لهذه القضية بعد.</p>
             : <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">{documents.map(doc => <FilePreview key={doc.id} doc={doc} onPreview={handlePreview} onDelete={setDocToDelete} />)}</div>}
             {isCameraOpen && <CameraModal onClose={() => setIsCameraOpen(false)} onSave={handleSavePhoto} />}
-            {previewState && <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewState(null)}><button className="absolute top-4 right-4 text-white p-2 bg-black/50 rounded-full hover:bg-black/75 z-10" onClick={() => setPreviewState(null)}><XMarkIcon className="w-6 h-6"/></button><div onClick={(e) => e.stopPropagation()} className="max-h-full max-w-full flex items-center justify-center">{previewState.doc.type.startsWith('image/') && previewUrl && <img src={previewUrl} alt={previewState.doc.name} className="max-h-full max-w-full object-contain rounded-lg" />}{previewState.doc.type === 'application/pdf' && previewUrl && <iframe src={previewUrl} title={previewState.doc.name} className="w-[80vw] h-[90vh] bg-white border-none rounded-lg"></iframe>}{previewState.doc.type.startsWith('video/') && previewUrl && <video src={previewUrl} controls autoPlay className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg" />}{previewState.doc.type.startsWith('audio/') && previewUrl && <div className="bg-white p-8 rounded-lg shadow-xl"><h3 className="text-lg font-semibold text-gray-800 mb-4">{previewState.doc.name}</h3><audio src={previewUrl} controls autoPlay className="w-full" /></div>}{previewState.doc.type.startsWith('text/') && <TextPreview file={previewState.file} name={previewState.doc.name} />}{(previewState.doc.type === 'application/msword' || previewState.doc.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || previewState.doc.name.toLowerCase().endsWith('.doc') || previewState.doc.name.toLowerCase().endsWith('.docx')) && <DocxPreview file={previewState.file} name={previewState.doc.name} />}</div></div>}
+            {previewState && <Previewer doc={previewState.doc} file={previewState.file} onClose={() => setPreviewState(null)} />}
             {docToDelete && <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]" onClick={() => setDocToDelete(null)}><div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}><div className="text-center"><div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4"><ExclamationTriangleIcon className="h-8 w-8 text-red-600" /></div><h3 className="text-2xl font-bold text-gray-900">تأكيد حذف الوثيقة</h3><p className="text-gray-600 my-4">هل أنت متأكد من حذف الملف "{docToDelete.name}"؟ لا يمكن التراجع عن هذا الإجراء.</p></div><div className="mt-6 flex justify-center gap-4"><button type="button" className="px-6 py-2 bg-gray-200 rounded-lg" onClick={() => setDocToDelete(null)}>إلغاء</button><button type="button" className="px-6 py-2 bg-red-600 text-white rounded-lg" disabled={loading} onClick={() => deleteDocument(docToDelete)}>{loading ? 'جاري الحذف...' : 'نعم، قم بالحذف'}</button></div></div></div>}
         </div>
     );

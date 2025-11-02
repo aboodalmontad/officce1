@@ -84,20 +84,36 @@ const constructData = (flatData: Partial<FlatData>): AppData => {
 };
 
 const mergeForRefresh = <T extends { id: any; updated_at?: Date | string }>(local: T[], remote: T[]): T[] => {
-    const localMap = new Map<any, T>();
-    local.forEach(item => localMap.set(item.id, item));
-    
-    return remote.map(remoteItem => {
-        const localItem = localMap.get(remoteItem.id);
-        
-        if (localItem) {
+    // This function is called by fetchAndRefresh. The `remote` array has already been
+    // filtered to exclude any items that are pending local deletion.
+    // Therefore, any item in `remote` that is not in `local` is a genuinely new item from another client.
+
+    const finalItems = new Map<any, T>();
+
+    // 1. Add all local items. This preserves any new, unsynced local items.
+    for (const localItem of local) {
+        finalItems.set(localItem.id ?? (localItem as any).name, localItem);
+    }
+
+    // 2. Iterate remote items. Update local items if the remote is newer, or add if it's new.
+    for (const remoteItem of remote) {
+        const id = remoteItem.id ?? (remoteItem as any).name;
+        const existingItem = finalItems.get(id);
+
+        if (existingItem) {
+            // Item exists locally, compare timestamps and keep the newer one.
             const remoteDate = new Date(remoteItem.updated_at || 0);
-            const localDate = new Date(localItem.updated_at || 0);
-            return localDate > remoteDate ? localItem : remoteItem;
+            const localDate = new Date(existingItem.updated_at || 0);
+            if (remoteDate > localDate) {
+                finalItems.set(id, remoteItem);
+            }
+        } else {
+            // Item does not exist locally, so it's a new item from the server. Add it.
+            finalItems.set(id, remoteItem);
         }
-        
-        return remoteItem;
-    });
+    }
+
+    return Array.from(finalItems.values());
 };
 
 
@@ -188,7 +204,7 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                     const id = remoteItem.id ?? remoteItem.name;
                     if (!localMap.has(id)) {
                         let isDeleted = false;
-                        const entityKey = key === 'admin_tasks' ? 'adminTasks' : key === 'accounting_entries' ? 'accountingEntries' : key === 'invoice_items' ? 'invoiceItems' : key === 'case_documents' ? 'case_documents' : key;
+                        const entityKey = key === 'admin_tasks' ? 'adminTasks' : key === 'accounting_entries' ? 'accountingEntries' : key === 'invoice_items' ? 'invoiceItems' : key === 'case_documents' ? 'documents' : key;
                         const deletedSet = (deletedIdsSets as any)[entityKey];
                         if (deletedSet) isDeleted = deletedSet.has(id);
                         if (!isDeleted) finalMergedItems.set(id, remoteItem);
@@ -262,33 +278,66 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
         if (syncStatus === 'syncing' || isAuthLoading) return;
         const currentUser = userRef.current;
         if (!isOnline || !currentUser) return;
-
+    
         setStatus('syncing', 'جاري تحديث البيانات...');
         
         try {
             const remoteDataRaw = await fetchDataFromSupabase();
-            const remoteFlatData = transformRemoteToLocal(remoteDataRaw) as FlatData;
+            const remoteFlatDataUntyped = transformRemoteToLocal(remoteDataRaw);
+    
+            // Filter remote data against pending deletions to prevent re-adding deleted items
+            const deletedIdsSets = {
+                clients: new Set(deletedIds.clients),
+                cases: new Set(deletedIds.cases),
+                stages: new Set(deletedIds.stages),
+                sessions: new Set(deletedIds.sessions),
+                adminTasks: new Set(deletedIds.adminTasks),
+                appointments: new Set(deletedIds.appointments),
+                accountingEntries: new Set(deletedIds.accountingEntries),
+                invoices: new Set(deletedIds.invoices),
+                invoiceItems: new Set(deletedIds.invoiceItems),
+                assistants: new Set(deletedIds.assistants),
+                documents: new Set(deletedIds.documents),
+            };
+    
+            const remoteFlatData: Partial<FlatData> = {};
+            for (const key of Object.keys(remoteFlatDataUntyped) as (keyof FlatData)[]) {
+                const entityKey = 
+                    key === 'admin_tasks' ? 'adminTasks' :
+                    key === 'accounting_entries' ? 'accountingEntries' :
+                    key === 'invoice_items' ? 'invoiceItems' :
+                    key === 'case_documents' ? 'documents' : key;
+                
+                const deletedSet = (deletedIdsSets as any)[entityKey];
+                
+                if (deletedSet && deletedSet.size > 0) {
+                    (remoteFlatData as any)[key] = ((remoteFlatDataUntyped as any)[key] || []).filter((item: any) => !deletedSet.has(item.id ?? item.name));
+                } else {
+                    (remoteFlatData as any)[key] = (remoteFlatDataUntyped as any)[key];
+                }
+            }
+    
             const localFlatData = flattenData(localData);
             
             const localAssistantNames = localFlatData.assistants.map(a => a.name);
-            const remoteAssistantNames = remoteFlatData.assistants.map(a => a.name);
+            const remoteAssistantNames = (remoteFlatData.assistants || []).map(a => a.name);
             const allAssistantNames = new Set([...localAssistantNames, ...remoteAssistantNames]);
             const mergedAssistants = Array.from(allAssistantNames).map(name => ({ name }));
-
+    
             const mergedFlatData: FlatData = {
-                clients: mergeForRefresh(localFlatData.clients, remoteFlatData.clients),
-                cases: mergeForRefresh(localFlatData.cases, remoteFlatData.cases),
-                stages: mergeForRefresh(localFlatData.stages, remoteFlatData.stages),
-                sessions: mergeForRefresh(localFlatData.sessions, remoteFlatData.sessions),
-                admin_tasks: mergeForRefresh(localFlatData.admin_tasks, remoteFlatData.admin_tasks),
-                appointments: mergeForRefresh(localFlatData.appointments, remoteFlatData.appointments),
-                accounting_entries: mergeForRefresh(localFlatData.accounting_entries, remoteFlatData.accounting_entries),
+                clients: mergeForRefresh(localFlatData.clients, remoteFlatData.clients || []),
+                cases: mergeForRefresh(localFlatData.cases, remoteFlatData.cases || []),
+                stages: mergeForRefresh(localFlatData.stages, remoteFlatData.stages || []),
+                sessions: mergeForRefresh(localFlatData.sessions, remoteFlatData.sessions || []),
+                admin_tasks: mergeForRefresh(localFlatData.admin_tasks, remoteFlatData.admin_tasks || []),
+                appointments: mergeForRefresh(localFlatData.appointments, remoteFlatData.appointments || []),
+                accounting_entries: mergeForRefresh(localFlatData.accounting_entries, remoteFlatData.accounting_entries || []),
                 assistants: mergedAssistants,
-                invoices: mergeForRefresh(localFlatData.invoices, remoteFlatData.invoices),
-                invoice_items: mergeForRefresh(localFlatData.invoice_items, remoteFlatData.invoice_items),
-                case_documents: mergeForRefresh(localFlatData.case_documents, remoteFlatData.case_documents),
+                invoices: mergeForRefresh(localFlatData.invoices, remoteFlatData.invoices || []),
+                invoice_items: mergeForRefresh(localFlatData.invoice_items, remoteFlatData.invoice_items || []),
+                case_documents: mergeForRefresh(localFlatData.case_documents, remoteFlatData.case_documents || []),
             };
-
+    
             const mergedData = constructData(mergedFlatData);
             onDataSynced(mergedData);
             setStatus('synced');
@@ -302,7 +351,7 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
             if (String(errorMessage).toLowerCase().includes('failed to fetch')) errorMessage = 'فشل الاتصال بالخادم. تحقق من اتصالك بالإنترنت وإعدادات CORS.';
             setStatus('error', `فشل تحديث البيانات: ${errorMessage}`);
         }
-    }, [localData, userRef, isOnline, onDataSynced, isAuthLoading, syncStatus]);
+    }, [localData, deletedIds, userRef, isOnline, onDataSynced, isAuthLoading, syncStatus]);
 
     return { manualSync, fetchAndRefresh };
 };

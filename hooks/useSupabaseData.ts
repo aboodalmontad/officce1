@@ -293,6 +293,14 @@ function usePrevious<T>(value: T): T | undefined {
   return ref.current;
 }
 
+const getFileExtension = (filename: string): string => {
+    if (!filename) return '';
+    const lastDot = filename.lastIndexOf('.');
+    // No extension, or file starts with a dot (hidden file)
+    if (lastDot === -1 || lastDot === 0) return '';
+    return filename.substring(lastDot);
+};
+
 export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const getLocalStorageKey = React.useCallback(() => user ? `${APP_DATA_KEY}_${user.id}` : APP_DATA_KEY, [user]);
     const userId = user?.id;
@@ -329,9 +337,9 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         setDeletedIds(prev => {
             const newDeleted = { ...prev };
             for (const key of Object.keys(syncedDeletions) as (keyof DeletedIds)[]) {
-                const syncedSet = new Set((syncedDeletions[key] || []).map((item: any) => item.id || item.name));
-                if (syncedSet.size > 0) {
-                     newDeleted[key] = (prev[key] || []).filter(id => !syncedSet.has(id));
+                const syncedIdSet = new Set(syncedDeletions[key] || []);
+                if (syncedIdSet.size > 0) {
+                    newDeleted[key] = (prev[key] || []).filter(id => !syncedIdSet.has(id));
                 }
             }
             return newDeleted;
@@ -351,20 +359,50 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         const currentLocalDocuments = dataRef.current.documents;
         const localDocMap = new Map(currentLocalDocuments.map(doc => [doc.id, doc]));
         
-        // FIX: remoteDoc might not have `localState`. This map function must always return an object with `localState`.
-        // By typing `remoteDoc` as `any`, we prevent compiler errors, and by ensuring `localState` is always added,
-        // we fix the logic and stabilize type inference, which likely caused the original error on `localDoc.localState`.
-        const syncedDocsWithLocalState = (syncedData.documents || []).map((remoteDoc: any) => {
-            const localDoc = localDocMap.get(remoteDoc.id);
+        // FIX: Explicitly typed syncedData.documents as CaseDocument[] to ensure correct type inference for `remoteDoc`.
+        // This resolves errors where related variables like 'localDoc' were being inferred as 'unknown',
+        // which caused issues with spread operators and property access.
+        const syncedDocsWithLocalState = ((syncedData.documents || []) as CaseDocument[])
+            .filter(doc => doc && doc.id)
+            .map((remoteDoc): CaseDocument => {
+            const localDoc: CaseDocument | undefined = localDocMap.get(remoteDoc.id);
+            // FIX: The type of `remoteDoc` can be ambiguous due to an `any` cast upstream,
+            // which can cause issues with the spread operator. Using `Object.assign` for a more robust merge.
+            // We then explicitly ensure date properties are actual Date objects to match the `CaseDocument` type.
             if (localDoc) {
+                const mergedDoc = Object.assign({}, localDoc, remoteDoc);
                 if (localDoc.localState === 'pending_upload' || localDoc.localState === 'error') {
-                    return { ...remoteDoc, localState: localDoc.localState };
+                    mergedDoc.localState = localDoc.localState;
+                } else {
+                    mergedDoc.localState = 'synced';
                 }
-                // If local doc exists and is not in a special state, the version from sync is considered synced.
-                return { ...remoteDoc, localState: 'synced' };
+                
+                mergedDoc.addedAt = new Date(mergedDoc.addedAt);
+                if (mergedDoc.updated_at) {
+                    mergedDoc.updated_at = new Date(mergedDoc.updated_at);
+                }
+
+                return mergedDoc;
             } else {
-                // New doc from remote, needs to be downloaded.
-                return { ...remoteDoc, localState: 'pending_download' };
+                const newDoc: CaseDocument = {
+                    id: remoteDoc.id,
+                    caseId: remoteDoc.caseId || '',
+                    userId: remoteDoc.userId || userId || '',
+                    name: remoteDoc.name || 'unknown file',
+                    type: remoteDoc.type || 'application/octet-stream',
+                    size: typeof remoteDoc.size === 'number' ? remoteDoc.size : 0,
+                    addedAt: remoteDoc.addedAt ? new Date(remoteDoc.addedAt) : new Date(),
+                    storagePath: remoteDoc.storagePath || '',
+                    localState: 'error', 
+                    updated_at: remoteDoc.updated_at ? new Date(remoteDoc.updated_at) : new Date(),
+                };
+
+                if (remoteDoc.storagePath && String(remoteDoc.storagePath).trim() !== '') {
+                    newDoc.localState = 'pending_download';
+                } else {
+                    console.warn(`Synced document ${remoteDoc.id} is missing a storagePath. Marking as error.`);
+                }
+                return newDoc;
             }
         });
 
@@ -593,7 +631,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                         const file = await getDocumentFile(doc.id);
                         if (!file) throw new Error(`File blob not found in IndexedDB for doc ${doc.id}`);
 
-                        const storagePath = `${userId}/${doc.caseId}/${doc.id}-${doc.name}`;
+                        const storagePath = `${userId}/${doc.caseId}/${doc.id}${getFileExtension(doc.name)}`;
                         
                         const { error: uploadError } = await supabase.storage
                             .from('documents')
@@ -631,13 +669,15 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                         await db.put(DOCS_FILES_STORE_NAME, blob, doc.id);
 
                         setData(prev => {
-                            const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'synced' } : d);
+                            const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'synced' } : d
+                            );
                             return { ...prev, documents: newDocs };
                         });
                          console.log(`Successfully downloaded ${doc.name}`);
 
-                    } catch (error) {
-                        console.error(`Failed to download document ${doc.id}:`, error);
+                    } catch (error: any) {
+                        const errorMessage = error.message || JSON.stringify(error);
+                        console.error(`Failed to download document ${doc.id}:`, errorMessage);
                         setData(prev => {
                             const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'error' } : d);
                             return { ...prev, documents: newDocs };
@@ -724,17 +764,27 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
         const channel = supabase.channel(`user-data-channel-${user.id}`);
         
-        channel
-            .on('postgres_changes', {
+        const tablesWithUserId = [
+            'clients', 'cases', 'stages', 'sessions', 'admin_tasks', 
+            'appointments', 'accounting_entries', 'invoices', 'invoice_items', 
+            'assistants', 'site_finances', 'case_documents'
+        ];
+
+        tablesWithUserId.forEach(table => {
+            channel.on('postgres_changes', {
                 event: '*',
                 schema: 'public',
+                table: table,
                 filter: `user_id=eq.${user.id}`
             }, payload => {
-                console.log('Real-time change on user table:', payload.table);
+                console.log(`Real-time change on user table: ${payload.table}`);
                 debouncedRefresh();
-            })
+            });
+        });
+
+        channel
             .on('postgres_changes', {
-                event: 'UPDATE',
+                event: '*', 
                 schema: 'public',
                 table: 'profiles',
                 filter: `id=eq.${user.id}`
@@ -800,27 +850,21 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
     const deleteDocument = React.useCallback(async (doc: CaseDocument) => {
         const docToDelete = doc;
-        // Optimistic UI update
-        setData(prev => ({ ...prev, documents: prev.documents.filter(d => d.id !== docToDelete.id) }));
 
-        // Add to deletedIds for remote sync
-        setDeletedIds(prev => ({
-            ...prev,
-            documents: [...prev.documents, docToDelete.id],
-            documentPaths: docToDelete.storagePath ? [...prev.documentPaths, docToDelete.storagePath] : prev.documentPaths
-        }));
-        
         try {
             const db = await getDb();
             await db.delete(DOCS_FILES_STORE_NAME, docToDelete.id);
+            
+            setData(prev => ({ ...prev, documents: prev.documents.filter(d => d.id !== docToDelete.id) }));
+
+            setDeletedIds(prev => ({
+                ...prev,
+                documents: [...prev.documents, docToDelete.id],
+                documentPaths: docToDelete.storagePath ? [...prev.documentPaths, docToDelete.storagePath] : prev.documentPaths
+            }));
+
         } catch (error) {
             console.error("Failed to delete document from IndexedDB:", error);
-            // Revert UI change on failure
-            setData(prev => ({
-                ...prev,
-                documents: [...prev.documents, docToDelete] 
-            }));
-            // Re-throw error for the component
             throw new Error("فشل حذف الوثيقة من قاعدة البيانات المحلية.");
         }
     }, []);

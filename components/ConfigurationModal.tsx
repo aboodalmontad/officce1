@@ -146,8 +146,9 @@ CREATE POLICY "Users can view their own profile." ON public.profiles FOR SELECT 
 CREATE POLICY "Users can update their own profile." ON public.profiles FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
 CREATE POLICY "Admins have full access to all profiles." ON public.profiles FOR ALL USING (public.is_admin());
 
--- RLS Policies for the 'site_finances' table (Admin only).
+-- RLS Policies for the 'site_finances' table.
 CREATE POLICY "Enable ALL for admin" ON public.site_finances FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+CREATE POLICY "Users can select their own site finances" ON public.site_finances FOR SELECT USING (auth.uid() = user_id);
 
 -- RLS policies for all other user-specific tables. (Combined for robustness)
 DO $$
@@ -358,6 +359,8 @@ ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.invoice_items ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Enable ALL for admin" ON public.site_finances FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "Users can select their own site finances" ON public.site_finances FOR SELECT USING (auth.uid() = user_id);
+
 CREATE POLICY "Enable ALL for own data" ON public.accounting_entries FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Enable ALL for admin" ON public.accounting_entries FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
 CREATE POLICY "Enable ALL for own data" ON public.invoices FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
