@@ -394,7 +394,8 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                         }
                     } else if (!data && !profileFromCache) {
                         // Authenticated but no profile found and nothing in cache. This is a critical error.
-                         throw new Error("User is authenticated, but no profile was found.");
+                         setAuthError("تمت المصادقة ولكن تعذر العثور على ملفك الشخصي. قد يكون حسابك غير مكتمل. يرجى المحاولة مرة أخرى أو الاتصال بالدعم.");
+                         return; // Stop further execution in this effect
                     }
                 } else if (!profileFromCache) {
                     // Offline and no cached profile, but we might have a stale session from Supabase's cache.

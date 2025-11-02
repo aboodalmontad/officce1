@@ -2,7 +2,6 @@ import * as React from 'react';
 import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem, CaseDocument } from '../types';
 import { useOnlineStatus } from './useOnlineStatus';
 import { User } from '@supabase/supabase-js';
-import { AppData as OnlineAppData } from './useOnlineData';
 import { useSync, SyncStatus as SyncStatusType } from './useSync';
 import { getSupabaseClient } from '../supabaseClient';
 import { isBeforeToday } from '../utils/dateUtils';
@@ -33,9 +32,15 @@ export type DeletedIds = {
     invoices: string[];
     invoiceItems: string[];
     assistants: string[];
+    // Fix: Added missing properties to handle document deletion.
+    documents: string[];
+    documentPaths: string[];
 };
 const getInitialDeletedIds = (): DeletedIds => ({
-    clients: [], cases: [], stages: [], sessions: [], adminTasks: [], appointments: [], accountingEntries: [], invoices: [], invoiceItems: [], assistants: []
+    clients: [], cases: [], stages: [], sessions: [], adminTasks: [], appointments: [], accountingEntries: [], invoices: [], invoiceItems: [], assistants: [],
+    // Fix: Initialized new properties.
+    documents: [],
+    documentPaths: [],
 });
 
 
@@ -333,7 +338,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         });
     }, []);
 
-    const handleDataSynced = React.useCallback(async (syncedData: Partial<OnlineAppData>) => {
+    // Fix: Changed parameter type from Partial<OnlineAppData> to AppData and removed unused import.
+    const handleDataSynced = React.useCallback(async (syncedData: AppData) => {
         const currentLocalDocuments = dataRef.current.documents;
         const validatedData = validateAndHydrate({ ...syncedData, documents: currentLocalDocuments });
         
@@ -732,7 +738,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         setAssistants: (updater) => setData(prev => ({...prev, assistants: typeof updater === 'function' ? updater(prev.assistants) : updater})),
         setDocuments: (updater) => setData(prev => ({ ...prev, documents: typeof updater === 'function' ? updater(prev.documents) : updater })),
         setFullData: (fullData) => {
-            handleDataSynced(fullData);
+            handleDataSynced(fullData as AppData);
         },
         allSessions: React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.map(s => ({...s, stageId: st.id, stageDecisionDate: st.decisionDate})) ))), [data.clients]),
         unpostponedSessions: React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.filter(s => !s.isPostponed && isBeforeToday(s.date) && !st.decisionDate).map(s => ({...s, stageId: st.id, stageDecisionDate: st.decisionDate}))))) , [data.clients]),

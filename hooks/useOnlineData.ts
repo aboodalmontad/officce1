@@ -1,18 +1,8 @@
 import { getSupabaseClient } from '../supabaseClient';
-import { Client, AdminTask, Appointment, AccountingEntry, Invoice, InvoiceItem } from '../types';
+import { Client, AdminTask, Appointment, AccountingEntry, Invoice, InvoiceItem, CaseDocument } from '../types';
 import { User } from '@supabase/supabase-js';
 
-// Define the core data structure for the application.
-// This is used both for local state and for structuring data from Supabase.
-export type AppData = {
-    clients: Client[];
-    adminTasks: AdminTask[];
-    appointments: Appointment[];
-    accountingEntries: AccountingEntry[];
-    invoices: Invoice[];
-    assistants: string[];
-};
-
+// This file defines the shape of data when flattened for sync operations.
 export type FlatData = {
     clients: Omit<Client, 'cases'>[];
     cases: any[];
@@ -24,7 +14,8 @@ export type FlatData = {
     assistants: { name: string }[];
     invoices: Omit<Invoice, 'items'>[];
     invoice_items: InvoiceItem[];
-}
+    case_documents: CaseDocument[];
+};
 
 
 /**
@@ -42,7 +33,7 @@ export const checkSupabaseSchema = async () => {
         'profiles': 'id', 'clients': 'id', 'cases': 'id',
         'stages': 'id', 'sessions': 'id', 'admin_tasks': 'id',
         'appointments': 'id', 'accounting_entries': 'id', 'assistants': 'name',
-        'invoices': 'id', 'invoice_items': 'id',
+        'invoices': 'id', 'invoice_items': 'id', 'case_documents': 'id',
     };
     
     const tableCheckPromises = Object.entries(tableChecks).map(([table, query]) =>
@@ -92,7 +83,8 @@ export const fetchDataFromSupabase = async (): Promise<FlatData> => {
 
     const [
         clientsRes, adminTasksRes, appointmentsRes, accountingEntriesRes,
-        assistantsRes, invoicesRes, casesRes, stagesRes, sessionsRes, invoiceItemsRes
+        assistantsRes, invoicesRes, casesRes, stagesRes, sessionsRes, invoiceItemsRes,
+        caseDocumentsRes
     ] = await Promise.all([
         supabase.from('clients').select('*'),
         supabase.from('admin_tasks').select('*'),
@@ -104,6 +96,7 @@ export const fetchDataFromSupabase = async (): Promise<FlatData> => {
         supabase.from('stages').select('*'),
         supabase.from('sessions').select('*'),
         supabase.from('invoice_items').select('*'),
+        supabase.from('case_documents').select('*'),
     ]);
 
     const results = [
@@ -117,6 +110,7 @@ export const fetchDataFromSupabase = async (): Promise<FlatData> => {
         { res: stagesRes, name: 'stages' },
         { res: sessionsRes, name: 'sessions' },
         { res: invoiceItemsRes, name: 'invoice_items' },
+        { res: caseDocumentsRes, name: 'case_documents' },
     ];
 
     for (const { res, name } of results) {
@@ -136,6 +130,7 @@ export const fetchDataFromSupabase = async (): Promise<FlatData> => {
         assistants: assistantsRes.data || [],
         invoices: invoicesRes.data || [],
         invoice_items: invoiceItemsRes.data || [],
+        case_documents: caseDocumentsRes.data || [],
     };
 };
 
@@ -145,7 +140,7 @@ export const deleteDataFromSupabase = async (deletions: Partial<FlatData>, user:
 
     // Deletion order matters due to foreign keys. Children first.
     const deletionOrder: (keyof FlatData)[] = [
-        'invoice_items', 'sessions', 'stages', 'cases', 'invoices', 
+        'case_documents', 'invoice_items', 'sessions', 'stages', 'cases', 'invoices', 
         'admin_tasks', 'appointments', 'accounting_entries', 'assistants', 'clients'
     ];
 
@@ -155,7 +150,6 @@ export const deleteDataFromSupabase = async (deletions: Partial<FlatData>, user:
             const primaryKeyColumn = table === 'assistants' ? 'name' : 'id';
             const ids = itemsToDelete.map((i: any) => i[primaryKeyColumn]);
             
-            // For assistants, we need to also match the user_id for deletion.
             let query = supabase.from(table).delete().in(primaryKeyColumn, ids);
             if (table === 'assistants') {
                 query = query.eq('user_id', user.id);
@@ -179,7 +173,6 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     const userId = user.id;
 
     // Map application data (camelCase) to database schema (snake_case)
-    // AND remove updated_at from the payload, as the database handles it via trigger.
     const dataToUpsert = {
         clients: data.clients?.map(({ contactInfo, updated_at, ...rest }) => ({ ...rest, user_id: userId, contact_info: contactInfo })),
         cases: data.cases?.map(({ clientName, opponentName, feeAgreement, updated_at, ...rest }) => ({ ...rest, user_id: userId, client_name: clientName, opponent_name: opponentName, fee_agreement: feeAgreement })),
@@ -191,6 +184,7 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         assistants: data.assistants?.map(item => ({ ...item, user_id: userId })),
         invoices: data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, updated_at, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, client_name: clientName, case_id: caseId, case_subject: caseSubject, issue_date: issueDate, due_date: dueDate, tax_rate: taxRate })),
         invoice_items: data.invoice_items?.map(({ updated_at, ...item }) => ({ ...item, user_id: userId })),
+        case_documents: data.case_documents?.map(({ caseId, addedAt, storagePath, localState, updated_at, ...rest }) => ({ ...rest, user_id: userId, case_id: caseId, added_at: addedAt, storage_path: storagePath })),
     };
     
     const upsertTable = async (table: string, records: any[] | undefined, options: { onConflict?: string } = {}) => {
@@ -207,10 +201,8 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     
     const results: Partial<Record<keyof FlatData, any[]>> = {};
 
-    // Upsert assistants with conflict resolution
     results.assistants = await upsertTable('assistants', dataToUpsert.assistants, { onConflict: 'user_id,name' });
 
-    // Upsert independent tables in parallel
     const [adminTasks, appointments, accountingEntries] = await Promise.all([
         upsertTable('admin_tasks', dataToUpsert.admin_tasks),
         upsertTable('appointments', dataToUpsert.appointments),
@@ -220,7 +212,6 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     results.appointments = appointments;
     results.accounting_entries = accountingEntries;
 
-    // Upsert tables with dependencies in order
     results.clients = await upsertTable('clients', dataToUpsert.clients);
     results.cases = await upsertTable('cases', dataToUpsert.cases);
     results.stages = await upsertTable('stages', dataToUpsert.stages);
@@ -228,6 +219,7 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     
     results.invoices = await upsertTable('invoices', dataToUpsert.invoices);
     results.invoice_items = await upsertTable('invoice_items', dataToUpsert.invoice_items);
+    results.case_documents = await upsertTable('case_documents', dataToUpsert.case_documents);
     
     return results;
 };
@@ -246,5 +238,6 @@ export const transformRemoteToLocal = (remote: any): Partial<FlatData> => {
         assistants: remote.assistants?.map((a: any) => ({ name: a.name })),
         invoices: remote.invoices?.map(({ client_id, client_name, case_id, case_subject, issue_date, due_date, tax_rate, ...r }: any) => ({ ...r, clientId: client_id, clientName: client_name, caseId: case_id, caseSubject: case_subject, issueDate: issue_date, dueDate: due_date, taxRate: tax_rate })),
         invoice_items: remote.invoice_items,
+        case_documents: remote.case_documents?.map(({ case_id, added_at, storage_path, ...r }: any) => ({...r, caseId: case_id, addedAt: added_at, storagePath: storage_path })),
     };
 };
