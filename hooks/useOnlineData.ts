@@ -184,7 +184,7 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         assistants: data.assistants?.map(item => ({ ...item, user_id: userId })),
         invoices: data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, updated_at, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, client_name: clientName, case_id: caseId, case_subject: caseSubject, issue_date: issueDate, due_date: dueDate, tax_rate: taxRate })),
         invoice_items: data.invoice_items?.map(({ updated_at, ...item }) => ({ ...item, user_id: userId })),
-        case_documents: data.case_documents?.map(({ caseId, addedAt, storagePath, localState, updated_at, ...rest }) => ({ ...rest, user_id: userId, case_id: caseId, added_at: addedAt, storage_path: storagePath })),
+        case_documents: data.case_documents?.map(({ caseId, userId: localUserId, addedAt, storagePath, localState, updated_at, ...rest }) => ({ ...rest, user_id: userId, case_id: caseId, added_at: addedAt, storage_path: storagePath })),
     };
     
     const upsertTable = async (table: string, records: any[] | undefined, options: { onConflict?: string } = {}) => {
@@ -238,6 +238,6 @@ export const transformRemoteToLocal = (remote: any): Partial<FlatData> => {
         assistants: remote.assistants?.map((a: any) => ({ name: a.name })),
         invoices: remote.invoices?.map(({ client_id, client_name, case_id, case_subject, issue_date, due_date, tax_rate, ...r }: any) => ({ ...r, clientId: client_id, clientName: client_name, caseId: case_id, caseSubject: case_subject, issueDate: issue_date, dueDate: due_date, taxRate: tax_rate })),
         invoice_items: remote.invoice_items,
-        case_documents: remote.case_documents?.map(({ case_id, added_at, storage_path, ...r }: any) => ({...r, caseId: case_id, addedAt: added_at, storagePath: storage_path })),
+        case_documents: remote.case_documents?.map(({ user_id, case_id, added_at, storage_path, ...r }: any) => ({...r, userId: user_id, caseId: case_id, addedAt: added_at, storagePath: storage_path })),
     };
 };
