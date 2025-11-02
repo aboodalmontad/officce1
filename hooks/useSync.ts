@@ -208,7 +208,7 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                         const localDate = new Date(localItem.updated_at || 0).getTime();
                         const remoteDate = new Date(remoteItem.updated_at || 0).getTime();
 
-                        if (localDate > remoteDate) {
+                        if (localDate >= remoteDate) {
                             itemsToUpsert.push(localItem);
                             finalMergedItems.set(id, localItem);
                         } else {

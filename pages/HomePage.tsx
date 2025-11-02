@@ -615,28 +615,40 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
         e.preventDefault();
         const { session, stage } = decideModal;
         if (!session || !stage) return;
-
-        setClients(currentClients => currentClients.map(client => ({
-            ...client,
-            updated_at: new Date(),
-            cases: client.cases.map(c => ({
-                ...c,
+    
+        setClients(currentClients => currentClients.map(client => {
+            const relevantCase = client.cases.find(c => c.stages.some(s => s.id === stage.id));
+            if (!relevantCase) {
+                return client;
+            }
+    
+            return {
+                ...client,
                 updated_at: new Date(),
-                stages: c.stages.map(st => {
-                    if (st.id === stage.id) {
-                        return {
-                            ...st,
-                            decisionDate: session.date,
-                            decisionNumber: decideFormData.decisionNumber,
-                            decisionSummary: decideFormData.decisionSummary,
-                            decisionNotes: decideFormData.decisionNotes,
-                            updated_at: new Date(),
-                        };
+                cases: client.cases.map(c => {
+                    if (c.id !== relevantCase.id) {
+                        return c;
                     }
-                    return st;
+                    return {
+                        ...c,
+                        updated_at: new Date(),
+                        stages: c.stages.map(st => {
+                            if (st.id === stage.id) {
+                                return {
+                                    ...st,
+                                    decisionDate: session.date,
+                                    decisionNumber: decideFormData.decisionNumber,
+                                    decisionSummary: decideFormData.decisionSummary,
+                                    decisionNotes: decideFormData.decisionNotes,
+                                    updated_at: new Date(),
+                                };
+                            }
+                            return st;
+                        })
+                    };
                 })
-            }))
-        })));
+            };
+        }));
         
         handleCloseDecideModal();
     };
