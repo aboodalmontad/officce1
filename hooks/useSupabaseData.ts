@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem, CaseDocument } from '../types';
 import { useOnlineStatus } from './useOnlineStatus';
-import { User } from '@supabase/supabase-js';
+import { User, RealtimeChannel } from '@supabase/supabase-js';
 import { useSync, SyncStatus as SyncStatusType } from './useSync';
 import { getSupabaseClient } from '../supabaseClient';
 import { isBeforeToday } from '../utils/dateUtils';
@@ -359,21 +359,18 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         const currentLocalDocuments = dataRef.current.documents;
         const localDocMap = new Map(currentLocalDocuments.map(doc => [doc.id, doc]));
         
-        // FIX: Explicitly typed syncedData.documents as CaseDocument[] to ensure correct type inference for `remoteDoc`.
-        // This resolves errors where related variables like 'localDoc' were being inferred as 'unknown',
-        // which caused issues with spread operators and property access.
-        const syncedDocsWithLocalState = ((syncedData.documents || []) as CaseDocument[])
+        // Fix: Changed type assertion for syncedData.documents from CaseDocument[] to any[] to fix a type error. The remote document objects do not have the `localState` property required by the CaseDocument interface, and this incorrect assertion was causing the TypeScript compiler to fail.
+        const syncedDocsWithLocalState = ((syncedData.documents || []) as any[])
             .filter(doc => doc && doc.id)
             .map((remoteDoc): CaseDocument => {
             const localDoc: CaseDocument | undefined = localDocMap.get(remoteDoc.id);
-            // FIX: The type of `remoteDoc` can be ambiguous due to an `any` cast upstream,
-            // which can cause issues with the spread operator. Using `Object.assign` for a more robust merge.
-            // We then explicitly ensure date properties are actual Date objects to match the `CaseDocument` type.
             if (localDoc) {
-                const mergedDoc = Object.assign({}, localDoc, remoteDoc);
-                if (localDoc.localState === 'pending_upload' || localDoc.localState === 'error') {
-                    mergedDoc.localState = localDoc.localState;
-                } else {
+                // FIX: Replaced Object.assign with spread syntax for better type inference,
+                // resolving the "Type '{}' is missing properties" error. The logic for
+                // determining `localState` was also simplified.
+                const mergedDoc = { ...localDoc, ...remoteDoc };
+
+                if (localDoc.localState !== 'pending_upload' && localDoc.localState !== 'error') {
                     mergedDoc.localState = 'synced';
                 }
                 
@@ -382,7 +379,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                     mergedDoc.updated_at = new Date(mergedDoc.updated_at);
                 }
 
-                return mergedDoc;
+                // The merged object is now cast to CaseDocument.
+                return mergedDoc as CaseDocument;
             } else {
                 const newDoc: CaseDocument = {
                     id: remoteDoc.id,
@@ -676,8 +674,25 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                          console.log(`Successfully downloaded ${doc.name}`);
 
                     } catch (error: any) {
-                        const errorMessage = error.message || JSON.stringify(error);
-                        console.error(`Failed to download document ${doc.id}:`, errorMessage);
+                        let errorMessage = 'An unknown error occurred during download.';
+                        if (error) {
+                            if (typeof error === 'object' && error.message) {
+                                if (String(error.message).toLowerCase().includes('not found')) {
+                                    errorMessage = `File not found in cloud storage. It might not have been uploaded correctly. Path: ${doc.storagePath}`;
+                                } else {
+                                    errorMessage = error.message;
+                                }
+                            } else {
+                                try {
+                                    errorMessage = JSON.stringify(error);
+                                } catch {
+                                    errorMessage = String(error);
+                                }
+                            }
+                        }
+                        
+                        console.error(`Failed to download document ${doc.id}:`, errorMessage, 'Original error object:', error);
+
                         setData(prev => {
                             const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'error' } : d);
                             return { ...prev, documents: newDocs };
@@ -762,7 +777,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             }, 1500); // 1.5s debounce to batch updates
         };
 
-        const channel = supabase.channel(`user-data-channel-${user.id}`);
+        const channels: RealtimeChannel[] = [];
         
         const tablesWithUserId = [
             'clients', 'cases', 'stages', 'sessions', 'admin_tasks', 
@@ -770,19 +785,29 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             'assistants', 'site_finances', 'case_documents'
         ];
 
+        // Create a separate channel for each user-specific table
         tablesWithUserId.forEach(table => {
-            channel.on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: table,
-                filter: `user_id=eq.${user.id}`
-            }, payload => {
-                console.log(`Real-time change on user table: ${payload.table}`);
-                debouncedRefresh();
-            });
+            const channel = supabase.channel(`public:${table}:${user.id}`)
+                .on('postgres_changes', {
+                    event: '*',
+                    schema: 'public',
+                    table: table,
+                    filter: `user_id=eq.${user.id}`
+                }, payload => {
+                    console.log(`Real-time change on user table: ${payload.table}`);
+                    debouncedRefresh();
+                })
+                .subscribe((status, err) => {
+                    if (status === 'CHANNEL_ERROR' || err) {
+                        console.error(`Real-time subscription error for table ${table}:`, err);
+                        setLastSyncError(`فشل الاتصال بمزامنة الوقت الفعلي لجدول ${table}.`);
+                    }
+                });
+            channels.push(channel);
         });
 
-        channel
+        // Create a specific channel for the profiles table with the correct filter
+        const profileChannel = supabase.channel(`public:profiles:${user.id}`)
             .on('postgres_changes', {
                 event: '*', 
                 schema: 'public',
@@ -793,21 +818,23 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 debouncedRefresh();
             })
             .subscribe((status, err) => {
-                if (status === 'SUBSCRIBED') {
-                    console.log(`Real-time channel subscribed for user ${user.id}`);
-                } else if (status === 'CHANNEL_ERROR' || err) {
-                    console.error('Real-time subscription error:', err);
-                    setLastSyncError('فشل الاتصال بمزامنة الوقت الفعلي.');
+                if (status === 'CHANNEL_ERROR' || err) {
+                    console.error('Real-time subscription error for profiles:', err);
+                    setLastSyncError('فشل الاتصال بمزامنة الوقت الفعلي لملف المستخدم.');
                 }
             });
+        channels.push(profileChannel);
+
+        console.log(`Subscribed to ${channels.length} real-time channels.`);
 
         return () => {
             if (debounceTimer) clearTimeout(debounceTimer);
-            if (channel) {
+            console.log(`Unsubscribing from ${channels.length} real-time channels.`);
+            channels.forEach(channel => {
                 supabase.removeChannel(channel).catch(error => {
-                    console.error("Failed to remove real-time channel:", error);
+                    console.error(`Failed to remove real-time channel ${channel.topic}:`, error);
                 });
-            }
+            });
         };
     }, [user, isOnline, isAuthLoading, isDataLoading, syncStatus]);
 

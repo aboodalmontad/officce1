@@ -8,6 +8,13 @@ import { AppData, DeletedIds } from './useSupabaseData';
 export type SyncStatus = 'loading' | 'syncing' | 'synced' | 'error' | 'unconfigured' | 'uninitialized';
 
 
+// Fix: Define getInitialDeletedIds to resolve reference error. This function was defined in useSupabaseData.ts, which would cause a circular dependency if imported.
+const getInitialDeletedIds = (): DeletedIds => ({
+    clients: [], cases: [], stages: [], sessions: [], adminTasks: [], appointments: [], accountingEntries: [], invoices: [], invoiceItems: [], assistants: [],
+    documents: [],
+    documentPaths: [],
+});
+
 interface UseSyncProps {
     user: User | null;
     localData: AppData;
@@ -213,6 +220,8 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                 (flatUpserts as any)[key] = itemsToUpsert;
                 (mergedFlatData as any)[key] = Array.from(finalMergedItems.values());
             }
+            
+            let successfulDeletions = getInitialDeletedIds();
 
             if (deletedIds.documentPaths && deletedIds.documentPaths.length > 0) {
                 setStatus('syncing', 'جاري حذف الملفات من السحابة...');
@@ -220,13 +229,10 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                 if (supabase) {
                     const { error: storageError } = await supabase.storage.from('documents').remove(deletedIds.documentPaths);
                     if (storageError) console.warn('Failed to delete some files from storage, proceeding anyway.', storageError);
-                    onDeletionsSynced({ documentPaths: deletedIds.documentPaths } as any);
+                    else successfulDeletions.documentPaths = deletedIds.documentPaths;
                 }
             }
             
-            // Fix: Cast each array of IDs to 'any' to resolve type mismatch errors.
-            // The downstream function `deleteDataFromSupabase` only needs the 'id' property,
-            // so this is a safe way to bypass strict type checking.
             const flatDeletes: Partial<FlatData> = {
                 clients: deletedIds.clients.map(id => ({ id })) as any,
                 cases: deletedIds.cases.map(id => ({ id })) as any,
@@ -244,7 +250,7 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
             if (Object.values(flatDeletes).some(arr => arr && arr.length > 0)) {
                 setStatus('syncing', 'جاري حذف البيانات من السحابة...');
                 await deleteDataFromSupabase(flatDeletes, currentUser);
-                onDeletionsSynced(deletedIds);
+                successfulDeletions = { ...successfulDeletions, ...deletedIds };
             }
 
             setStatus('syncing', 'جاري رفع البيانات إلى السحابة...');
@@ -260,6 +266,7 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
 
             const finalMergedData = constructData(mergedFlatData as FlatData);
             onDataSynced(finalMergedData);
+            onDeletionsSynced(successfulDeletions);
             setStatus('synced');
         } catch (err: any) {
             console.error("Error during sync:", err);
