@@ -43,8 +43,6 @@ export const checkSupabaseSchema = async () => {
         'stages': 'id', 'sessions': 'id', 'admin_tasks': 'id',
         'appointments': 'id', 'accounting_entries': 'id', 'assistants': 'name',
         'invoices': 'id', 'invoice_items': 'id',
-        'site_finances': 'id',
-        'case_documents': 'id',
     };
     
     const tableCheckPromises = Object.entries(tableChecks).map(([table, query]) =>

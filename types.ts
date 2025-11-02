@@ -14,7 +14,6 @@ export interface Profile {
 
 export interface Session {
   id: string;
-  stageId: string;
   court: string;
   caseNumber: string;
   date: Date;
@@ -25,46 +24,42 @@ export interface Session {
   isPostponed: boolean;
   nextSessionDate?: Date;
   assignee?: string;
-  updated_at?: Date;
-  // FIX: Added stageDecisionDate to session to align with dynamic data structures.
+  // For contextual rendering in flat lists
+  stageId?: string;
   stageDecisionDate?: Date;
+  updated_at?: Date;
 }
 
 export interface Stage {
   id: string;
-  caseId: string;
   court: string;
   caseNumber: string;
   firstSessionDate?: Date;
+  sessions: Session[];
   decisionDate?: Date;
   decisionNumber?: string;
   decisionSummary?: string;
   decisionNotes?: string;
   updated_at?: Date;
-  // FIX: Added sessions to Stage to support nested data structure.
-  sessions: Session[];
 }
 
 export interface Case {
   id: string;
-  clientId: string;
   subject: string;
   clientName: string;
   opponentName: string;
+  stages: Stage[];
   feeAgreement: string;
   status: 'active' | 'closed' | 'on_hold';
   updated_at?: Date;
-  // FIX: Added stages to Case to support nested data structure.
-  stages: Stage[];
 }
 
 export interface Client {
   id: string;
   name: string;
   contactInfo: string;
-  updated_at?: Date;
-  // FIX: Added cases to Client to support nested data structure.
   cases: Case[];
+  updated_at?: Date;
 }
 
 export interface AdminTask {
@@ -137,15 +132,4 @@ export interface SiteFinancialEntry {
   category?: string | null;
   profile_full_name?: string;
   updated_at?: Date;
-}
-
-export interface CaseDocument {
-  id: string; // uuid
-  case_id: string;
-  user_id: string;
-  file_name: string;
-  file_path: string;
-  mime_type: string;
-  created_at: string; // ISO string
-  publicUrl?: string; // For temporary access
 }

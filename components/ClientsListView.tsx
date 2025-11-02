@@ -6,10 +6,12 @@ import CaseAccounting from './CaseAccounting';
 import { formatDate } from '../utils/dateUtils';
 import { MenuItem } from './ContextMenu';
 import CaseDocuments from './CaseDocuments';
-import { useData } from '../App';
 
 interface ClientsListViewProps {
-    clients: (Client & { cases: (Case & { stages: (Stage & { sessions: Session[] })[] })[] })[];
+    clients: Client[];
+    setClients: (updater: (prevClients: Client[]) => Client[]) => void;
+    accountingEntries: AccountingEntry[];
+    setAccountingEntries: (updater: (prev: AccountingEntry[]) => AccountingEntry[]) => void;
     onAddCase: (clientId: string) => void;
     onEditCase: (caseItem: Case, client: Client) => void;
     onDeleteCase: (caseId: string, clientId: string) => void;
@@ -23,28 +25,27 @@ interface ClientsListViewProps {
     onEditClient: (client: Client) => void;
     onDeleteClient: (clientId: string) => void;
     onPrintClientStatement: (clientId: string) => void;
+    assistants: string[];
     onUpdateSession: (sessionId: string, updatedFields: Partial<Session>) => void;
-    onUpdateCase: (caseId: string, updatedFields: Partial<Case>) => void;
     onDecide: (session: Session) => void;
     showContextMenu: (event: React.MouseEvent, menuItems: MenuItem[]) => void;
     onOpenAdminTaskModal: (initialData?: any) => void;
     onCreateInvoice: (clientId: string, caseId?: string) => void;
-    assistants: string[];
-    accountingEntries: AccountingEntry[];
-    setAccountingEntries: (updater: React.SetStateAction<AccountingEntry[]>) => void;
 }
 
-const ClientCard: React.FC<{ client: (Client & { cases: (Case & { stages: (Stage & { sessions: Session[] })[] })[] }); props: Omit<ClientsListViewProps, 'clients'>; expanded: boolean; onToggle: () => void; }> = ({ client, props, expanded, onToggle }) => {
+const ClientCard: React.FC<{ client: Client; props: ClientsListViewProps; expanded: boolean; onToggle: () => void; }> = ({ client, props, expanded, onToggle }) => {
     const [expandedCaseId, setExpandedCaseId] = React.useState<string | null>(null);
     const [activeTab, setActiveTab] = React.useState<'stages' | 'accounting' | 'documents'>('stages');
     const clientLongPressTimer = React.useRef<number | null>(null);
     const caseLongPressTimer = React.useRef<number | null>(null);
     const stageLongPressTimer = React.useRef<number | null>(null);
 
-    const { accountingEntries, setAccountingEntries, assistants } = useData();
-
     const handleFeeChange = (caseId: string, newFee: string) => {
-        props.onUpdateCase(caseId, { feeAgreement: newFee, updated_at: new Date() });
+        props.setClients(clients => clients.map(c => c.id === client.id ? {
+            ...c,
+            updated_at: new Date(),
+            cases: c.cases.map(cs => cs.id === caseId ? {...cs, feeAgreement: newFee, updated_at: new Date()} : cs)
+        } : c));
     };
     
     // --- Context Menu Handlers ---
@@ -74,7 +75,7 @@ const ClientCard: React.FC<{ client: (Client & { cases: (Case & { stages: (Stage
         props.showContextMenu(event, menuItems);
     };
 
-    const handleCaseContextMenu = (event: React.MouseEvent, caseItem: (Case & { stages: (Stage & { sessions: Session[] })[] })) => {
+    const handleCaseContextMenu = (event: React.MouseEvent, caseItem: Case) => {
         const statusMap: Record<Case['status'], string> = { active: 'نشطة', closed: 'مغلقة', on_hold: 'معلقة' };
         
         const details = [
@@ -84,7 +85,7 @@ const ClientCard: React.FC<{ client: (Client & { cases: (Case & { stages: (Stage
             `*الحالة:* ${statusMap[caseItem.status]}`
         ];
 
-        let latestStage: (Stage & { sessions: Session[] }) | null = null;
+        let latestStage: Stage | null = null;
         let latestSession: Session | null = null;
         if (caseItem.stages.length > 0) {
             const allSessions = caseItem.stages.flatMap(s => s.sessions);
@@ -139,9 +140,8 @@ const ClientCard: React.FC<{ client: (Client & { cases: (Case & { stages: (Stage
         props.showContextMenu(event, menuItems);
     };
 
-    const handleStageContextMenu = (event: React.MouseEvent, stage: (Stage & { sessions: Session[] }), caseItem: Case) => {
-        const stageSessions = stage.sessions;
-        const latestSession = stageSessions.length > 0 ? stageSessions.reduce((latest, current) => new Date(current.date) > new Date(latest.date) ? current : latest) : null;
+    const handleStageContextMenu = (event: React.MouseEvent, stage: Stage, caseItem: Case) => {
+        const latestSession = stage.sessions.length > 0 ? stage.sessions.reduce((latest, current) => new Date(current.date) > new Date(latest.date) ? current : latest) : null;
 
         const details = [
             `*الموكل:* ${client.name}`,
@@ -389,7 +389,7 @@ const ClientCard: React.FC<{ client: (Client & { cases: (Case & { stages: (Stage
                                                                 onEdit={(session) => props.onEditSession(session, stage, caseItem, client)}
                                                                 onDelete={(sessionId) => props.onDeleteSession(sessionId, stage.id, caseItem.id, client.id)}
                                                                 onUpdate={props.onUpdateSession}
-                                                                assistants={assistants}
+                                                                assistants={props.assistants}
                                                                 onDecide={props.onDecide}
                                                                 stage={stage}
                                                                 showSessionDate={true}
@@ -404,8 +404,8 @@ const ClientCard: React.FC<{ client: (Client & { cases: (Case & { stages: (Stage
                                             <CaseAccounting
                                                 caseData={caseItem}
                                                 client={client}
-                                                caseAccountingEntries={accountingEntries.filter(e => e.caseId === caseItem.id)}
-                                                setAccountingEntries={setAccountingEntries}
+                                                caseAccountingEntries={props.accountingEntries.filter(e => e.caseId === caseItem.id)}
+                                                setAccountingEntries={props.setAccountingEntries}
                                                 onFeeAgreementChange={(fee) => handleFeeChange(caseItem.id, fee)}
                                             />
                                         )}
@@ -425,26 +425,24 @@ const ClientCard: React.FC<{ client: (Client & { cases: (Case & { stages: (Stage
     );
 };
 
-
-const ClientsListView: React.FC<Omit<ClientsListViewProps, 'setCases'>> = (props) => {
+const ClientsListView: React.FC<ClientsListViewProps> = (props) => {
     const [expandedClientId, setExpandedClientId] = React.useState<string | null>(null);
-    const { clients: clientsTree, ...restProps } = props;
 
     const handleToggleClient = (clientId: string) => {
         setExpandedClientId(prevId => (prevId === clientId ? null : clientId));
     };
 
-    if (clientsTree.length === 0) {
-        return <p className="p-6 text-center text-gray-500">لا يوجد موكلون يطابقون بحثك.</p>;
+    if (props.clients.length === 0) {
+        return <p className="p-6 text-center text-gray-500">لا يوجد موكلون لعرضهم. ابدأ بإضافة موكل جديد.</p>;
     }
 
     return (
         <div className="p-4 space-y-4">
-            {clientsTree.map(client => (
+            {props.clients.map(client => (
                 <ClientCard 
                     key={client.id} 
                     client={client} 
-                    props={restProps} 
+                    props={props} 
                     expanded={expandedClientId === client.id}
                     onToggle={() => handleToggleClient(client.id)}
                 />

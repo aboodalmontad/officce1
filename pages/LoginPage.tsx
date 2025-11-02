@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { getSupabaseClient } from '../supabaseClient';
-import { ExclamationCircleIcon, EyeIcon, EyeSlashIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, ArrowTopRightOnSquareIcon, PowerIcon } from '../components/icons';
+import { ExclamationCircleIcon, EyeIcon, EyeSlashIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, ArrowTopRightOnSquareIcon } from '../components/icons';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { User } from '@supabase/supabase-js';
 
@@ -60,8 +60,6 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
     const [info, setInfo] = React.useState<string | null>(null);
     const [authFailed, setAuthFailed] = React.useState(false); // For highlighting fields on auth failure
     const [showPassword, setShowPassword] = React.useState(false);
-    const [rememberMe, setRememberMe] = React.useState(false);
-    const [showPendingApproval, setShowPendingApproval] = React.useState(false);
     const isOnline = useOnlineStatus();
 
     const [form, setForm] = React.useState({
@@ -83,7 +81,6 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                         mobile: cachedCredentials.mobile,
                         password: cachedCredentials.password
                     }));
-                    setRememberMe(true);
                 }
             }
         } catch (e) {
@@ -162,7 +159,8 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
             setAuthFailed(true);
             return;
         }
-        const email = `sy${phone.replace('+', '')}@email.com`;
+        // Remove the '+' from the E.164 phone number to create a safer email format.
+        const email = `sy${phone.substring(1)}@email.com`;
     
         if (!supabase) {
             setError("Supabase client is not available.");
@@ -216,14 +214,10 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                 const { error: signInError } = await supabase.auth.signInWithPassword({ email, password: form.password });
                 if (signInError) throw signInError;
     
-                if (rememberMe) {
-                    localStorage.setItem(LAST_USER_CREDENTIALS_CACHE_KEY, JSON.stringify({
-                        mobile: form.mobile,
-                        password: form.password,
-                    }));
-                } else {
-                    localStorage.removeItem(LAST_USER_CREDENTIALS_CACHE_KEY);
-                }
+                localStorage.setItem(LAST_USER_CREDENTIALS_CACHE_KEY, JSON.stringify({
+                    mobile: form.mobile,
+                    password: form.password,
+                }));
             } catch (err: any) {
                 const lowerMsg = String(err.message).toLowerCase();
                 console.error('Online Login error:', err);
@@ -291,31 +285,41 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                     throw new Error('لا يمكن إنشاء حساب جديد بدون اتصال بالإنترنت.');
                 }
                 
-                // Pre-emptive check for existing mobile number using an RPC call to bypass RLS.
-                const { data: mobileExists, error: rpcError } = await supabase
-                    .rpc('check_if_mobile_exists', { mobile: form.mobile });
-
-                if (rpcError) {
-                    // Provide a helpful error if the function is missing, indicating an outdated setup script.
-                    if (rpcError.message.includes('function public.check_if_mobile_exists')) {
-                         throw new Error("وظيفة التحقق من رقم الجوال غير موجودة. يرجى التأكد من تشغيل أحدث سكربت إعداد من صفحة الإعدادات.");
+                const normalizeMobileForDBCheck = (mobile: string): string | null => {
+                    const digits = mobile.replace(/\D/g, '');
+                    if (digits.length >= 9) {
+                        const lastNine = digits.slice(-9);
+                        if (lastNine.startsWith('9')) {
+                            return '0' + lastNine;
+                        }
                     }
-                    throw rpcError;
-                }
+                    return null;
+                };
 
-                if (mobileExists) {
-                    setError(
-                        <>
-                            هذا الرقم مسجل بالفعل. {' '}
-                            <a href="#" onClick={(e) => { e.preventDefault(); setIsLoginView(true); setError(null); }} className="font-bold underline">
-                                اضغط هنا لتسجيل الدخول.
-                            </a>
-                        </>
-                    );
+                const normalizedMobile = normalizeMobileForDBCheck(form.mobile);
+                if (!normalizedMobile) {
+                    setError('رقم الجوال غير صالح.');
                     setLoading(false);
+                    setAuthFailed(true);
                     return;
                 }
 
+                const { data: mobileExists, error: rpcError } = await supabase.rpc('check_if_mobile_exists', {
+                    mobile_to_check: normalizedMobile
+                });
+
+                if (rpcError) {
+                    console.warn("RPC error checking mobile number:", rpcError);
+                    // Proceed and let the database's unique constraint handle the final validation.
+                }
+
+                if (mobileExists === true) {
+                    setError('هذا الرقم مسجل بالفعل. يرجى تسجيل الدخول أو استخدام رقم جوال آخر.');
+                    setLoading(false);
+                    setAuthFailed(true);
+                    return;
+                }
+    
                 const { data, error: signUpError } = await supabase.auth.signUp({
                     email,
                     password: form.password,
@@ -325,23 +329,16 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                 if (signUpError) throw signUpError;
                 
                 if (data.user) {
-                    setShowPendingApproval(true);
+                    setMessage("تم إنشاء حسابك بنجاح. يرجى انتظار موافقة المسؤول لتتمكن من تسجيل الدخول.");
+                    setIsLoginView(true);
+                    setForm({ fullName: '', mobile: '', password: ''});
                 } else {
                     throw new Error("لم يتم إرجاع بيانات المستخدم بعد إنشاء الحساب.");
                 }
             } catch (err: any) {
                 const lowerMsg = String(err.message).toLowerCase();
-                // The 'user already registered' error from Supabase is now a fallback,
-                // as our pre-emptive check should catch most cases.
-                if (lowerMsg.includes('user already registered')) {
-                     setError(
-                        <>
-                            هذا الحساب مسجل بالفعل. {' '}
-                            <a href="#" onClick={(e) => { e.preventDefault(); setIsLoginView(true); setError(null); }} className="font-bold underline">
-                                اضغط هنا لتسجيل الدخول.
-                            </a>
-                        </>
-                    );
+                if (lowerMsg.includes('user already registered') || lowerMsg.includes('unique constraint') || lowerMsg.includes('profiles_mobile_number_key')) {
+                    setError('هذا الحساب أو رقم الجوال مسجل بالفعل. يرجى تسجيل الدخول أو استخدام رقم جوال آخر.');
                 } else if (lowerMsg.includes('failed to fetch') || lowerMsg.includes('networkerror')) {
                     setError('فشل الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.');
                 } else {
@@ -352,30 +349,6 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
             }
         }
     };
-
-    if (showPendingApproval) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4" dir="rtl">
-                <div className="w-full max-w-md p-8 text-center bg-white rounded-lg shadow-md animate-fade-in">
-                    <h1 className="text-2xl font-bold text-gray-800">تم إنشاء الحساب بنجاح</h1>
-                    <p className="mt-4 text-gray-600">
-                        شكراً لتسجيلك. حسابك الآن قيد المراجعة من قبل المسؤول. ستتمكن من تسجيل الدخول فور الموافقة على طلبك.
-                    </p>
-                    <button
-                        onClick={() => {
-                            setShowPendingApproval(false);
-                            setIsLoginView(true);
-                            setForm({ fullName: '', mobile: '', password: ''});
-                        }}
-                        className="mt-8 inline-flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-gray-600 rounded-md hover:bg-gray-700"
-                    >
-                        <PowerIcon className="w-5 h-5" />
-                        <span>العودة إلى صفحة تسجيل الدخول</span>
-                    </button>
-                </div>
-            </div>
-        );
-    }
 
     return (
         <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4" dir="rtl">
@@ -403,41 +376,25 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                         {!isLoginView && (
                             <div>
                                 <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">الاسم الكامل</label>
-                                <input id="fullName" name="fullName" type="text" value={form.fullName} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500" autoComplete="name" />
+                                <input id="fullName" name="fullName" type="text" value={form.fullName} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
                             </div>
                         )}
 
                         <div>
                             <label htmlFor="mobile" className="block text-sm font-medium text-gray-700">رقم الجوال</label>
-                            <input id="mobile" name="mobile" type="tel" value={form.mobile} onChange={handleInputChange} required placeholder="09xxxxxxxx" className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${authFailed ? 'border-red-500' : 'border-gray-300'}`} autoComplete="username" />
+                            <input id="mobile" name="mobile" type="tel" value={form.mobile} onChange={handleInputChange} required placeholder="09xxxxxxxx" className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${authFailed ? 'border-red-500' : 'border-gray-300'}`} />
                         </div>
 
                         <div>
                             <label htmlFor="password"
                                 className="block text-sm font-medium text-gray-700">كلمة المرور</label>
                             <div className="relative mt-1">
-                                <input id="password" name="password" type={showPassword ? 'text' : 'password'} value={form.password} onChange={handleInputChange} required className={`block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${authFailed ? 'border-red-500' : 'border-gray-300'}`} autoComplete={isLoginView ? 'current-password' : 'new-password'} />
+                                <input id="password" name="password" type={showPassword ? 'text' : 'password'} value={form.password} onChange={handleInputChange} required className={`block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${authFailed ? 'border-red-500' : 'border-gray-300'}`} />
                                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 left-0 px-3 flex items-center text-gray-400">
                                     {showPassword ? <EyeSlashIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
                                 </button>
                             </div>
                         </div>
-                        
-                        {isLoginView && (
-                             <div className="flex items-center">
-                                <input
-                                    id="remember-me"
-                                    name="remember-me"
-                                    type="checkbox"
-                                    checked={rememberMe}
-                                    onChange={(e) => setRememberMe(e.target.checked)}
-                                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                />
-                                <label htmlFor="remember-me" className="ms-2 block text-sm text-gray-900">
-                                    تذكرني
-                                </label>
-                            </div>
-                        )}
 
                         <div>
                             <button type="submit" disabled={loading || (!isOnline && !isLoginView)} className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-300">

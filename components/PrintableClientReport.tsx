@@ -7,10 +7,9 @@ interface PrintableClientReportProps {
     caseData?: Case;
     entries: AccountingEntry[];
     totals: { income: number; expense: number; balance: number };
-    cases: Case[];
 }
 
-const PrintableClientReport: React.FC<PrintableClientReportProps> = ({ client, caseData, entries, totals, cases }) => {
+const PrintableClientReport: React.FC<PrintableClientReportProps> = ({ client, caseData, entries, totals }) => {
     return (
         <div className="p-4">
             <header className="text-center border-b pb-4 mb-6">
@@ -58,7 +57,7 @@ const PrintableClientReport: React.FC<PrintableClientReportProps> = ({ client, c
                             </thead>
                             <tbody>
                                 {entries.map(entry => {
-                                    const relatedCase = cases.find(c => c.id === entry.caseId);
+                                    const relatedCase = client.cases.find(c => c.id === entry.caseId);
                                     return (
                                         <tr key={entry.id} className="bg-white border-b">
                                             <td className="px-4 py-3">{formatDate(entry.date)}</td>

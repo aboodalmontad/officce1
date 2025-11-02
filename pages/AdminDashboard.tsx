@@ -46,34 +46,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     const [pendingUsersCount, setPendingUsersCount] = React.useState(0);
     const [loading, setLoading] = React.useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
-    const supabase = getSupabaseClient();
-
-    const fetchPendingCount = React.useCallback(async () => {
-        if (!supabase) return;
-        
-        const { count, error } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true })
-            .eq('is_approved', false);
-
-        if (error) {
-            console.error("Error fetching pending users count:", error);
-        } else if (count !== null) {
-            setPendingUsersCount(count);
-        }
-    }, [supabase]);
-
 
     React.useEffect(() => {
+        const supabase = getSupabaseClient();
         if (!supabase) {
             setLoading(false);
             return;
         }
 
-        fetchPendingCount();
-        setLoading(false);
+        const fetchPendingCount = async () => {
+            const { count, error } = await supabase
+                .from('profiles')
+                .select('*', { count: 'exact', head: true })
+                .eq('is_approved', false);
 
-        const channel: RealtimeChannel = supabase.channel('admin-dashboard-profiles-subscription');
+            if (error) {
+                console.error("Error fetching pending users count:", error);
+            } else if (count !== null) {
+                setPendingUsersCount(count);
+            }
+        };
+
+        fetchPendingCount();
+
+        const channel: RealtimeChannel = supabase.channel('public:profiles');
         
         channel.on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, 
             (payload) => {
@@ -82,18 +78,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
             })
             .subscribe((status, err) => {
                 if (err) {
-                    console.error("Supabase channel subscription error in AdminDashboard:", err);
+                    console.error("Supabase channel subscription error:", err);
                 }
             });
             
+        setLoading(false);
+
         return () => {
             if (channel) {
                 supabase.removeChannel(channel).catch(error => {
-                    console.error("Failed to remove Supabase channel on unmount (AdminDashboard):", error);
+                    console.error("Failed to remove Supabase channel on unmount:", error);
                 });
             }
         };
-    }, [supabase, fetchPendingCount]);
+    }, []);
 
 
     const renderView = () => {
