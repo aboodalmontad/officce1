@@ -65,18 +65,26 @@ const DOCS_METADATA_STORE_NAME = 'caseDocumentMetadata';
 
 async function getDb(): Promise<IDBPDatabase> {
   return openDB(DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion) {
+    upgrade(db, oldVersion, newVersion, transaction) {
+      console.log(`Upgrading DB from version ${oldVersion} to ${newVersion}`);
+      // This upgrade logic is robust and idempotent. It checks for the existence
+      // of each object store before creating it, ensuring that running this on
+      // a fully or partially upgraded database won't cause errors.
+
       if (oldVersion < 1) {
         if (!db.objectStoreNames.contains(DATA_STORE_NAME)) {
+          console.log(`Creating object store: ${DATA_STORE_NAME}`);
           db.createObjectStore(DATA_STORE_NAME);
         }
       }
       if (oldVersion < 2) {
         if (!db.objectStoreNames.contains(DOCS_FILES_STORE_NAME)) {
-            db.createObjectStore(DOCS_FILES_STORE_NAME);
+          console.log(`Creating object store: ${DOCS_FILES_STORE_NAME}`);
+          db.createObjectStore(DOCS_FILES_STORE_NAME);
         }
         if (!db.objectStoreNames.contains(DOCS_METADATA_STORE_NAME)) {
-            db.createObjectStore(DOCS_METADATA_STORE_NAME);
+          console.log(`Creating object store: ${DOCS_METADATA_STORE_NAME}`);
+          db.createObjectStore(DOCS_METADATA_STORE_NAME);
         }
       }
     },
@@ -469,11 +477,9 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         );
 
         if (hasPendingFiles) {
-            const timer = setTimeout(() => {
-                console.log("Pending documents detected. Triggering file sync controller.");
-                fileSyncController();
-            }, 100);
-            return () => clearTimeout(timer);
+            // No longer uses a timer, but we keep the async nature
+            console.log("Pending documents detected. Triggering file sync controller immediately.");
+            fileSyncController();
         }
     }, [data.documents, isDataLoading, fileSyncController]);
 
@@ -482,33 +488,22 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         const currentLocalDocuments = dataRef.current.documents;
         const localDocMap = new Map(currentLocalDocuments.map(doc => [doc.id, doc]));
         
-        const syncedDocsWithLocalState = (syncedData.documents as any[] || [])
+        const syncedDocsWithLocalState = (syncedData.documents || [])
             .filter(doc => doc && doc.id)
-            // FIX: The original code had a type error when merging remote and local documents due to object spreading with incompatible types (e.g., string vs. Date).
-            // This was replaced with a more robust, explicit construction of the merged object to ensure type safety.
-            .map((remoteDoc): CaseDocument => {
-                const localDoc: CaseDocument | undefined = localDocMap.get(remoteDoc.id);
+            .map((remoteDoc: any): CaseDocument => {
+                const localDoc = localDocMap.get(remoteDoc.id);
 
                 if (localDoc) {
-                    // Create a new object ensuring all properties are correctly typed.
-                    // This avoids type errors from spreading objects with mismatched types (e.g., string vs Date).
                     const mergedDoc: CaseDocument = {
-                        id: remoteDoc.id,
-                        caseId: remoteDoc.caseId ?? localDoc.caseId,
-                        userId: remoteDoc.userId ?? localDoc.userId,
-                        name: remoteDoc.name ?? localDoc.name,
-                        type: remoteDoc.type ?? localDoc.type,
-                        size: remoteDoc.size ?? localDoc.size,
-                        storagePath: remoteDoc.storagePath ?? localDoc.storagePath,
-                        // Preserve the local state, as it's client-side information.
-                        localState: localDoc.localState,
-                        // Explicitly create Date objects.
-                        addedAt: new Date(remoteDoc.addedAt ?? localDoc.addedAt),
-                        updated_at: remoteDoc.updated_at ? new Date(remoteDoc.updated_at) : localDoc.updated_at
+                      ...localDoc,
+                      ...remoteDoc,
+                      addedAt: new Date(remoteDoc.addedAt ?? localDoc.addedAt),
+                      updated_at: remoteDoc.updated_at ? new Date(remoteDoc.updated_at) : localDoc.updated_at,
                     };
                     
-                    // After merging, decide the final state. If it wasn't a pending upload,
-                    // and we have a newer version from remote, it's now 'synced'.
+                    // FIX: Explicitly preserve localState, which is overwritten by spreading remoteDoc.
+                    mergedDoc.localState = localDoc.localState;
+
                     if (localDoc.localState !== 'pending_upload' && localDoc.localState !== 'error') {
                          mergedDoc.localState = 'synced';
                     }

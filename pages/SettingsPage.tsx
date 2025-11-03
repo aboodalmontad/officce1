@@ -95,18 +95,27 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
     
     const handleInspectDb = async () => {
         setDbStats('جاري الفحص...');
+        let stats = '';
         try {
             const db = await openDB('LawyerAppData', 2);
-            const appDataCount = await db.count('appData');
-            const docMetaCount = await db.count('caseDocumentMetadata');
-            const docFilesCount = await db.count('caseDocumentFiles');
-    
-            const stats = `
-- بيانات التطبيق الرئيسية (appData): ${appDataCount} سجل
-- بيانات الوثائق الوصفية (caseDocumentMetadata): ${docMetaCount} سجل
-- ملفات الوثائق المحفوظة (caseDocumentFiles): ${docFilesCount} ملف
-            `;
+            
+            const storesToCheck = [
+                { name: 'appData', label: 'بيانات التطبيق الرئيسية' },
+                { name: 'caseDocumentMetadata', label: 'بيانات الوثائق الوصفية' },
+                { name: 'caseDocumentFiles', label: 'ملفات الوثائق المحفوظة' }
+            ];
+
+            for (const store of storesToCheck) {
+                if (db.objectStoreNames.contains(store.name)) {
+                    const count = await db.count(store.name);
+                    stats += `- ${store.label} (${store.name}): ${count} سجل\n`;
+                } else {
+                    stats += `- ${store.label} (${store.name}): غير موجود!\n`;
+                }
+            }
+            
             setDbStats(stats.trim());
+
         } catch (error: any) {
             console.error("Failed to inspect DB:", error);
             setDbStats(`فشل فحص قاعدة البيانات: ${error.message}`);
