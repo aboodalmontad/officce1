@@ -57,7 +57,7 @@ const getInitialData = (): AppData => ({
 
 // --- IndexedDB Setup ---
 const DB_NAME = 'LawyerAppData';
-const DB_VERSION = 2; // Bumped version for new stores
+const DB_VERSION = 3; // Bump version to force upgrade for users with corrupted v2 DB
 const DATA_STORE_NAME = 'appData';
 const DOCS_FILES_STORE_NAME = 'caseDocumentFiles';
 const DOCS_METADATA_STORE_NAME = 'caseDocumentMetadata';
@@ -484,11 +484,11 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         const currentLocalDocuments = dataRef.current.documents;
         const localDocMap = new Map(currentLocalDocuments.map(doc => [doc.id, doc]));
 
-        // Fix: Cast syncedData.documents to any[] and remoteDoc to any to handle untyped data from sync/import.
+        // Fix: Cast syncedData.documents to any[] and remoteDoc to any to handle untype data from sync/import.
         const syncedDocsWithLocalState = ((syncedData.documents as any[]) || [])
             .filter(doc => doc && doc.id)
             .map((remoteDoc: any): CaseDocument => {
-                const localDoc = localDocMap.get(remoteDoc.id);
+                const localDoc: CaseDocument | undefined = localDocMap.get(remoteDoc.id);
 
                 if (localDoc) {
                     // Item exists locally. Merge remote data over local, but preserve localState.
@@ -499,7 +499,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                     // Ensure dates from remote are converted to Date objects
                     mergedDoc.addedAt = new Date(remoteDoc.addedAt ?? localDoc.addedAt);
                     mergedDoc.updated_at = remoteDoc.updated_at ? new Date(remoteDoc.updated_at) : localDoc.updated_at;
-                    // Always preserve the crucial local state unless it's an error.
+                    // Always preserve the crucial local state.
                     mergedDoc.localState = localDoc.localState;
                     return mergedDoc;
                 } else {
@@ -809,7 +809,11 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     }, [user, isOnline, isAuthLoading, isDataLoading, syncStatus]);
 
     const addDocuments = React.useCallback(async (caseId: string, files: FileList) => {
-        if (!userId) throw new Error("User not authenticated");
+        // FIX: Create a stable local variable for `userId`. The type checker may have issues
+        // with the `userId` from the hook's scope inside the `useCallback` closure. This
+        // ensures `currentUserId` is correctly inferred as a `string` after the guard clause.
+        const currentUserId = userId;
+        if (!currentUserId) throw new Error("User not authenticated");
 
         const newDocs: CaseDocument[] = [];
         const newDocFiles: { docId: string; file: File }[] = [];
@@ -818,8 +822,16 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             const file = files[i];
             const docId = `doc-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 9)}`;
             const newDoc: CaseDocument = {
-                id: docId, caseId, userId, name: file.name, type: file.type, size: file.size,
-                addedAt: new Date(), storagePath: '', localState: 'pending_upload', updated_at: new Date(),
+                id: docId,
+                caseId: caseId,
+                userId: currentUserId,
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                addedAt: new Date(),
+                storagePath: '',
+                localState: 'pending_upload',
+                updated_at: new Date(),
             };
             newDocs.push(newDoc);
             newDocFiles.push({ docId, file });
