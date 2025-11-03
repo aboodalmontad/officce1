@@ -1,17 +1,16 @@
 import * as React from 'react';
 import { Session as AuthSession, User } from '@supabase/supabase-js';
 
-// Statically import ClientsPage to fix critical lazy loading error
+// Statically import ALL page components to fix critical lazy loading/module errors.
 import ClientsPage from './pages/ClientsPage';
+import HomePage from './pages/HomePage';
+import AccountingPage from './pages/AccountingPage';
+import SettingsPage from './pages/SettingsPage';
+import LoginPage from './pages/LoginPage';
+import AdminDashboard from './pages/AdminDashboard';
+import PendingApprovalPage from './pages/PendingApprovalPage';
+import SubscriptionExpiredPage from './pages/SubscriptionExpiredPage';
 
-// Lazy load other page components for code splitting and faster initial load
-const HomePage = React.lazy(() => import('./pages/HomePage'));
-const AccountingPage = React.lazy(() => import('./pages/AccountingPage'));
-const SettingsPage = React.lazy(() => import('./pages/SettingsPage'));
-const LoginPage = React.lazy(() => import('./pages/LoginPage'));
-const AdminDashboard = React.lazy(() => import('./pages/AdminDashboard'));
-const PendingApprovalPage = React.lazy(() => import('./pages/PendingApprovalPage'));
-const SubscriptionExpiredPage = React.lazy(() => import('./pages/SubscriptionExpiredPage'));
 
 import ConfigurationModal from './components/ConfigurationModal';
 import { useSupabaseData, SyncStatus, AppData } from './hooks/useSupabaseData';
@@ -490,11 +489,11 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
 
     const renderPage = () => {
         switch (currentPage) {
-            case 'home': return <React.Suspense fallback={<FullScreenLoader />}><HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} /></React.Suspense>;
+            case 'home': return <HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} />;
             case 'clients': return <ClientsPage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} onCreateInvoice={handleCreateInvoice} />;
-            case 'accounting': return <React.Suspense fallback={<FullScreenLoader />}><AccountingPage initialInvoiceData={initialInvoiceData} clearInitialInvoiceData={clearInitialInvoiceData} /></React.Suspense>;
-            case 'settings': return <React.Suspense fallback={<FullScreenLoader />}><SettingsPage /></React.Suspense>;
-            default: return <React.Suspense fallback={<FullScreenLoader />}><HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} /></React.Suspense>;
+            case 'accounting': return <AccountingPage initialInvoiceData={initialInvoiceData} clearInitialInvoiceData={clearInitialInvoiceData} />;
+            case 'settings': return <SettingsPage />;
+            default: return <HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} />;
         }
     };
     
@@ -525,7 +524,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     }
 
     if (!session || !profile) {
-        return <React.Suspense fallback={<FullScreenLoader />}><LoginPage onForceSetup={() => setShowConfigModal(true)} onLoginSuccess={handleLoginSuccess} /></React.Suspense>;
+        return <LoginPage onForceSetup={() => setShowConfigModal(true)} onLoginSuccess={handleLoginSuccess} />;
     }
     
     if (supabaseData.isDataLoading) {
@@ -533,16 +532,16 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     }
     
     if (!profile.is_approved && profile.role !== 'admin') {
-        return <React.Suspense fallback={<FullScreenLoader />}><PendingApprovalPage onLogout={handleLogout} /></React.Suspense>;
+        return <PendingApprovalPage onLogout={handleLogout} />;
     }
     
     const subscriptionEndDate = profile.subscription_end_date ? new Date(profile.subscription_end_date) : new Date(0);
     if (subscriptionEndDate < new Date() && profile.role !== 'admin') {
-        return <React.Suspense fallback={<FullScreenLoader />}><SubscriptionExpiredPage onLogout={handleLogout} /></React.Suspense>;
+        return <SubscriptionExpiredPage onLogout={handleLogout} />;
     }
     
     if (profile.role === 'admin') {
-        return <React.Suspense fallback={<FullScreenLoader />}><AdminDashboard onLogout={handleLogout} /></React.Suspense>;
+        return <AdminDashboard onLogout={handleLogout} />;
     }
 
     return (

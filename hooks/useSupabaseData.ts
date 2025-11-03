@@ -460,50 +460,81 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         }
     }, [getDocumentFile]);
 
+    // This is the primary trigger for the file sync controller. It runs whenever the document list changes.
+    React.useEffect(() => {
+        if (isDataLoading) return;
+
+        const hasPendingFiles = data.documents.some(
+            doc => doc.localState === 'pending_upload' || doc.localState === 'pending_download'
+        );
+
+        if (hasPendingFiles) {
+            const timer = setTimeout(() => {
+                console.log("Pending documents detected. Triggering file sync controller.");
+                fileSyncController();
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [data.documents, isDataLoading, fileSyncController]);
+
+
     const handleDataSynced = React.useCallback(async (syncedData: AppData) => {
         const currentLocalDocuments = dataRef.current.documents;
         const localDocMap = new Map(currentLocalDocuments.map(doc => [doc.id, doc]));
         
         const syncedDocsWithLocalState = (syncedData.documents as any[] || [])
             .filter(doc => doc && doc.id)
+            // FIX: The original code had a type error when merging remote and local documents due to object spreading with incompatible types (e.g., string vs. Date).
+            // This was replaced with a more robust, explicit construction of the merged object to ensure type safety.
             .map((remoteDoc): CaseDocument => {
-            const localDoc: CaseDocument | undefined = localDocMap.get(remoteDoc.id);
+                const localDoc: CaseDocument | undefined = localDocMap.get(remoteDoc.id);
 
-            if (localDoc) {
-                // Fix: Replace Object.assign with spread syntax for better TypeScript type inference.
-                // This resolves an issue where the merged object was incorrectly typed as '{}'.
-                // FIX: Removed strict type `CaseDocument` here. `remoteDoc` can have string dates which makes the merged object temporarily invalid.
-                const mergedDoc = { ...localDoc, ...remoteDoc };
-                if (localDoc.localState !== 'pending_upload' && localDoc.localState !== 'error') {
-                     mergedDoc.localState = 'synced';
-                }
-                // Fix: Cast date properties to 'any' to handle string-to-Date conversion,
-                // as remote data will have date strings.
-                mergedDoc.addedAt = new Date(mergedDoc.addedAt as any);
-                if (mergedDoc.updated_at) mergedDoc.updated_at = new Date(mergedDoc.updated_at as any);
-                return mergedDoc;
-            } else {
-                const newDoc: CaseDocument = {
-                    id: remoteDoc.id,
-                    caseId: remoteDoc.caseId || '',
-                    userId: remoteDoc.userId || userId || '',
-                    name: remoteDoc.name || 'unknown file',
-                    type: remoteDoc.type || 'application/octet-stream',
-                    size: typeof remoteDoc.size === 'number' ? remoteDoc.size : 0,
-                    addedAt: remoteDoc.addedAt ? new Date(remoteDoc.addedAt) : new Date(),
-                    storagePath: remoteDoc.storagePath || '',
-                    localState: 'error', 
-                    updated_at: remoteDoc.updated_at ? new Date(remoteDoc.updated_at) : new Date(),
-                };
-
-                if (remoteDoc.storagePath && String(remoteDoc.storagePath).trim() !== '') {
-                    newDoc.localState = 'pending_download';
+                if (localDoc) {
+                    // Create a new object ensuring all properties are correctly typed.
+                    // This avoids type errors from spreading objects with mismatched types (e.g., string vs Date).
+                    const mergedDoc: CaseDocument = {
+                        id: remoteDoc.id,
+                        caseId: remoteDoc.caseId ?? localDoc.caseId,
+                        userId: remoteDoc.userId ?? localDoc.userId,
+                        name: remoteDoc.name ?? localDoc.name,
+                        type: remoteDoc.type ?? localDoc.type,
+                        size: remoteDoc.size ?? localDoc.size,
+                        storagePath: remoteDoc.storagePath ?? localDoc.storagePath,
+                        // Preserve the local state, as it's client-side information.
+                        localState: localDoc.localState,
+                        // Explicitly create Date objects.
+                        addedAt: new Date(remoteDoc.addedAt ?? localDoc.addedAt),
+                        updated_at: remoteDoc.updated_at ? new Date(remoteDoc.updated_at) : localDoc.updated_at
+                    };
+                    
+                    // After merging, decide the final state. If it wasn't a pending upload,
+                    // and we have a newer version from remote, it's now 'synced'.
+                    if (localDoc.localState !== 'pending_upload' && localDoc.localState !== 'error') {
+                         mergedDoc.localState = 'synced';
+                    }
+                    return mergedDoc;
                 } else {
-                    console.warn(`Synced document ${remoteDoc.id} is missing a storagePath. Marking as error.`);
+                    const newDoc: CaseDocument = {
+                        id: remoteDoc.id,
+                        caseId: remoteDoc.caseId || '',
+                        userId: remoteDoc.userId || userId || '',
+                        name: remoteDoc.name || 'unknown file',
+                        type: remoteDoc.type || 'application/octet-stream',
+                        size: typeof remoteDoc.size === 'number' ? remoteDoc.size : 0,
+                        addedAt: remoteDoc.addedAt ? new Date(remoteDoc.addedAt) : new Date(),
+                        storagePath: remoteDoc.storagePath || '',
+                        localState: 'error', 
+                        updated_at: remoteDoc.updated_at ? new Date(remoteDoc.updated_at) : new Date(),
+                    };
+
+                    if (remoteDoc.storagePath && String(remoteDoc.storagePath).trim() !== '') {
+                        newDoc.localState = 'pending_download';
+                    } else {
+                        console.warn(`Synced document ${remoteDoc.id} is missing a storagePath. Marking as error.`);
+                    }
+                    return newDoc;
                 }
-                return newDoc;
-            }
-        });
+            });
 
         currentLocalDocuments.forEach(localDoc => {
             if (!syncedDocsWithLocalState.some(d => d.id === localDoc.id)) {
@@ -527,8 +558,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 console.error('Failed to save synced data to IndexedDB', e);
             }
         }
-        fileSyncController(); // Trigger file sync after data has been synced and processed.
-    }, [userId, fileSyncController]);
+    }, [userId]);
     
     const handleSyncStatusChange = React.useCallback((status: SyncStatus, error: string | null) => {
         setSyncStatus(status);
@@ -826,9 +856,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             }));
             throw new Error("فشل حفظ الوثيقة في قاعدة البيانات المحلية.");
         }
-        
-        fileSyncController(); // Trigger file sync immediately after adding documents.
-    }, [userId, fileSyncController]);
+    }, [userId]);
 
     const deleteDocument = React.useCallback(async (doc: CaseDocument) => {
         const docToDelete = doc;

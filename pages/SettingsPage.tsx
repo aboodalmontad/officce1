@@ -3,6 +3,7 @@ import { TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, Pl
 import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
 import { APP_DATA_KEY } from '../hooks/useSupabaseData';
 import { useData } from '../App';
+import { openDB } from 'idb';
 
 interface SettingsPageProps {}
 
@@ -13,6 +14,7 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
     const [isDeleteAssistantModalOpen, setIsDeleteAssistantModalOpen] = React.useState(false);
     const [assistantToDelete, setAssistantToDelete] = React.useState<string | null>(null);
     const [newAssistant, setNewAssistant] = React.useState('');
+    const [dbStats, setDbStats] = React.useState<string | null>(null);
     
 
     const showFeedback = (message: string, type: 'success' | 'error') => {
@@ -91,6 +93,26 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
         setAssistantToDelete(null);
     };
     
+    const handleInspectDb = async () => {
+        setDbStats('جاري الفحص...');
+        try {
+            const db = await openDB('LawyerAppData', 2);
+            const appDataCount = await db.count('appData');
+            const docMetaCount = await db.count('caseDocumentMetadata');
+            const docFilesCount = await db.count('caseDocumentFiles');
+    
+            const stats = `
+- بيانات التطبيق الرئيسية (appData): ${appDataCount} سجل
+- بيانات الوثائق الوصفية (caseDocumentMetadata): ${docMetaCount} سجل
+- ملفات الوثائق المحفوظة (caseDocumentFiles): ${docFilesCount} ملف
+            `;
+            setDbStats(stats.trim());
+        } catch (error: any) {
+            console.error("Failed to inspect DB:", error);
+            setDbStats(`فشل فحص قاعدة البيانات: ${error.message}`);
+        }
+    };
+
     const ToggleSwitch: React.FC<{ enabled: boolean; onChange: (enabled: boolean) => void; label: string }> = ({ enabled, onChange, label }) => (
         <div className="flex items-center">
             <span className="text-gray-700 me-3 font-medium">{label}</span>
@@ -150,6 +172,23 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
                         onChange={setAutoBackupEnabled}
                     />
                 </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow space-y-4">
+                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">فحص البيانات المحلية</h2>
+                <p className="text-gray-600 text-sm">
+                    استخدم هذا الزر للتحقق من حالة قاعدة البيانات المحلية على هذا الجهاز. يعرض عدد السجلات في كل جدول بيانات.
+                </p>
+                <button onClick={handleInspectDb} className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700 transition-colors">
+                    <ShieldCheckIcon className="w-5 h-5" />
+                    <span>فحص قاعدة البيانات المحلية</span>
+                </button>
+                {dbStats && (
+                    <div className="mt-4 p-4 bg-gray-100 rounded-md">
+                        <h3 className="font-semibold text-gray-800">نتائج الفحص:</h3>
+                        <pre className="text-sm text-gray-700 whitespace-pre-wrap">{dbStats}</pre>
+                    </div>
+                )}
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow space-y-4">
