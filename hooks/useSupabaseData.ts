@@ -32,13 +32,11 @@ export type DeletedIds = {
     invoices: string[];
     invoiceItems: string[];
     assistants: string[];
-    // Fix: Added missing properties to handle document deletion.
     documents: string[];
     documentPaths: string[];
 };
 const getInitialDeletedIds = (): DeletedIds => ({
     clients: [], cases: [], stages: [], sessions: [], adminTasks: [], appointments: [], accountingEntries: [], invoices: [], invoiceItems: [], assistants: [],
-    // Fix: Initialized new properties.
     documents: [],
     documentPaths: [],
 });
@@ -332,6 +330,12 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     isAutoSyncEnabledRef.current = isAutoSyncEnabled;
     const isAutoBackupEnabledRef = React.useRef(isAutoBackupEnabled);
     isAutoBackupEnabledRef.current = isAutoBackupEnabled;
+    const isOnlineRef = React.useRef(isOnline);
+    isOnlineRef.current = isOnline;
+    const userIdRef = React.useRef(userId);
+    userIdRef.current = userId;
+    
+    const isFileSyncingRef = React.useRef(false);
 
     const onDeletionsSynced = React.useCallback((syncedDeletions: Partial<DeletedIds>) => {
         setDeletedIds(prev => {
@@ -354,33 +358,129 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         }
         return null;
     }, []);
+    
+    const fileSyncController = React.useCallback(async () => {
+        if (isFileSyncingRef.current || !isOnlineRef.current || !userIdRef.current) return;
+
+        isFileSyncingRef.current = true;
+        console.log("File sync controller running...");
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            isFileSyncingRef.current = false;
+            return;
+        }
+
+        try {
+            const docsToProcess = dataRef.current.documents.filter(doc => doc.localState === 'pending_upload' || doc.localState === 'pending_download');
+            if (docsToProcess.length === 0) {
+                console.log("No documents to process.");
+                return;
+            }
+            
+            console.log(`Found ${docsToProcess.length} documents to process.`);
+
+            for (const doc of docsToProcess) {
+                if (doc.localState === 'pending_upload') {
+                    try {
+                        const file = await getDocumentFile(doc.id);
+                        if (!file) throw new Error(`File blob not found in IndexedDB for doc ${doc.id}`);
+
+                        const storagePath = `${userIdRef.current}/${doc.caseId}/${doc.id}${getFileExtension(doc.name)}`;
+                        
+                        const { error: uploadError } = await supabase.storage
+                            .from('documents')
+                            .upload(storagePath, file, { upsert: true });
+
+                        if (uploadError) throw uploadError;
+
+                        setData(prev => {
+                            const newDocs = prev.documents.map(d =>
+                                d.id === doc.id ? { ...d, localState: 'synced', storagePath: storagePath, updated_at: new Date() } : d
+                            );
+                            return { ...prev, documents: newDocs };
+                        });
+                        console.log(`Successfully uploaded ${doc.name}`);
+
+                    } catch (error) {
+                        console.error(`Failed to upload document ${doc.id}:`, error);
+                        setData(prev => {
+                            const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'error' } : d);
+                            return { ...prev, documents: newDocs };
+                        });
+                    }
+                } else if (doc.localState === 'pending_download') {
+                    try {
+                        if (!doc.storagePath) throw new Error(`Cannot download doc ${doc.id}, storagePath is missing.`);
+                        
+                        const { data: blob, error: downloadError } = await supabase.storage
+                            .from('documents')
+                            .download(doc.storagePath);
+
+                        if (downloadError) throw downloadError;
+                        if (!blob) throw new Error("Downloaded blob is null.");
+
+                        const db = await getDb();
+                        await db.put(DOCS_FILES_STORE_NAME, blob, doc.id);
+
+                        setData(prev => {
+                            const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'synced' } : d
+                            );
+                            return { ...prev, documents: newDocs };
+                        });
+                         console.log(`Successfully downloaded ${doc.name}`);
+
+                    } catch (error: any) {
+                        let errorMessage = 'An unknown error occurred during download.';
+                        if (error) {
+                            if (typeof error === 'object' && error.message) {
+                                if (String(error.message).toLowerCase().includes('not found')) {
+                                    errorMessage = `File not found in cloud storage. It might not have been uploaded correctly. Path: ${doc.storagePath}`;
+                                } else {
+                                    errorMessage = error.message;
+                                }
+                            } else {
+                                try { errorMessage = JSON.stringify(error); } 
+                                catch { errorMessage = String(error); }
+                            }
+                        }
+                        
+                        console.error(`Failed to download document ${doc.id}:`, errorMessage, 'Original error object:', error);
+
+                        setData(prev => {
+                            const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'error' } : d);
+                            return { ...prev, documents: newDocs };
+                        });
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Critical error in file sync controller:", e);
+        } finally {
+            isFileSyncingRef.current = false;
+        }
+    }, [getDocumentFile]);
 
     const handleDataSynced = React.useCallback(async (syncedData: AppData) => {
         const currentLocalDocuments = dataRef.current.documents;
         const localDocMap = new Map(currentLocalDocuments.map(doc => [doc.id, doc]));
         
-        // Fix: Changed type assertion for syncedData.documents from CaseDocument[] to any[] to fix a type error. The remote document objects do not have the `localState` property required by the CaseDocument interface, and this incorrect assertion was causing the TypeScript compiler to fail.
-        const syncedDocsWithLocalState = ((syncedData.documents || []) as any[])
+        const syncedDocsWithLocalState = (syncedData.documents as any[] || [])
             .filter(doc => doc && doc.id)
             .map((remoteDoc): CaseDocument => {
             const localDoc: CaseDocument | undefined = localDocMap.get(remoteDoc.id);
+
             if (localDoc) {
-                // FIX: Replaced Object.assign with spread syntax for better type inference,
-                // resolving the "Type '{}' is missing properties" error. The logic for
-                // determining `localState` was also simplified.
-                const mergedDoc = { ...localDoc, ...remoteDoc };
-
+                // Fix: Replace Object.assign with spread syntax for better TypeScript type inference.
+                // This resolves an issue where the merged object was incorrectly typed as '{}'.
+                const mergedDoc: CaseDocument = { ...localDoc, ...remoteDoc };
                 if (localDoc.localState !== 'pending_upload' && localDoc.localState !== 'error') {
-                    mergedDoc.localState = 'synced';
+                     mergedDoc.localState = 'synced';
                 }
-                
-                mergedDoc.addedAt = new Date(mergedDoc.addedAt);
-                if (mergedDoc.updated_at) {
-                    mergedDoc.updated_at = new Date(mergedDoc.updated_at);
-                }
-
-                // The merged object is now cast to CaseDocument.
-                return mergedDoc as CaseDocument;
+                // Fix: Cast date properties to 'any' to handle string-to-Date conversion,
+                // as remote data will have date strings.
+                mergedDoc.addedAt = new Date(mergedDoc.addedAt as any);
+                if (mergedDoc.updated_at) mergedDoc.updated_at = new Date(mergedDoc.updated_at as any);
+                return mergedDoc;
             } else {
                 const newDoc: CaseDocument = {
                     id: remoteDoc.id,
@@ -426,7 +526,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 console.error('Failed to save synced data to IndexedDB', e);
             }
         }
-    }, [userId]);
+        fileSyncController(); // Trigger file sync after data has been synced and processed.
+    }, [userId, fileSyncController]);
     
     const handleSyncStatusChange = React.useCallback((status: SyncStatus, error: string | null) => {
         setSyncStatus(status);
@@ -609,152 +710,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         }
     }, [userId, isAutoSyncEnabled, isAutoBackupEnabled]);
     
-    // File Synchronization Controller Effect
-    React.useEffect(() => {
-        if (isDataLoading || !userId || !isOnline) return;
-
-        const fileSyncController = async () => {
-            console.log("File sync controller running...");
-            const supabase = getSupabaseClient();
-            if (!supabase) return;
-
-            const docsToProcess = dataRef.current.documents.filter(doc => doc.localState === 'pending_upload' || doc.localState === 'pending_download');
-            if (docsToProcess.length === 0) return;
-            
-            console.log(`Found ${docsToProcess.length} documents to process.`);
-
-            for (const doc of docsToProcess) {
-                if (doc.localState === 'pending_upload') {
-                    try {
-                        const file = await getDocumentFile(doc.id);
-                        if (!file) throw new Error(`File blob not found in IndexedDB for doc ${doc.id}`);
-
-                        const storagePath = `${userId}/${doc.caseId}/${doc.id}${getFileExtension(doc.name)}`;
-                        
-                        const { error: uploadError } = await supabase.storage
-                            .from('documents')
-                            .upload(storagePath, file, { upsert: true });
-
-                        if (uploadError) throw uploadError;
-
-                        setData(prev => {
-                            const newDocs = prev.documents.map(d =>
-                                d.id === doc.id ? { ...d, localState: 'synced', storagePath: storagePath, updated_at: new Date() } : d
-                            );
-                            return { ...prev, documents: newDocs };
-                        });
-                        console.log(`Successfully uploaded ${doc.name}`);
-
-                    } catch (error) {
-                        console.error(`Failed to upload document ${doc.id}:`, error);
-                        setData(prev => {
-                            const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'error' } : d);
-                            return { ...prev, documents: newDocs };
-                        });
-                    }
-                } else if (doc.localState === 'pending_download') {
-                    try {
-                        if (!doc.storagePath) throw new Error(`Cannot download doc ${doc.id}, storagePath is missing.`);
-                        
-                        const { data: blob, error: downloadError } = await supabase.storage
-                            .from('documents')
-                            .download(doc.storagePath);
-
-                        if (downloadError) throw downloadError;
-                        if (!blob) throw new Error("Downloaded blob is null.");
-
-                        const db = await getDb();
-                        await db.put(DOCS_FILES_STORE_NAME, blob, doc.id);
-
-                        setData(prev => {
-                            const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'synced' } : d
-                            );
-                            return { ...prev, documents: newDocs };
-                        });
-                         console.log(`Successfully downloaded ${doc.name}`);
-
-                    } catch (error: any) {
-                        let errorMessage = 'An unknown error occurred during download.';
-                        if (error) {
-                            if (typeof error === 'object' && error.message) {
-                                if (String(error.message).toLowerCase().includes('not found')) {
-                                    errorMessage = `File not found in cloud storage. It might not have been uploaded correctly. Path: ${doc.storagePath}`;
-                                } else {
-                                    errorMessage = error.message;
-                                }
-                            } else {
-                                try {
-                                    errorMessage = JSON.stringify(error);
-                                } catch {
-                                    errorMessage = String(error);
-                                }
-                            }
-                        }
-                        
-                        console.error(`Failed to download document ${doc.id}:`, errorMessage, 'Original error object:', error);
-
-                        setData(prev => {
-                            const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'error' } : d);
-                            return { ...prev, documents: newDocs };
-                        });
-                    }
-                }
-            }
-        };
-
-        const intervalId = setInterval(fileSyncController, 30000); // Run every 30 seconds
-        fileSyncController(); // Run immediately on load/online
-        
-        return () => clearInterval(intervalId);
-    }, [isDataLoading, userId, isOnline, getDocumentFile]);
-    
-    const exportData = React.useCallback(() => {
-        try {
-            const dataToExport = dataRef.current;
-            const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            const date = new Date().toISOString().split('T')[0];
-            a.download = `lawyer_app_backup_${date}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            return true;
-        } catch (error) {
-            console.error("Failed to export data:", error);
-            return false;
-        }
-    }, []);
-
-    // Automatic daily backup effect
-    React.useEffect(() => {
-        if (isDataLoading || !userId) return;
-
-        const performAutoBackup = () => {
-            if (!isAutoBackupEnabledRef.current) return;
-            
-            const LAST_BACKUP_KEY = `lawyerAppLastBackup_${userId}`;
-            const lastBackupDate = localStorage.getItem(LAST_BACKUP_KEY);
-            const todayStr = new Date().toISOString().split('T')[0];
-
-            if (lastBackupDate !== todayStr) {
-                console.log("Performing automatic daily backup...");
-                if (exportData()) {
-                    localStorage.setItem(LAST_BACKUP_KEY, todayStr);
-                } else {
-                    console.error("Automatic daily backup failed.");
-                }
-            }
-        };
-        
-        // Run once, shortly after the app is loaded and idle.
-        const timer = setTimeout(performAutoBackup, 10000); // Wait 10s after load
-        return () => clearTimeout(timer);
-    }, [isDataLoading, userId, exportData]);
-
-
     // Effect for real-time data synchronization
     React.useEffect(() => {
         if (!user || !isOnline || isAuthLoading || isDataLoading) {
@@ -855,7 +810,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             newDocFiles.push({ docId, file });
         }
 
-        // Optimistic UI update
         setData(prev => ({ ...prev, documents: [...prev.documents, ...newDocs] }));
 
         try {
@@ -865,15 +819,15 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             await tx.done;
         } catch (error) {
             console.error("Failed to save documents to IndexedDB:", error);
-            // Revert UI change on failure
             setData(prev => ({
                 ...prev,
                 documents: prev.documents.filter(doc => !newDocs.some(nd => nd.id === doc.id))
             }));
-            // Re-throw the error so the component can display a message
             throw new Error("فشل حفظ الوثيقة في قاعدة البيانات المحلية.");
         }
-    }, [userId]);
+        
+        fileSyncController(); // Trigger file sync immediately after adding documents.
+    }, [userId, fileSyncController]);
 
     const deleteDocument = React.useCallback(async (doc: CaseDocument) => {
         const docToDelete = doc;
@@ -895,6 +849,52 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             throw new Error("فشل حذف الوثيقة من قاعدة البيانات المحلية.");
         }
     }, []);
+    
+    const exportData = React.useCallback(() => {
+        try {
+            const dataToExport = dataRef.current;
+            const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const date = new Date().toISOString().split('T')[0];
+            a.download = `lawyer_app_backup_${date}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            return true;
+        } catch (error) {
+            console.error("Failed to export data:", error);
+            return false;
+        }
+    }, []);
+
+    // Automatic daily backup effect
+    React.useEffect(() => {
+        if (isDataLoading || !userId) return;
+
+        const performAutoBackup = () => {
+            if (!isAutoBackupEnabledRef.current) return;
+            
+            const LAST_BACKUP_KEY = `lawyerAppLastBackup_${userId}`;
+            const lastBackupDate = localStorage.getItem(LAST_BACKUP_KEY);
+            const todayStr = new Date().toISOString().split('T')[0];
+
+            if (lastBackupDate !== todayStr) {
+                console.log("Performing automatic daily backup...");
+                if (exportData()) {
+                    localStorage.setItem(LAST_BACKUP_KEY, todayStr);
+                } else {
+                    console.error("Automatic daily backup failed.");
+                }
+            }
+        };
+        
+        // Run once, shortly after the app is loaded and idle.
+        const timer = setTimeout(performAutoBackup, 10000); // Wait 10s after load
+        return () => clearTimeout(timer);
+    }, [isDataLoading, userId, exportData]);
 
     return {
         clients: data.clients,

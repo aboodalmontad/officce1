@@ -1,9 +1,11 @@
 import * as React from 'react';
 import { Session as AuthSession, User } from '@supabase/supabase-js';
 
-// Lazy load page components for code splitting and faster initial load
+// Statically import ClientsPage to fix critical lazy loading error
+import ClientsPage from './pages/ClientsPage';
+
+// Lazy load other page components for code splitting and faster initial load
 const HomePage = React.lazy(() => import('./pages/HomePage'));
-const ClientsPage = React.lazy(() => import('./pages/ClientsPage'));
 const AccountingPage = React.lazy(() => import('./pages/AccountingPage'));
 const SettingsPage = React.lazy(() => import('./pages/SettingsPage'));
 const LoginPage = React.lazy(() => import('./pages/LoginPage'));
