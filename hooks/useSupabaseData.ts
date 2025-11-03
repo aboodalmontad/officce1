@@ -71,21 +71,17 @@ async function getDb(): Promise<IDBPDatabase> {
       // of each object store before creating it, ensuring that running this on
       // a fully or partially upgraded database won't cause errors.
 
-      if (oldVersion < 1) {
-        if (!db.objectStoreNames.contains(DATA_STORE_NAME)) {
-          console.log(`Creating object store: ${DATA_STORE_NAME}`);
-          db.createObjectStore(DATA_STORE_NAME);
-        }
+      if (!db.objectStoreNames.contains(DATA_STORE_NAME)) {
+        console.log(`Creating object store: ${DATA_STORE_NAME}`);
+        db.createObjectStore(DATA_STORE_NAME);
       }
-      if (oldVersion < 2) {
-        if (!db.objectStoreNames.contains(DOCS_FILES_STORE_NAME)) {
-          console.log(`Creating object store: ${DOCS_FILES_STORE_NAME}`);
-          db.createObjectStore(DOCS_FILES_STORE_NAME);
-        }
-        if (!db.objectStoreNames.contains(DOCS_METADATA_STORE_NAME)) {
-          console.log(`Creating object store: ${DOCS_METADATA_STORE_NAME}`);
-          db.createObjectStore(DOCS_METADATA_STORE_NAME);
-        }
+      if (!db.objectStoreNames.contains(DOCS_FILES_STORE_NAME)) {
+        console.log(`Creating object store: ${DOCS_FILES_STORE_NAME}`);
+        db.createObjectStore(DOCS_FILES_STORE_NAME);
+      }
+      if (!db.objectStoreNames.contains(DOCS_METADATA_STORE_NAME)) {
+        console.log(`Creating object store: ${DOCS_METADATA_STORE_NAME}`);
+        db.createObjectStore(DOCS_METADATA_STORE_NAME);
       }
     },
   });
@@ -487,41 +483,33 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const handleDataSynced = React.useCallback(async (syncedData: AppData) => {
         const currentLocalDocuments = dataRef.current.documents;
         const localDocMap = new Map(currentLocalDocuments.map(doc => [doc.id, doc]));
-        
-        const syncedDocsWithLocalState = (syncedData.documents || [])
+
+        // Fix: Cast syncedData.documents to any[] and remoteDoc to any to handle untyped data from sync/import.
+        const syncedDocsWithLocalState = ((syncedData.documents as any[]) || [])
             .filter(doc => doc && doc.id)
             .map((remoteDoc: any): CaseDocument => {
                 const localDoc = localDocMap.get(remoteDoc.id);
 
                 if (localDoc) {
+                    // Item exists locally. Merge remote data over local, but preserve localState.
                     const mergedDoc: CaseDocument = {
-                      ...localDoc,
-                      ...remoteDoc,
-                      addedAt: new Date(remoteDoc.addedAt ?? localDoc.addedAt),
-                      updated_at: remoteDoc.updated_at ? new Date(remoteDoc.updated_at) : localDoc.updated_at,
+                        ...localDoc,
+                        ...remoteDoc,
                     };
-                    
-                    // FIX: Explicitly preserve localState, which is overwritten by spreading remoteDoc.
+                    // Ensure dates from remote are converted to Date objects
+                    mergedDoc.addedAt = new Date(remoteDoc.addedAt ?? localDoc.addedAt);
+                    mergedDoc.updated_at = remoteDoc.updated_at ? new Date(remoteDoc.updated_at) : localDoc.updated_at;
+                    // Always preserve the crucial local state unless it's an error.
                     mergedDoc.localState = localDoc.localState;
-
-                    if (localDoc.localState !== 'pending_upload' && localDoc.localState !== 'error') {
-                         mergedDoc.localState = 'synced';
-                    }
                     return mergedDoc;
                 } else {
+                    // This is a new document from another client. Mark for download if it has a path.
                     const newDoc: CaseDocument = {
-                        id: remoteDoc.id,
-                        caseId: remoteDoc.caseId || '',
-                        userId: remoteDoc.userId || userId || '',
-                        name: remoteDoc.name || 'unknown file',
-                        type: remoteDoc.type || 'application/octet-stream',
-                        size: typeof remoteDoc.size === 'number' ? remoteDoc.size : 0,
+                        ...remoteDoc,
+                        localState: 'error', // Default to error
                         addedAt: remoteDoc.addedAt ? new Date(remoteDoc.addedAt) : new Date(),
-                        storagePath: remoteDoc.storagePath || '',
-                        localState: 'error', 
                         updated_at: remoteDoc.updated_at ? new Date(remoteDoc.updated_at) : new Date(),
                     };
-
                     if (remoteDoc.storagePath && String(remoteDoc.storagePath).trim() !== '') {
                         newDoc.localState = 'pending_download';
                     } else {
@@ -531,6 +519,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 }
             });
 
+        // Add any purely local documents (e.g., pending upload) that weren't in the synced data.
         currentLocalDocuments.forEach(localDoc => {
             if (!syncedDocsWithLocalState.some(d => d.id === localDoc.id)) {
                 syncedDocsWithLocalState.push(localDoc);
