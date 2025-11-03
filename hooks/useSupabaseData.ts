@@ -432,12 +432,12 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                     } catch (error: any) {
                         let errorMessage = 'An unknown error occurred during download.';
                         if (error) {
-                            if (typeof error === 'object' && error.message) {
-                                if (String(error.message).toLowerCase().includes('not found')) {
-                                    errorMessage = `File not found in cloud storage. It might not have been uploaded correctly. Path: ${doc.storagePath}`;
-                                } else {
-                                    errorMessage = error.message;
-                                }
+                            if (typeof error === 'object' && String(error.message).toLowerCase().includes('not found')) {
+                                errorMessage = `File not found in cloud storage. It might not have been uploaded correctly from the original device. Path: ${doc.storagePath}`;
+                            } else if (typeof error === 'object' && error.message) {
+                                errorMessage = error.message;
+                            } else if (typeof error === 'object' && Object.keys(error).length === 0) {
+                                errorMessage = `An empty error object was received from the storage server. This often indicates the file does not exist or there's a permission issue. Path: ${doc.storagePath}`;
                             } else {
                                 try { errorMessage = JSON.stringify(error); } 
                                 catch { errorMessage = String(error); }
@@ -472,7 +472,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             if (localDoc) {
                 // Fix: Replace Object.assign with spread syntax for better TypeScript type inference.
                 // This resolves an issue where the merged object was incorrectly typed as '{}'.
-                const mergedDoc: CaseDocument = { ...localDoc, ...remoteDoc };
+                // FIX: Removed strict type `CaseDocument` here. `remoteDoc` can have string dates which makes the merged object temporarily invalid.
+                const mergedDoc = { ...localDoc, ...remoteDoc };
                 if (localDoc.localState !== 'pending_upload' && localDoc.localState !== 'error') {
                      mergedDoc.localState = 'synced';
                 }
@@ -831,22 +832,27 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
     const deleteDocument = React.useCallback(async (doc: CaseDocument) => {
         const docToDelete = doc;
-
+    
         try {
             const db = await getDb();
-            await db.delete(DOCS_FILES_STORE_NAME, docToDelete.id);
+            // Try to delete the local file, but don't fail if it's not there.
+            // This allows deleting a document from a device that hasn't downloaded it yet.
+            await db.delete(DOCS_FILES_STORE_NAME, docToDelete.id).catch(err => {
+                console.warn(`Could not delete local file blob for doc ${docToDelete.id}, it might not exist. Proceeding with metadata deletion.`, err);
+            });
             
+            // Always proceed with metadata deletion from state and add to pending deletions.
             setData(prev => ({ ...prev, documents: prev.documents.filter(d => d.id !== docToDelete.id) }));
-
+    
             setDeletedIds(prev => ({
                 ...prev,
                 documents: [...prev.documents, docToDelete.id],
                 documentPaths: docToDelete.storagePath ? [...prev.documentPaths, docToDelete.storagePath] : prev.documentPaths
             }));
-
+    
         } catch (error) {
-            console.error("Failed to delete document from IndexedDB:", error);
-            throw new Error("فشل حذف الوثيقة من قاعدة البيانات المحلية.");
+            console.error("An unexpected error occurred during document deletion:", error);
+            throw new Error("فشل حذف الوثيقة.");
         }
     }, []);
     

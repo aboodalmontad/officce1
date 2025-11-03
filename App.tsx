@@ -267,6 +267,12 @@ const DataProvider = DataContext.Provider;
 const LAST_USER_CACHE_KEY = 'lawyerAppLastUser';
 const UNPOSTPONED_MODAL_SHOWN_KEY = 'lawyerAppUnpostponedModalShown';
 
+const FullScreenLoader: React.FC<{ text?: string }> = ({ text = 'جاري التحميل...' }) => (
+    <div className="fixed inset-0 bg-white flex flex-col items-center justify-center z-[100]">
+      <ArrowPathIcon className="w-8 h-8 text-blue-600 animate-spin" />
+      <p className="mt-4 text-gray-600">{text}</p>
+    </div>
+);
 
 const App: React.FC<AppProps> = ({ onRefresh }) => {
     const [session, setSession] = React.useState<AuthSession | null>(null);
@@ -484,20 +490,13 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
 
     const renderPage = () => {
         switch (currentPage) {
-            case 'home': return <HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} />;
+            case 'home': return <React.Suspense fallback={<FullScreenLoader />}><HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} /></React.Suspense>;
             case 'clients': return <ClientsPage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} onCreateInvoice={handleCreateInvoice} />;
-            case 'accounting': return <AccountingPage initialInvoiceData={initialInvoiceData} clearInitialInvoiceData={clearInitialInvoiceData} />;
-            case 'settings': return <SettingsPage />;
-            default: return <HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} />;
+            case 'accounting': return <React.Suspense fallback={<FullScreenLoader />}><AccountingPage initialInvoiceData={initialInvoiceData} clearInitialInvoiceData={clearInitialInvoiceData} /></React.Suspense>;
+            case 'settings': return <React.Suspense fallback={<FullScreenLoader />}><SettingsPage /></React.Suspense>;
+            default: return <React.Suspense fallback={<FullScreenLoader />}><HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} /></React.Suspense>;
         }
     };
-    
-    const FullScreenLoader: React.FC<{ text?: string }> = ({ text = 'جاري التحميل...' }) => (
-      <div className="fixed inset-0 bg-white flex flex-col items-center justify-center z-[100]">
-        <ArrowPathIcon className="w-8 h-8 text-blue-600 animate-spin" />
-        <p className="mt-4 text-gray-600">{text}</p>
-      </div>
-    );
     
     const AuthErrorScreen: React.FC<{ message: string; onRetry: () => void; onLogout: () => void }> = ({ message, onRetry, onLogout }) => (
         <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
@@ -526,7 +525,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     }
 
     if (!session || !profile) {
-        return <LoginPage onForceSetup={() => setShowConfigModal(true)} onLoginSuccess={handleLoginSuccess} />;
+        return <React.Suspense fallback={<FullScreenLoader />}><LoginPage onForceSetup={() => setShowConfigModal(true)} onLoginSuccess={handleLoginSuccess} /></React.Suspense>;
     }
     
     if (supabaseData.isDataLoading) {
@@ -534,16 +533,16 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     }
     
     if (!profile.is_approved && profile.role !== 'admin') {
-        return <PendingApprovalPage onLogout={handleLogout} />;
+        return <React.Suspense fallback={<FullScreenLoader />}><PendingApprovalPage onLogout={handleLogout} /></React.Suspense>;
     }
     
     const subscriptionEndDate = profile.subscription_end_date ? new Date(profile.subscription_end_date) : new Date(0);
     if (subscriptionEndDate < new Date() && profile.role !== 'admin') {
-        return <SubscriptionExpiredPage onLogout={handleLogout} />;
+        return <React.Suspense fallback={<FullScreenLoader />}><SubscriptionExpiredPage onLogout={handleLogout} /></React.Suspense>;
     }
     
     if (profile.role === 'admin') {
-        return <AdminDashboard onLogout={handleLogout} />;
+        return <React.Suspense fallback={<FullScreenLoader />}><AdminDashboard onLogout={handleLogout} /></React.Suspense>;
     }
 
     return (
@@ -572,9 +571,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     </div>
                 )}
                 <main className="flex-grow p-4 sm:p-6">
-                    <React.Suspense fallback={<FullScreenLoader />}>
-                        {renderPage()}
-                    </React.Suspense>
+                    {renderPage()}
                 </main>
             </div>
             <AdminTaskModal
