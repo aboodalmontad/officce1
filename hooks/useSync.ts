@@ -2,8 +2,7 @@ import * as React from 'react';
 import { User } from '@supabase/supabase-js';
 import { checkSupabaseSchema, fetchDataFromSupabase, upsertDataToSupabase, FlatData, deleteDataFromSupabase, transformRemoteToLocal } from './useOnlineData';
 import { getSupabaseClient } from '../supabaseClient';
-import { Client, Case, Stage, Session, CaseDocument } from '../types';
-import { AppData, DeletedIds } from './useSupabaseData';
+import { AppData, DeletedIds } from '../types';
 
 export type SyncStatus = 'loading' | 'syncing' | 'synced' | 'error' | 'unconfigured' | 'uninitialized';
 
@@ -49,24 +48,24 @@ const flattenData = (data: AppData): FlatData => {
 };
 
 const constructData = (flatData: Partial<FlatData>): AppData => {
-    const sessionMap = new Map<string, Session[]>();
+    const sessionMap = new Map<string, any[]>();
     (flatData.sessions || []).forEach(s => {
         const stageId = (s as any).stage_id;
         if (!sessionMap.has(stageId)) sessionMap.set(stageId, []);
-        sessionMap.get(stageId)!.push(s as Session);
+        sessionMap.get(stageId)!.push(s);
     });
 
-    const stageMap = new Map<string, Stage[]>();
+    const stageMap = new Map<string, any[]>();
     (flatData.stages || []).forEach(st => {
-        const stage = { ...st, sessions: sessionMap.get(st.id) || [] } as Stage;
+        const stage = { ...st, sessions: sessionMap.get(st.id) || [] };
         const caseId = (st as any).case_id;
         if (!stageMap.has(caseId)) stageMap.set(caseId, []);
         stageMap.get(caseId)!.push(stage);
     });
 
-    const caseMap = new Map<string, Case[]>();
+    const caseMap = new Map<string, any[]>();
     (flatData.cases || []).forEach(cs => {
-        const caseItem = { ...cs, stages: stageMap.get(cs.id) || [] } as Case;
+        const caseItem = { ...cs, stages: stageMap.get(cs.id) || [] };
         const clientId = (cs as any).client_id;
         if (!caseMap.has(clientId)) caseMap.set(clientId, []);
         caseMap.get(clientId)!.push(caseItem);
@@ -80,7 +79,7 @@ const constructData = (flatData: Partial<FlatData>): AppData => {
     });
 
     return {
-        clients: (flatData.clients || []).map(c => ({ ...c, cases: caseMap.get(c.id) || [] } as Client)),
+        clients: (flatData.clients || []).map(c => ({ ...c, cases: caseMap.get(c.id) || [] })) as any,
         adminTasks: (flatData.admin_tasks || []) as any,
         appointments: (flatData.appointments || []) as any,
         accountingEntries: (flatData.accounting_entries || []) as any,

@@ -1,5 +1,8 @@
 import * as React from 'react';
-import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem, CaseDocument } from '../types';
+// Fix: Use a type-only import to resolve a circular dependency issue.
+// The cycle `useSupabaseData -> useSync -> useOnlineData -> types` and `useSupabaseData -> types`
+// caused the 'CaseDocument' type to be resolved as an empty object `{}`, leading to the error.
+import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem, CaseDocument, AppData, DeletedIds, AppNotification } from '../types';
 import { useOnlineStatus } from './useOnlineStatus';
 import { User, RealtimeChannel } from '@supabase/supabase-js';
 import { useSync, SyncStatus as SyncStatusType } from './useSync';
@@ -11,30 +14,6 @@ import { openDB, IDBPDatabase } from 'idb';
 export const APP_DATA_KEY = 'lawyerBusinessManagementData';
 export type SyncStatus = SyncStatusType;
 
-export type AppData = {
-    clients: Client[];
-    adminTasks: AdminTask[];
-    appointments: Appointment[];
-    accountingEntries: AccountingEntry[];
-    invoices: Invoice[];
-    assistants: string[];
-    documents: CaseDocument[];
-};
-
-export type DeletedIds = {
-    clients: string[];
-    cases: string[];
-    stages: string[];
-    sessions: string[];
-    adminTasks: string[];
-    appointments: string[];
-    accountingEntries: string[];
-    invoices: string[];
-    invoiceItems: string[];
-    assistants: string[];
-    documents: string[];
-    documentPaths: string[];
-};
 const getInitialDeletedIds = (): DeletedIds => ({
     clients: [], cases: [], stages: [], sessions: [], adminTasks: [], appointments: [], accountingEntries: [], invoices: [], invoiceItems: [], assistants: [],
     documents: [],
@@ -320,6 +299,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const [isAutoBackupEnabled, setIsAutoBackupEnabled] = React.useState(true);
     const [triggeredAlerts, setTriggeredAlerts] = React.useState<Appointment[]>([]);
     const [showUnpostponedSessionsModal, setShowUnpostponedSessionsModal] = React.useState(false);
+    const [notifications, setNotifications] = React.useState<AppNotification[]>([]);
     
     const hadCacheOnLoad = React.useRef(false);
     const isInitialLoadAfterHydrate = React.useRef(true);
@@ -340,6 +320,72 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     userIdRef.current = userId;
     
     const isFileSyncingRef = React.useRef(false);
+
+    const addNotification = React.useCallback((message: string, type: AppNotification['type'] = 'info') => {
+        const newNotification: AppNotification = {
+            id: Date.now(),
+            message,
+            type,
+        };
+        setNotifications(prev => [...prev.slice(-4), newNotification]); // Keep max 5 notifications
+    }, []);
+
+    const dismissNotification = React.useCallback((id: number) => {
+        setNotifications(prev => prev.filter(n => n.id !== id));
+    }, []);
+
+    const prevData = usePrevious(data);
+
+    // Effect to detect changes and create notifications
+    React.useEffect(() => {
+        if (!prevData || isDataLoading || isInitialLoadAfterHydrate.current) return;
+
+        // Flatten previous and current data for easier comparison
+        const prevSessions = prevData.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.map(s => ({...s, stageId: st.id, decisionDate: st.decisionDate})))));
+        const currentSessions = data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.map(s => ({...s, stageId: st.id, decisionDate: st.decisionDate})))));
+        const prevStages = prevData.clients.flatMap(c => c.cases.flatMap(cs => cs.stages));
+        const currentStages = data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages));
+        
+        // Fix: Explicitly type the Maps to prevent .get() from returning `any`, which was causing type errors.
+        const prevTasksMap = new Map<string, AdminTask>(prevData.adminTasks.map(t => [t.id, t]));
+        const prevSessionsMap = new Map<string, Session & { stageId: string, decisionDate: Date | undefined }>(prevSessions.map(s => [s.id, s]));
+        const prevStagesMap = new Map<string, Stage>(prevStages.map(st => [st.id, st]));
+        const prevDocumentsMap = new Map<string, CaseDocument>(prevData.documents.map(d => [d.id, d]));
+
+        // 1. Check for newly completed tasks
+        data.adminTasks.forEach(task => {
+            const prevTask = prevTasksMap.get(task.id);
+            if (prevTask && !prevTask.completed && task.completed) {
+                addNotification(`تم إنجاز المهمة: "${task.task}"`, 'success');
+            }
+        });
+
+        // 2. Check for postponed sessions
+        currentSessions.forEach(session => {
+            const prevSession = prevSessionsMap.get(session.id);
+            if (prevSession && !prevSession.isPostponed && session.isPostponed) {
+                addNotification(`تم ترحيل جلسة قضية: ${session.clientName}`, 'info');
+            }
+        });
+
+        // 3. Check for decided stages
+        currentStages.forEach(stage => {
+            const prevStage = prevStagesMap.get(stage.id);
+            if (prevStage && !prevStage.decisionDate && stage.decisionDate) {
+                const caseInfo = data.clients.flatMap(c => c.cases).find(c => c.stages.some(st => st.id === stage.id));
+                addNotification(`تم حسم مرحلة في قضية: ${caseInfo?.subject || 'غير معروف'}`, 'success');
+            }
+        });
+
+        // 4. Check for new documents
+        data.documents.forEach(doc => {
+            if (!prevDocumentsMap.has(doc.id)) {
+                const caseInfo = data.clients.flatMap(c => c.cases).find(c => c.id === doc.caseId);
+                addNotification(`تمت إضافة وثيقة جديدة "${doc.name}" إلى قضية: ${caseInfo?.subject || 'غير معروف'}`, 'info');
+            }
+        });
+
+    }, [data, prevData, isDataLoading, addNotification]);
 
     const onDeletionsSynced = React.useCallback((syncedDeletions: Partial<DeletedIds>) => {
         setDeletedIds(prev => {
@@ -436,10 +482,12 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                     } catch (error: any) {
                         let errorMessage = 'An unknown error occurred during download.';
                         if (error) {
-                            if (typeof error === 'object' && String(error.message).toLowerCase().includes('not found')) {
-                                errorMessage = `File not found in cloud storage. It might not have been uploaded correctly from the original device. Path: ${doc.storagePath}`;
-                            } else if (typeof error === 'object' && error.message) {
-                                errorMessage = error.message;
+                            if (typeof error === 'object' && error.message) {
+                                if (String(error.message).toLowerCase().includes('not found')) {
+                                     errorMessage = `File not found in cloud storage. It might not have been uploaded correctly from the original device. Path: ${doc.storagePath}`;
+                                } else {
+                                    errorMessage = error.message;
+                                }
                             } else if (typeof error === 'object' && Object.keys(error).length === 0) {
                                 errorMessage = `An empty error object was received from the storage server. This often indicates the file does not exist or there's a permission issue. Path: ${doc.storagePath}`;
                             } else {
@@ -448,7 +496,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                             }
                         }
                         
-                        console.error(`Failed to download document ${doc.id}:`, errorMessage, 'Original error object:', error);
+                        console.error(`Failed to download document ${doc.id}: ${errorMessage}`, 'Original error object:', error);
 
                         setData(prev => {
                             const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'error' } : d);
@@ -492,20 +540,33 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
                 if (localDoc) {
                     // Item exists locally. Merge remote data over local, but preserve localState.
+                    // Fix: Explicitly construct the merged object to avoid spreading an `any` type (`remoteDoc`), which causes type errors.
                     const mergedDoc: CaseDocument = {
-                        ...localDoc,
-                        ...remoteDoc,
+                        id: remoteDoc.id ?? localDoc.id,
+                        caseId: remoteDoc.caseId ?? localDoc.caseId,
+                        userId: remoteDoc.userId ?? localDoc.userId,
+                        name: remoteDoc.name ?? localDoc.name,
+                        type: remoteDoc.type ?? localDoc.type,
+                        size: remoteDoc.size ?? localDoc.size,
+                        storagePath: remoteDoc.storagePath ?? localDoc.storagePath,
+                        addedAt: new Date(remoteDoc.addedAt ?? localDoc.addedAt),
+                        updated_at: remoteDoc.updated_at ? new Date(remoteDoc.updated_at) : localDoc.updated_at,
+                        // Always preserve the crucial local state.
+                        localState: localDoc.localState,
                     };
-                    // Ensure dates from remote are converted to Date objects
-                    mergedDoc.addedAt = new Date(remoteDoc.addedAt ?? localDoc.addedAt);
-                    mergedDoc.updated_at = remoteDoc.updated_at ? new Date(remoteDoc.updated_at) : localDoc.updated_at;
-                    // Always preserve the crucial local state.
-                    mergedDoc.localState = localDoc.localState;
                     return mergedDoc;
                 } else {
                     // This is a new document from another client. Mark for download if it has a path.
+                    // @FIX: The spread of `remoteDoc` (of type `any`) was failing type-checking.
+                    // Explicitly construct the `CaseDocument` object to ensure all required properties are present.
                     const newDoc: CaseDocument = {
-                        ...remoteDoc,
+                        id: remoteDoc.id,
+                        caseId: remoteDoc.caseId,
+                        userId: remoteDoc.userId,
+                        name: remoteDoc.name,
+                        type: remoteDoc.type,
+                        size: remoteDoc.size,
+                        storagePath: remoteDoc.storagePath,
                         localState: 'error', // Default to error
                         addedAt: remoteDoc.addedAt ? new Date(remoteDoc.addedAt) : new Date(),
                         updated_at: remoteDoc.updated_at ? new Date(remoteDoc.updated_at) : new Date(),
@@ -962,6 +1023,9 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         dismissAlert: React.useCallback((appointmentId: string) => { setTriggeredAlerts(prev => prev.filter(a => a.id !== appointmentId)); }, []),
         showUnpostponedSessionsModal,
         setShowUnpostponedSessionsModal,
+        notifications,
+        addNotification,
+        dismissNotification,
         deleteClient: React.useCallback((clientId: string) => { setDeletedIds(prev => ({...prev, clients: [...prev.clients, clientId]})); setData(prev => ({...prev, clients: prev.clients.filter(c => c.id !== clientId)})); }, []),
         deleteCase: React.useCallback((caseId: string, clientId: string) => { setDeletedIds(prev => ({...prev, cases: [...prev.cases, caseId]})); setData(prev => ({...prev, clients: prev.clients.map(c => c.id === clientId ? {...c, cases: c.cases.filter(cs => cs.id !== caseId)} : c)})); }, []),
         deleteStage: React.useCallback((stageId: string, caseId: string, clientId: string) => { setDeletedIds(prev => ({...prev, stages: [...prev.stages, stageId]})); setData(prev => ({...prev, clients: prev.clients.map(c => c.id === clientId ? {...c, cases: c.cases.map(cs => cs.id === caseId ? {...cs, stages: cs.stages.filter(st => st.id !== stageId)} : cs)} : c)})); }, []),

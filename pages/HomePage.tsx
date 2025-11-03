@@ -162,6 +162,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
     // State for drag-and-drop of groups
     const [locationOrder, setLocationOrder] = React.useState<string[]>([]);
     const [draggedGroupLocation, setDraggedGroupLocation] = React.useState<string | null>(null);
+    const [draggedOverLocation, setDraggedOverLocation] = React.useState<string | null>(null);
     const [activeLocationTab, setActiveLocationTab] = React.useState<string>('');
 
     // State for inline assignee editing
@@ -342,6 +343,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
         document.body.classList.remove('grabbing');
         setDraggedTaskId(null);
         setDraggedGroupLocation(null);
+        setDraggedOverLocation(null);
     };
 
     const handleTaskDrop = (targetTaskId: string | null, targetLocation: string, position: 'before' | 'after') => {
@@ -1096,21 +1098,31 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                                         onDragStart={e => handleDragStart(e, 'group', location)}
                                                         onDragEnd={handleDragEnd}
                                                         onDragOver={e => e.preventDefault()}
+                                                        onDragEnter={() => { if (draggedTaskId) setDraggedOverLocation(location); }}
+                                                        onDragLeave={() => { if (draggedTaskId) setDraggedOverLocation(null); }}
                                                         onDrop={e => {
                                                             e.preventDefault();
                                                             e.stopPropagation();
-                                                            if (!draggedGroupLocation || draggedGroupLocation === location) {
+                                                            setDraggedOverLocation(null);
+
+                                                            const taskId = e.dataTransfer.getData('application/lawyer-app-task-id');
+                                                            if (taskId && draggedTaskId) {
+                                                                handleTaskDrop(null, location, 'after');
                                                                 return;
                                                             }
-                                                            setLocationOrder(currentOrder => {
-                                                                const sourceIndex = currentOrder.indexOf(draggedGroupLocation);
-                                                                const targetIndex = currentOrder.indexOf(location);
-                                                                if (sourceIndex === -1 || targetIndex === -1) return currentOrder;
-                                                                const newOrder = [...currentOrder];
-                                                                const [movedItem] = newOrder.splice(sourceIndex, 1);
-                                                                newOrder.splice(targetIndex, 0, movedItem);
-                                                                return newOrder;
-                                                            });
+                                                            
+                                                            const sourceGroupLocation = e.dataTransfer.getData('application/lawyer-app-group-location');
+                                                            if (sourceGroupLocation && draggedGroupLocation && sourceGroupLocation !== location) {
+                                                                setLocationOrder(currentOrder => {
+                                                                    const sourceIndex = currentOrder.indexOf(sourceGroupLocation);
+                                                                    const targetIndex = currentOrder.indexOf(location);
+                                                                    if (sourceIndex === -1 || targetIndex === -1) return currentOrder;
+                                                                    const newOrder = [...currentOrder];
+                                                                    const [movedItem] = newOrder.splice(sourceIndex, 1);
+                                                                    newOrder.splice(targetIndex, 0, movedItem);
+                                                                    return newOrder;
+                                                                });
+                                                            }
                                                         }}
                                                         className={`whitespace-nowrap py-3 px-4 border rounded-t-lg font-medium text-sm cursor-grab transition-colors duration-150 focus:outline-none ${
                                                             activeLocationTab === location
@@ -1118,6 +1130,8 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                                                 : 'bg-white border-gray-200 border-b-0 text-gray-500 hover:bg-gray-100' // Inactive tab
                                                         } ${
                                                             draggedGroupLocation === location ? 'opacity-30 scale-95' : 'opacity-100'
+                                                        } ${
+                                                            draggedTaskId && draggedOverLocation === location ? '!bg-blue-100 !border-blue-400 ring-2 ring-blue-400' : ''
                                                         }`}
                                                     >
                                                         {location}

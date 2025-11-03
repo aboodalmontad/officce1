@@ -13,15 +13,16 @@ import SubscriptionExpiredPage from './pages/SubscriptionExpiredPage';
 
 
 import ConfigurationModal from './components/ConfigurationModal';
-import { useSupabaseData, SyncStatus, AppData } from './hooks/useSupabaseData';
+import { useSupabaseData, SyncStatus } from './hooks/useSupabaseData';
 import { UserIcon, CalculatorIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, ExclamationTriangleIcon, PowerIcon, HomeIcon } from './components/icons';
 import ContextMenu, { MenuItem } from './components/ContextMenu';
 import AdminTaskModal from './components/AdminTaskModal';
-import { AdminTask, Profile, Session, Client, Appointment, AccountingEntry, Invoice, CaseDocument } from './types';
+import { AdminTask, Profile, Session, Client, Appointment, AccountingEntry, Invoice, CaseDocument, AppData, AppNotification } from './types';
 import { getSupabaseClient } from './supabaseClient';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import AppointmentNotifier from './components/AppointmentNotifier';
 import UnpostponedSessionsModal from './components/UnpostponedSessionsModal';
+import NotificationManager from './components/NotificationManager';
 
 
 // --- Data Context for avoiding prop drilling ---
@@ -50,6 +51,9 @@ interface IDataContext extends AppData {
     exportData: () => boolean;
     triggeredAlerts: Appointment[];
     dismissAlert: (appointmentId: string) => void;
+    notifications: AppNotification[];
+    dismissNotification: (id: number) => void;
+    addNotification: (message: string, type: AppNotification['type']) => void;
     deleteClient: (clientId: string) => void;
     deleteCase: (caseId: string, clientId: string) => void;
     deleteStage: (stageId: string, caseId: string, clientId: string) => void;
@@ -546,6 +550,10 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
 
     return (
         <DataProvider value={{...supabaseData, isAuthLoading}}>
+            <NotificationManager 
+                notifications={supabaseData.notifications}
+                onDismiss={supabaseData.dismissNotification}
+            />
             <div className="min-h-screen flex flex-col bg-gray-100">
                 <Navbar
                     currentPage={currentPage}

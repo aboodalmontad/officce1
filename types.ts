@@ -146,3 +146,34 @@ export interface CaseDocument {
   localState: 'synced' | 'pending_upload' | 'pending_download' | 'error'; 
   updated_at?: Date;
 }
+
+export interface AppNotification {
+  id: number;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+}
+
+export interface AppData {
+    clients: Client[];
+    adminTasks: AdminTask[];
+    appointments: Appointment[];
+    accountingEntries: AccountingEntry[];
+    invoices: Invoice[];
+    assistants: string[];
+    documents: CaseDocument[];
+}
+
+export interface DeletedIds {
+    clients: string[];
+    cases: string[];
+    stages: string[];
+    sessions: string[];
+    adminTasks: string[];
+    appointments: string[];
+    accountingEntries: string[];
+    invoices: string[];
+    invoiceItems: string[];
+    assistants: string[];
+    documents: string[];
+    documentPaths: string[];
+}
