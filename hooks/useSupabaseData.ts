@@ -1,7 +1,7 @@
 import * as React from 'react';
-// Fix: Use a type-only import to resolve a circular dependency issue.
-// The cycle `useSupabaseData -> useSync -> useOnlineData -> types` and `useSupabaseData -> types`
-// caused the 'CaseDocument' type to be resolved as an empty object `{}`, leading to the error.
+// Using a regular import for types instead of `import type`. In some complex dependency scenarios,
+// this can help the build tool correctly resolve the types and avoid issues where they are
+// inferred as empty objects (`{}`), which leads to runtime errors.
 import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem, CaseDocument, AppData, DeletedIds, AppNotification } from '../types';
 import { useOnlineStatus } from './useOnlineStatus';
 import { User, RealtimeChannel } from '@supabase/supabase-js';
@@ -36,7 +36,7 @@ const getInitialData = (): AppData => ({
 
 // --- IndexedDB Setup ---
 const DB_NAME = 'LawyerAppData';
-const DB_VERSION = 3; // Bump version to force upgrade for users with corrupted v2 DB
+const DB_VERSION = 3; // DB version, must match across all openDB calls.
 const DATA_STORE_NAME = 'appData';
 const DOCS_FILES_STORE_NAME = 'caseDocumentFiles';
 const DOCS_METADATA_STORE_NAME = 'caseDocumentMetadata';
@@ -444,17 +444,58 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                         if (uploadError) throw uploadError;
 
                         setData(prev => {
-                            const newDocs = prev.documents.map(d =>
-                                d.id === doc.id ? { ...d, localState: 'synced', storagePath: storagePath, updated_at: new Date() } : d
-                            );
+                            const newDocs = prev.documents.map((d: CaseDocument): CaseDocument => {
+                                if (d.id === doc.id) {
+                                    // Fix: Replaced unsafe object spread with explicit property assignment
+                                    // to resolve a type erasure issue that caused a TypeScript error.
+                                    const updatedDoc: CaseDocument = {
+                                        id: d.id,
+                                        caseId: d.caseId,
+                                        userId: d.userId,
+                                        name: d.name,
+                                        type: d.type,
+                                        size: d.size,
+                                        addedAt: d.addedAt,
+                                        storagePath: storagePath,
+                                        localState: 'synced',
+                                        updated_at: new Date(),
+                                    };
+                                    return updatedDoc;
+                                }
+                                return d;
+                            });
                             return { ...prev, documents: newDocs };
                         });
                         console.log(`Successfully uploaded ${doc.name}`);
 
-                    } catch (error) {
+                    } catch (error: any) {
                         console.error(`Failed to upload document ${doc.id}:`, error);
+                        let errorMessage = `فشل رفع الوثيقة: ${doc.name}`;
+                        if(String(error.message).toLowerCase().includes('failed to fetch')) {
+                           errorMessage += ". فشل الاتصال بالخادم. قد يكون هناك مشكلة في الشبكة أو في إعدادات CORS.";
+                        }
+                        addNotification(errorMessage, 'error');
                         setData(prev => {
-                            const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'error' } : d);
+                            const newDocs = prev.documents.map((d: CaseDocument): CaseDocument => {
+                                if (d.id === doc.id) {
+                                     // Fix: Replaced unsafe object spread with explicit property assignment
+                                     // to resolve a type erasure issue that caused a TypeScript error.
+                                    const updatedDoc: CaseDocument = {
+                                        id: d.id,
+                                        caseId: d.caseId,
+                                        userId: d.userId,
+                                        name: d.name,
+                                        type: d.type,
+                                        size: d.size,
+                                        addedAt: d.addedAt,
+                                        storagePath: d.storagePath,
+                                        localState: 'error',
+                                        updated_at: new Date()
+                                    };
+                                    return updatedDoc;
+                                }
+                                return d;
+                            });
                             return { ...prev, documents: newDocs };
                         });
                     }
@@ -473,8 +514,26 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                         await db.put(DOCS_FILES_STORE_NAME, blob, doc.id);
 
                         setData(prev => {
-                            const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'synced' } : d
-                            );
+                            const newDocs = prev.documents.map((d: CaseDocument): CaseDocument => {
+                                if (d.id === doc.id) {
+                                     // Fix: Replaced unsafe object spread with explicit property assignment
+                                     // to resolve a type erasure issue that caused a TypeScript error.
+                                    const updatedDoc: CaseDocument = {
+                                        id: d.id,
+                                        caseId: d.caseId,
+                                        userId: d.userId,
+                                        name: d.name,
+                                        type: d.type,
+                                        size: d.size,
+                                        addedAt: d.addedAt,
+                                        storagePath: d.storagePath,
+                                        localState: 'synced',
+                                        updated_at: new Date()
+                                    };
+                                    return updatedDoc;
+                                }
+                                return d;
+                            });
                             return { ...prev, documents: newDocs };
                         });
                          console.log(`Successfully downloaded ${doc.name}`);
@@ -482,9 +541,12 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                     } catch (error: any) {
                         let errorMessage = 'An unknown error occurred during download.';
                         if (error) {
-                            if (typeof error === 'object' && error.message) {
+                             if (typeof error === 'object' && error.message) {
                                 if (String(error.message).toLowerCase().includes('not found')) {
                                      errorMessage = `File not found in cloud storage. It might not have been uploaded correctly from the original device. Path: ${doc.storagePath}`;
+                                } else if (String(error.message).toLowerCase().includes('failed to fetch')) {
+                                    errorMessage = `فشل الاتصال بالخادم أثناء محاولة تنزيل الوثيقة.`;
+                                    addNotification(`فشل تنزيل الوثيقة "${doc.name}" بسبب خطأ في الشبكة.`, 'error');
                                 } else {
                                     errorMessage = error.message;
                                 }
@@ -499,7 +561,27 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                         console.error(`Failed to download document ${doc.id}: ${errorMessage}`, 'Original error object:', error);
 
                         setData(prev => {
-                            const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'error' } : d);
+                            const newDocs = prev.documents.map((d: CaseDocument): CaseDocument => {
+                                if (d.id === doc.id) {
+// FIX: Explicitly setting the return type of the .map() callback to `CaseDocument` ensures the compiler correctly infers the type of the newly created object, resolving the "Type '{}' is missing properties" error.
+                                     // Fix: Replaced unsafe object spread with explicit property assignment
+                                     // to resolve a type erasure issue that caused a TypeScript error.
+                                    const updatedDoc: CaseDocument = { 
+                                        id: d.id,
+                                        caseId: d.caseId,
+                                        userId: d.userId,
+                                        name: d.name,
+                                        type: d.type,
+                                        size: d.size,
+                                        addedAt: d.addedAt,
+                                        storagePath: d.storagePath,
+                                        localState: 'error',
+                                        updated_at: new Date()
+                                    };
+                                    return updatedDoc;
+                                }
+                                return d;
+                            });
                             return { ...prev, documents: newDocs };
                         });
                     }
@@ -510,7 +592,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         } finally {
             isFileSyncingRef.current = false;
         }
-    }, [getDocumentFile]);
+    }, [getDocumentFile, addNotification]);
 
     // This is the primary trigger for the file sync controller. It runs whenever the document list changes.
     React.useEffect(() => {
@@ -528,19 +610,19 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     }, [data.documents, isDataLoading, fileSyncController]);
 
 
-    const handleDataSynced = React.useCallback(async (syncedData: AppData) => {
+    const onDataSynced = React.useCallback(async (syncedData: AppData) => {
         const currentLocalDocuments = dataRef.current.documents;
         const localDocMap = new Map(currentLocalDocuments.map(doc => [doc.id, doc]));
 
-        // Fix: Cast syncedData.documents to any[] and remoteDoc to any to handle untype data from sync/import.
-        const syncedDocsWithLocalState = ((syncedData.documents as any[]) || [])
+        const syncedDocsWithLocalState = (syncedData.documents || [])
             .filter(doc => doc && doc.id)
-            .map((remoteDoc: any): CaseDocument => {
+            .map((remoteDoc): CaseDocument => {
                 const localDoc: CaseDocument | undefined = localDocMap.get(remoteDoc.id);
 
                 if (localDoc) {
                     // Item exists locally. Merge remote data over local, but preserve localState.
-                    // Fix: Explicitly construct the merged object to avoid spreading an `any` type (`remoteDoc`), which causes type errors.
+                    // Fix: Ensure that a merged document object with the correct type is created,
+                    // by explicitly assigning all properties instead of using an unsafe object spread.
                     const mergedDoc: CaseDocument = {
                         id: remoteDoc.id ?? localDoc.id,
                         caseId: remoteDoc.caseId ?? localDoc.caseId,
@@ -557,8 +639,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                     return mergedDoc;
                 } else {
                     // This is a new document from another client. Mark for download if it has a path.
-                    // @FIX: The spread of `remoteDoc` (of type `any`) was failing type-checking.
-                    // Explicitly construct the `CaseDocument` object to ensure all required properties are present.
                     const newDoc: CaseDocument = {
                         id: remoteDoc.id,
                         caseId: remoteDoc.caseId,
@@ -608,13 +688,18 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const handleSyncStatusChange = React.useCallback((status: SyncStatus, error: string | null) => {
         setSyncStatus(status);
         setLastSyncError(error);
-    }, []);
+         if (error && error.toLowerCase().includes('cors')) {
+            addNotification("فشل الاتصال بالخادم. يرجى التحقق من إعدادات CORS في Supabase.", 'error');
+        } else if (error && error.toLowerCase().includes('failed to fetch') && !error.toLowerCase().includes('realt-time')) {
+             addNotification("فشل الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت.", 'error');
+        }
+    }, [addNotification]);
 
     const { manualSync, fetchAndRefresh } = useSync({
         user,
         localData: data,
         deletedIds,
-        onDataSynced: handleDataSynced,
+        onDataSynced,
         onDeletionsSynced,
         onSyncStatusChange: handleSyncStatusChange,
         isOnline,
@@ -796,6 +881,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         if (!supabase) return;
 
         let debounceTimer: number | null = null;
+        let hasReportedRealtimeError = false;
+
         const debouncedRefresh = () => {
             if (debounceTimer) clearTimeout(debounceTimer);
             debounceTimer = window.setTimeout(() => {
@@ -829,9 +916,15 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                     debouncedRefresh();
                 })
                 .subscribe((status, err) => {
-                    if (status === 'CHANNEL_ERROR' || err) {
+                    if (status === 'SUBSCRIBED') {
+                        console.log(`Successfully subscribed to ${table} channel.`);
+                        hasReportedRealtimeError = false;
+                    } else if (status === 'CHANNEL_ERROR' || err) {
                         console.error(`Real-time subscription error for table ${table}:`, err);
-                        setLastSyncError(`فشل الاتصال بمزامنة الوقت الفعلي لجدول ${table}.`);
+                        if (!hasReportedRealtimeError) {
+                            handleSyncStatusChange('error', 'فشل الاتصال بخدمة المزامنة الفورية. قد يكون هناك مشكلة في الشبكة.');
+                            hasReportedRealtimeError = true;
+                        }
                     }
                 });
             channels.push(channel);
@@ -849,9 +942,15 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 debouncedRefresh();
             })
             .subscribe((status, err) => {
-                if (status === 'CHANNEL_ERROR' || err) {
+                 if (status === 'SUBSCRIBED') {
+                    console.log(`Successfully subscribed to profiles channel.`);
+                    hasReportedRealtimeError = false;
+                } else if (status === 'CHANNEL_ERROR' || err) {
                     console.error('Real-time subscription error for profiles:', err);
-                    setLastSyncError('فشل الاتصال بمزامنة الوقت الفعلي لملف المستخدم.');
+                    if (!hasReportedRealtimeError) {
+                        handleSyncStatusChange('error', 'فشل الاتصال بخدمة المزامنة الفورية. قد يكون هناك مشكلة في الشبكة.');
+                        hasReportedRealtimeError = true;
+                    }
                 }
             });
         channels.push(profileChannel);
@@ -867,7 +966,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 });
             });
         };
-    }, [user, isOnline, isAuthLoading, isDataLoading, syncStatus]);
+    }, [user, isOnline, isAuthLoading, isDataLoading, syncStatus, handleSyncStatusChange]);
 
     const addDocuments = React.useCallback(async (caseId: string, files: FileList) => {
         // FIX: Create a stable local variable for `userId`. The type checker may have issues
@@ -1003,7 +1102,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         setAssistants: (updater) => setData(prev => ({...prev, assistants: typeof updater === 'function' ? updater(prev.assistants) : updater})),
         setDocuments: (updater) => setData(prev => ({ ...prev, documents: typeof updater === 'function' ? updater(prev.documents) : updater })),
         setFullData: (fullData) => {
-            handleDataSynced(fullData as AppData);
+            onDataSynced(fullData as AppData);
         },
         allSessions: React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.map(s => ({...s, stageId: st.id, stageDecisionDate: st.decisionDate})) ))), [data.clients]),
         unpostponedSessions: React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.filter(s => !s.isPostponed && isBeforeToday(s.date) && !st.decisionDate).map(s => ({...s, stageId: st.id, stageDecisionDate: st.decisionDate}))))) , [data.clients]),

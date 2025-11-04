@@ -189,7 +189,7 @@ const Navbar: React.FC<{
                 <button onClick={() => onNavigate('home')} className="flex items-center" aria-label="العودة إلى الصفحة الرئيسية">
                     <div className="flex items-baseline gap-2">
                         <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
-                        <span className="text-xs font-mono text-gray-500">الإصدار 1</span>
+                        <span className="text-xs font-mono text-gray-500">الإصدار 2</span>
                     </div>
                 </button>
                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
@@ -295,6 +295,25 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const isOnline = useOnlineStatus();
     const supabase = getSupabaseClient();
     const supabaseData = useSupabaseData(session?.user ?? null, isAuthLoading);
+
+    React.useEffect(() => {
+        const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+            // Check if there are unsynced changes.
+            if (supabaseData.isDirty) {
+                // Standard way to trigger the browser's confirmation prompt.
+                event.preventDefault();
+                // For older browsers.
+                event.returnValue = '';
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+
+        // Cleanup the event listener when the component unmounts.
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
+    }, [supabaseData.isDirty]);
 
     React.useEffect(() => {
         if (supabaseData.syncStatus === 'unconfigured' || supabaseData.syncStatus === 'uninitialized') {

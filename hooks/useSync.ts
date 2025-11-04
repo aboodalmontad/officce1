@@ -175,7 +175,7 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                 sessions: new Set(deletedIds.sessions), adminTasks: new Set(deletedIds.adminTasks), appointments: new Set(deletedIds.appointments),
                 accountingEntries: new Set(deletedIds.accountingEntries), invoices: new Set(deletedIds.invoices),
                 invoiceItems: new Set(deletedIds.invoiceItems), assistants: new Set(deletedIds.assistants),
-                case_documents: new Set(deletedIds.documents),
+                documents: new Set(deletedIds.documents),
             };
 
             for (const key of Object.keys(localFlatData) as (keyof FlatData)[]) {
