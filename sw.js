@@ -1,8 +1,9 @@
-const CACHE_NAME = 'lawyer-app-cache-v15';
+// This version number is incremented to trigger the 'install' event and update the cache.
+const CACHE_NAME = 'lawyer-app-cache-v18';
+
 // The list of URLs to cache has been expanded to include all critical,
 // external dependencies. This ensures the app is fully functional offline
-// immediately after the service worker is installed, preventing failures
-// if the user goes offline before these assets are dynamically cached.
+// immediately after the service worker is installed.
 const urlsToCache = [
   './',
   './index.html',
@@ -11,49 +12,55 @@ const urlsToCache = [
   './icon.svg',
   'https://cdn.tailwindcss.com',
   'https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap',
-  // Google Fonts files
+  // Google Fonts files (specific woff2 files often used by browsers)
   'https://fonts.gstatic.com/s/tajawal/v10/Iura6YBj_oCad4k1nzSBC45I.woff2',
   'https://fonts.gstatic.com/s/tajawal/v10/Iura6YBj_oCad4k1nzGFC45I.woff2',
   'https://fonts.gstatic.com/s/tajawal/v10/Iura6YBj_oCad4k1nzGVC45I.woff2',
   'https://fonts.gstatic.com/s/tajawal/v10/Iura6YBj_oCad4k1nzGjC45I.woff2',
-  // Pinning specific versions from esm.sh for better cache stability
-  'https://esm.sh/v135/@google/genai@1.20.0/es2022/genai.mjs',
-  'https://esm.sh/v135/@supabase/supabase-js@2.44.4/es2022/supabase-js.mjs',
-  'https://esm.sh/v135/recharts@2.12.7/es2022/recharts.mjs',
-  // Updated React versions to match importmap (React 19)
-  'https://esm.sh/v135/react@19.1.1/es2022/react.mjs',
-  'https://esm.sh/v135/react@19.1.1/es2022/jsx-runtime.mjs',
-  'https://esm.sh/v135/react-dom@19.1.1/es2022/client.mjs',
+  // Pinning specific versions from esm.sh for better cache stability.
+  'https://esm.sh/@google/genai@^1.20.0',
+  'https://esm.sh/@supabase/supabase-js@^2.44.4',
+  'https://esm.sh/react@^19.1.1',
+  'https://esm.sh/react-dom@^19.1.1/client',
+  'https://esm.sh/react@^19.1.1/jsx-runtime',
+  'https://esm.sh/recharts@^2.12.7',
   'https://esm.sh/idb@^8.0.0',
   'https://esm.sh/docx-preview@^0.1.20',
 ];
 
 self.addEventListener('install', event => {
-  // Perform install steps
+  console.log('Service Worker: Installing...');
   // Force the waiting service worker to become the active service worker.
   self.skipWaiting(); 
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Opened cache and caching URLs');
+        console.log('Service Worker: Caching app shell and essential assets.');
         return cache.addAll(urlsToCache);
+      })
+      .catch(error => {
+        console.error('Service Worker: Failed to cache assets during install:', error);
       })
   );
 });
 
 self.addEventListener('activate', event => {
+  console.log('Service Worker: Activating...');
   const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cacheName => {
           if (cacheWhitelist.indexOf(cacheName) === -1) {
-            console.log('Deleting old cache:', cacheName);
+            console.log('Service Worker: Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
-    }).then(() => self.clients.claim()) // Take control of open pages immediately
+    }).then(() => {
+      console.log('Service Worker: Claiming clients.');
+      return self.clients.claim(); // Take control of open pages immediately
+    })
   );
 });
 
@@ -63,10 +70,11 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Supabase API calls should always go to the network and not be cached.
-  // The JS library itself is hosted on esm.sh and will be cached.
-  if (event.request.url.includes('supabase.co')) {
-    // We don't call event.respondWith, so the browser handles it as usual (network).
+  // Supabase API calls (for auth and data) should always go to the network.
+  // They should not be cached.
+  const isSupabaseApi = event.request.url.includes('supabase.co');
+  if (isSupabaseApi) {
+    // Let the browser handle it as a normal network request.
     return;
   }
 
@@ -84,19 +92,19 @@ self.addEventListener('fetch', event => {
         const networkResponse = await fetch(event.request);
         
         // We cache successful responses (status 200) and opaque responses (for no-cors CDNs).
-        // This is important for caching assets like tailwindcss.
         if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque')) {
-          // Clone the response because it can only be consumed once.
+          // Clone the response because it's a stream and can only be consumed once.
           const responseToCache = networkResponse.clone();
           await cache.put(event.request, responseToCache);
         }
         
         return networkResponse;
       } catch (error) {
-        // 3. If the network fails (e.g., offline), provide a fallback.
-        console.error('Fetch failed; returning offline fallback if available for:', event.request.url, error);
+        // 3. If the network fails (e.g., user is offline), provide a fallback.
+        console.warn('Service Worker: Network fetch failed, returning offline fallback.', { url: event.request.url, error });
 
-        // For navigation requests (i.e., loading a page), return the cached root file.
+        // For navigation requests (i.e., loading a page), return the cached root HTML file.
+        // This is the key to making the PWA work offline.
         if (event.request.mode === 'navigate') {
           const fallbackResponse = await cache.match('./');
           if (fallbackResponse) {

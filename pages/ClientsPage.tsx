@@ -527,25 +527,37 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                 const uniqueIdPrefix = Date.now();
                 const generatedData = parsedData.appData;
 
-                // Simple re-IDing logic
-                const reId = (item: any, prefix: string, index: number) => ({ ...item, id: `${prefix}-${uniqueIdPrefix}-${index}` });
-
-                generatedData.clients = generatedData.clients.map((c: any, cIdx: number) => {
-                    const newClient = reId(c, 'client', cIdx);
-                    newClient.cases = (c.cases || []).map((cs: any, csIdx: number) => {
-                        const newCase = reId(cs, `case-${cIdx}`, csIdx);
-                        newCase.stages = (cs.stages || []).map((st: any, stIdx: number) => {
-                            const newStage = reId(st, `stage-${csIdx}`, stIdx);
-                            newStage.sessions = (st.sessions || []).map((s: any, sIdx: number) => reId(s, `session-${stIdx}`, sIdx));
-                            return newStage;
+                const idMap = new Map<string, string>();
+                let counter = 0;
+                const reId = (item: any, prefix: string) => {
+                    const newId = `${prefix}-${uniqueIdPrefix}-${counter++}`;
+                    if (item.id) { idMap.set(item.id, newId); }
+                    item.id = newId;
+                };
+                
+                (generatedData.clients || []).forEach((c: any) => {
+                    reId(c, 'client');
+                    (c.cases || []).forEach((cs: any) => {
+                        reId(cs, 'case');
+                        (cs.stages || []).forEach((st: any) => {
+                            reId(st, 'stage');
+                            (st.sessions || []).forEach((s: any) => reId(s, 'session'));
                         });
-                        return newCase;
                     });
-                    return newClient;
                 });
-                generatedData.adminTasks = (generatedData.adminTasks || []).map((t: any, i: number) => reId(t, 'task', i));
-                generatedData.appointments = (generatedData.appointments || []).map((a: any, i: number) => reId(a, 'apt', i));
-                generatedData.accountingEntries = (generatedData.accountingEntries || []).map((e: any, i: number) => reId(e, 'acc', i));
+
+                (generatedData.adminTasks || []).forEach((t: any) => reId(t, 'task'));
+                (generatedData.appointments || []).forEach((a: any) => reId(a, 'apt'));
+
+                (generatedData.accountingEntries || []).forEach((e: any) => {
+                    reId(e, 'acc');
+                    if (e.clientId && idMap.has(e.clientId)) {
+                        e.clientId = idMap.get(e.clientId)!;
+                    }
+                    if (e.caseId && idMap.has(e.caseId)) {
+                        e.caseId = idMap.get(e.caseId)!;
+                    }
+                });
 
                 setFullData(generatedData);
             }

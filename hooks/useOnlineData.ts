@@ -174,18 +174,18 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
 
     // Map application data (camelCase) to database schema (snake_case)
     const dataToUpsert = {
-        clients: data.clients?.map(({ contactInfo, updated_at, ...rest }) => ({ ...rest, user_id: userId, contact_info: contactInfo })),
-        cases: data.cases?.map(({ clientName, opponentName, feeAgreement, updated_at, ...rest }) => ({ ...rest, user_id: userId, client_name: clientName, opponent_name: opponentName, fee_agreement: feeAgreement })),
-        stages: data.stages?.map(({ caseNumber, firstSessionDate, decisionDate, decisionNumber, decisionSummary, decisionNotes, updated_at, ...rest }) => ({ ...rest, user_id: userId, case_number: caseNumber, first_session_date: firstSessionDate, decision_date: decisionDate, decision_number: decisionNumber, decision_summary: decisionSummary, decision_notes: decisionNotes })),
-        sessions: data.sessions?.map(({ caseNumber, clientName, opponentName, postponementReason, nextPostponementReason, isPostponed, nextSessionDate, updated_at, ...rest }) => ({ ...rest, user_id: userId, case_number: caseNumber, client_name: clientName, opponent_name: opponentName, postponement_reason: postponementReason, next_postponement_reason: nextPostponementReason, is_postponed: isPostponed, next_session_date: nextSessionDate })),
-        admin_tasks: data.admin_tasks?.map(({ dueDate, updated_at, ...rest }) => ({ ...rest, user_id: userId, due_date: dueDate })),
-        appointments: data.appointments?.map(({ reminderTimeInMinutes, updated_at, ...rest }) => ({ ...rest, user_id: userId, reminder_time_in_minutes: reminderTimeInMinutes })),
-        accounting_entries: data.accounting_entries?.map(({ clientId, caseId, clientName, updated_at, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, case_id: caseId, client_name: clientName })),
+        clients: data.clients?.map(({ contactInfo, ...rest }) => ({ ...rest, user_id: userId, contact_info: contactInfo })),
+        cases: data.cases?.map(({ clientName, opponentName, feeAgreement, ...rest }) => ({ ...rest, user_id: userId, client_name: clientName, opponent_name: opponentName, fee_agreement: feeAgreement })),
+        stages: data.stages?.map(({ caseNumber, firstSessionDate, decisionDate, decisionNumber, decisionSummary, decisionNotes, ...rest }) => ({ ...rest, user_id: userId, case_number: caseNumber, first_session_date: firstSessionDate, decision_date: decisionDate, decision_number: decisionNumber, decision_summary: decisionSummary, decision_notes: decisionNotes })),
+        sessions: data.sessions?.map(({ caseNumber, clientName, opponentName, postponementReason, nextPostponementReason, isPostponed, nextSessionDate, ...rest }) => ({ ...rest, user_id: userId, case_number: caseNumber, client_name: clientName, opponent_name: opponentName, postponement_reason: postponementReason, next_postponement_reason: nextPostponementReason, is_postponed: isPostponed, next_session_date: nextSessionDate })),
+        admin_tasks: data.admin_tasks?.map(({ dueDate, ...rest }) => ({ ...rest, user_id: userId, due_date: dueDate })),
+        appointments: data.appointments?.map(({ reminderTimeInMinutes, ...rest }) => ({ ...rest, user_id: userId, reminder_time_in_minutes: reminderTimeInMinutes })),
+        accounting_entries: data.accounting_entries?.map(({ clientId, caseId, clientName, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, case_id: caseId, client_name: clientName })),
         assistants: data.assistants?.map(item => ({ ...item, user_id: userId })),
-        invoices: data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, updated_at, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, client_name: clientName, case_id: caseId, case_subject: caseSubject, issue_date: issueDate, due_date: dueDate, tax_rate: taxRate })),
-        invoice_items: data.invoice_items?.map(({ updated_at, ...item }) => ({ ...item, user_id: userId })),
+        invoices: data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, client_name: clientName, case_id: caseId, case_subject: caseSubject, issue_date: issueDate, due_date: dueDate, tax_rate: taxRate })),
+        invoice_items: data.invoice_items?.map(({ ...item }) => ({ ...item, user_id: userId })),
         // FIX: Filter out documents that don't have a valid, non-empty storagePath yet to prevent a race condition.
-        case_documents: data.case_documents?.filter(doc => doc.storagePath && doc.storagePath.trim() !== '').map(({ caseId, userId: localUserId, addedAt, storagePath, localState, updated_at, ...rest }) => ({ ...rest, user_id: userId, case_id: caseId, added_at: addedAt, storage_path: storagePath })),
+        case_documents: data.case_documents?.filter(doc => doc.storagePath && doc.storagePath.trim() !== '').map(({ caseId, userId: localUserId, addedAt, storagePath, localState, ...rest }) => ({ ...rest, user_id: userId, case_id: caseId, added_at: addedAt, storage_path: storagePath })),
     };
     
     const upsertTable = async (table: string, records: any[] | undefined, options: { onConflict?: string } = {}) => {

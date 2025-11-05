@@ -2,7 +2,7 @@ import * as React from 'react';
 import { User } from '@supabase/supabase-js';
 import { checkSupabaseSchema, fetchDataFromSupabase, upsertDataToSupabase, FlatData, deleteDataFromSupabase, transformRemoteToLocal } from './useOnlineData';
 import { getSupabaseClient } from '../supabaseClient';
-import { AppData, DeletedIds } from '../types';
+import { Client, Case, Stage, Session, CaseDocument, AppData, DeletedIds } from '../types';
 
 export type SyncStatus = 'loading' | 'syncing' | 'synced' | 'error' | 'unconfigured' | 'uninitialized';
 
@@ -48,24 +48,24 @@ const flattenData = (data: AppData): FlatData => {
 };
 
 const constructData = (flatData: Partial<FlatData>): AppData => {
-    const sessionMap = new Map<string, any[]>();
+    const sessionMap = new Map<string, Session[]>();
     (flatData.sessions || []).forEach(s => {
         const stageId = (s as any).stage_id;
         if (!sessionMap.has(stageId)) sessionMap.set(stageId, []);
-        sessionMap.get(stageId)!.push(s);
+        sessionMap.get(stageId)!.push(s as Session);
     });
 
-    const stageMap = new Map<string, any[]>();
+    const stageMap = new Map<string, Stage[]>();
     (flatData.stages || []).forEach(st => {
-        const stage = { ...st, sessions: sessionMap.get(st.id) || [] };
+        const stage = { ...st, sessions: sessionMap.get(st.id) || [] } as Stage;
         const caseId = (st as any).case_id;
         if (!stageMap.has(caseId)) stageMap.set(caseId, []);
         stageMap.get(caseId)!.push(stage);
     });
 
-    const caseMap = new Map<string, any[]>();
+    const caseMap = new Map<string, Case[]>();
     (flatData.cases || []).forEach(cs => {
-        const caseItem = { ...cs, stages: stageMap.get(cs.id) || [] };
+        const caseItem = { ...cs, stages: stageMap.get(cs.id) || [] } as Case;
         const clientId = (cs as any).client_id;
         if (!caseMap.has(clientId)) caseMap.set(clientId, []);
         caseMap.get(clientId)!.push(caseItem);
@@ -79,7 +79,7 @@ const constructData = (flatData: Partial<FlatData>): AppData => {
     });
 
     return {
-        clients: (flatData.clients || []).map(c => ({ ...c, cases: caseMap.get(c.id) || [] })) as any,
+        clients: (flatData.clients || []).map(c => ({ ...c, cases: caseMap.get(c.id) || [] } as Client)),
         adminTasks: (flatData.admin_tasks || []) as any,
         appointments: (flatData.appointments || []) as any,
         accountingEntries: (flatData.accounting_entries || []) as any,
@@ -190,6 +190,18 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
 
                 for (const localItem of localItems) {
                     const id = localItem.id ?? localItem.name;
+
+                    let isParentDeleted = false;
+                    if (key === 'cases' && deletedIdsSets.clients.has(localItem.client_id)) isParentDeleted = true;
+                    if (key === 'stages' && deletedIdsSets.cases.has(localItem.case_id)) isParentDeleted = true;
+                    if (key === 'sessions' && deletedIdsSets.stages.has(localItem.stage_id)) isParentDeleted = true;
+                    if (key === 'invoice_items' && deletedIdsSets.invoices.has(localItem.invoice_id)) isParentDeleted = true;
+                    if (key === 'case_documents' && deletedIdsSets.cases.has(localItem.caseId)) isParentDeleted = true; // case_documents use camelCase for caseId
+                    
+                    if (isParentDeleted) {
+                        continue; // Skip this item, it belongs to a deleted parent.
+                    }
+
                     const remoteItem = remoteMap.get(id);
                     if (remoteItem) {
                         const localDate = new Date(localItem.updated_at || 0).getTime();

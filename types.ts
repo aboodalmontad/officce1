@@ -147,13 +147,7 @@ export interface CaseDocument {
   updated_at?: Date;
 }
 
-export interface AppNotification {
-  id: number;
-  message: string;
-  type: 'info' | 'success' | 'warning' | 'error';
-}
-
-export interface AppData {
+export type AppData = {
     clients: Client[];
     adminTasks: AdminTask[];
     appointments: Appointment[];
@@ -161,9 +155,9 @@ export interface AppData {
     invoices: Invoice[];
     assistants: string[];
     documents: CaseDocument[];
-}
+};
 
-export interface DeletedIds {
+export type DeletedIds = {
     clients: string[];
     cases: string[];
     stages: string[];
@@ -176,4 +170,4 @@ export interface DeletedIds {
     assistants: string[];
     documents: string[];
     documentPaths: string[];
-}
+};

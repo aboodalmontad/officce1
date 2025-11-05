@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, PlusIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ShieldCheckIcon } from '../components/icons';
 import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
+import { APP_DATA_KEY } from '../hooks/useSupabaseData';
 import { useData } from '../App';
 import { openDB } from 'idb';
 
@@ -96,7 +97,7 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
         setDbStats('جاري الفحص...');
         let stats = '';
         try {
-            const db = await openDB('LawyerAppData', 3);
+            const db = await openDB('LawyerAppData', 2);
             
             const storesToCheck = [
                 { name: 'appData', label: 'بيانات التطبيق الرئيسية' },

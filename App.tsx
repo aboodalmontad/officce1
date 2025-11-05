@@ -13,16 +13,16 @@ import SubscriptionExpiredPage from './pages/SubscriptionExpiredPage';
 
 
 import ConfigurationModal from './components/ConfigurationModal';
+// @FIX: 'AppData' is not exported from './hooks/useSupabaseData'. It should be imported from './types' instead.
 import { useSupabaseData, SyncStatus } from './hooks/useSupabaseData';
 import { UserIcon, CalculatorIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, ExclamationTriangleIcon, PowerIcon, HomeIcon } from './components/icons';
 import ContextMenu, { MenuItem } from './components/ContextMenu';
 import AdminTaskModal from './components/AdminTaskModal';
-import { AdminTask, Profile, Session, Client, Appointment, AccountingEntry, Invoice, CaseDocument, AppData, AppNotification } from './types';
+import { AdminTask, Profile, Session, Client, Appointment, AccountingEntry, Invoice, CaseDocument, AppData } from './types';
 import { getSupabaseClient } from './supabaseClient';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import AppointmentNotifier from './components/AppointmentNotifier';
 import UnpostponedSessionsModal from './components/UnpostponedSessionsModal';
-import NotificationManager from './components/NotificationManager';
 
 
 // --- Data Context for avoiding prop drilling ---
@@ -51,9 +51,6 @@ interface IDataContext extends AppData {
     exportData: () => boolean;
     triggeredAlerts: Appointment[];
     dismissAlert: (appointmentId: string) => void;
-    notifications: AppNotification[];
-    dismissNotification: (id: number) => void;
-    addNotification: (message: string, type: AppNotification['type']) => void;
     deleteClient: (clientId: string) => void;
     deleteCase: (caseId: string, clientId: string) => void;
     deleteStage: (stageId: string, caseId: string, clientId: string) => void;
@@ -189,7 +186,7 @@ const Navbar: React.FC<{
                 <button onClick={() => onNavigate('home')} className="flex items-center" aria-label="العودة إلى الصفحة الرئيسية">
                     <div className="flex items-baseline gap-2">
                         <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
-                        <span className="text-xs font-mono text-gray-500">الإصدار 2</span>
+                        <span className="text-xs font-mono text-gray-500">الإصدار 5</span>
                     </div>
                 </button>
                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
@@ -295,25 +292,6 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const isOnline = useOnlineStatus();
     const supabase = getSupabaseClient();
     const supabaseData = useSupabaseData(session?.user ?? null, isAuthLoading);
-
-    React.useEffect(() => {
-        const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-            // Check if there are unsynced changes.
-            if (supabaseData.isDirty) {
-                // Standard way to trigger the browser's confirmation prompt.
-                event.preventDefault();
-                // For older browsers.
-                event.returnValue = '';
-            }
-        };
-
-        window.addEventListener('beforeunload', handleBeforeUnload);
-
-        // Cleanup the event listener when the component unmounts.
-        return () => {
-            window.removeEventListener('beforeunload', handleBeforeUnload);
-        };
-    }, [supabaseData.isDirty]);
 
     React.useEffect(() => {
         if (supabaseData.syncStatus === 'unconfigured' || supabaseData.syncStatus === 'uninitialized') {
@@ -569,10 +547,6 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
 
     return (
         <DataProvider value={{...supabaseData, isAuthLoading}}>
-            <NotificationManager 
-                notifications={supabaseData.notifications}
-                onDismiss={supabaseData.dismissNotification}
-            />
             <div className="min-h-screen flex flex-col bg-gray-100">
                 <Navbar
                     currentPage={currentPage}

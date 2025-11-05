@@ -195,43 +195,14 @@ BEGIN
     END LOOP;
 END$$;
 
--- 7. AUTOMATION: Trigger function to auto-update 'updated_at' columns.
-CREATE OR REPLACE FUNCTION public.update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-   NEW.updated_at = now(); 
-   RETURN NEW;
-END;
-$$ language 'plpgsql';
-
-DO $$
-DECLARE
-    table_name TEXT;
-BEGIN
-    FOREACH table_name IN ARRAY ARRAY[
-        'profiles', 'clients', 'cases', 'stages', 'sessions', 
-        'admin_tasks', 'appointments', 'accounting_entries', 
-        'invoices', 'invoice_items', 'site_finances', 'case_documents'
-    ]
-    LOOP
-        EXECUTE format('
-            CREATE TRIGGER handle_updated_at
-            BEFORE UPDATE ON public.%I
-            FOR EACH ROW
-            EXECUTE PROCEDURE public.update_updated_at_column();
-        ', table_name);
-    END LOOP;
-END$$;
-
-
--- 8. PERMISSIONS
+-- 7. PERMISSIONS
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;
 GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 
 -- =================================================================
--- 9. إنشاء حساب المدير تلقائياً وتصحيحه
+-- 8. إنشاء حساب المدير تلقائياً وتصحيحه
 -- =================================================================
 -- !! هام: عدّل البيانات التالية قبل تشغيل السكربت !!
 DO $$
@@ -279,7 +250,7 @@ BEGIN
         mobile_number = EXCLUDED.mobile_number;
 END $$;
 
--- 10. REFRESH SCHEMA CACHE
+-- 9. REFRESH SCHEMA CACHE
 -- This final command is critical. It forces Supabase's API layer (PostgREST)
 -- to reload its internal schema cache, ensuring it recognizes all the newly
 -- created tables, columns, and functions immediately. Without this, you might
@@ -367,19 +338,6 @@ CREATE POLICY "Enable ALL for own data" ON public.invoices FOR ALL USING (auth.u
 CREATE POLICY "Enable ALL for admin" ON public.invoices FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
 CREATE POLICY "Enable ALL for own data" ON public.invoice_items FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Enable ALL for admin" ON public.invoice_items FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
-
-CREATE OR REPLACE FUNCTION public.update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-   NEW.updated_at = now(); 
-   RETURN NEW;
-END;
-$$ language 'plpgsql';
-
-CREATE TRIGGER handle_updated_at BEFORE UPDATE ON public.site_finances FOR EACH ROW EXECUTE PROCEDURE public.update_updated_at_column();
-CREATE TRIGGER handle_updated_at BEFORE UPDATE ON public.accounting_entries FOR EACH ROW EXECUTE PROCEDURE public.update_updated_at_column();
-CREATE TRIGGER handle_updated_at BEFORE UPDATE ON public.invoices FOR EACH ROW EXECUTE PROCEDURE public.update_updated_at_column();
-CREATE TRIGGER handle_updated_at BEFORE UPDATE ON public.invoice_items FOR EACH ROW EXECUTE PROCEDURE public.update_updated_at_column();
 `;
 
 const repairScript = `

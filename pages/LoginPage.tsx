@@ -221,6 +221,14 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
             } catch (err: any) {
                 const lowerMsg = String(err.message).toLowerCase();
                 console.error('Online Login error:', err);
+
+                // Fallback to offline login if online attempt fails due to network issues.
+                if (lowerMsg.includes('failed to fetch') || lowerMsg.includes('networkerror')) {
+                    console.log("Online login failed due to network error, attempting offline login as fallback.");
+                    performOfflineLogin();
+                    return;
+                }
+                
                 let displayError: React.ReactNode = 'حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.';
     
                 if (lowerMsg.includes('invalid login credentials')) {
@@ -260,18 +268,6 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                                 <DatabaseIcon />
                                 <span>الانتقال إلى صفحة الإعداد</span>
                             </button>
-                        </div>
-                    );
-                } else if (lowerMsg.includes('failed to fetch') || lowerMsg.includes('networkerror')) {
-                    displayError = (
-                        <div className="text-right w-full text-xs">
-                            <p className="font-bold mb-2 text-sm">فشل الاتصال بالخادم</p>
-                            <p>قد يكون هذا بسبب مشكلة في الشبكة أو إعدادات CORS في Supabase.</p>
-                            <ul className="list-disc list-inside mt-2 space-y-1">
-                                <li>تأكد من اتصالك بالإنترنت.</li>
-                                <li>تأكد من أن نطاق التطبيق (domain) الذي تستخدمه مضاف إلى قائمة CORS Origins في إعدادات Supabase.</li>
-                                <li>اذهب إلى: <code className="text-sm bg-gray-200 text-black p-1 rounded select-all">Project Settings &gt; API &gt; CORS Origins</code></li>
-                            </ul>
                         </div>
                     );
                 }
