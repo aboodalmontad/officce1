@@ -171,3 +171,9 @@ export type DeletedIds = {
     documents: string[];
     documentPaths: string[];
 };
+
+export const getInitialDeletedIds = (): DeletedIds => ({
+    clients: [], cases: [], stages: [], sessions: [], adminTasks: [], appointments: [], accountingEntries: [], invoices: [], invoiceItems: [], assistants: [],
+    documents: [],
+    documentPaths: [],
+});

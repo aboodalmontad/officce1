@@ -2,17 +2,10 @@ import * as React from 'react';
 import { User } from '@supabase/supabase-js';
 import { checkSupabaseSchema, fetchDataFromSupabase, upsertDataToSupabase, FlatData, deleteDataFromSupabase, transformRemoteToLocal } from './useOnlineData';
 import { getSupabaseClient } from '../supabaseClient';
-import { Client, Case, Stage, Session, CaseDocument, AppData, DeletedIds } from '../types';
+import { Client, Case, Stage, Session, CaseDocument, AppData, DeletedIds, getInitialDeletedIds } from '../types';
 
 export type SyncStatus = 'loading' | 'syncing' | 'synced' | 'error' | 'unconfigured' | 'uninitialized';
 
-
-// Fix: Define getInitialDeletedIds to resolve reference error. This function was defined in useSupabaseData.ts, which would cause a circular dependency if imported.
-const getInitialDeletedIds = (): DeletedIds => ({
-    clients: [], cases: [], stages: [], sessions: [], adminTasks: [], appointments: [], accountingEntries: [], invoices: [], invoiceItems: [], assistants: [],
-    documents: [],
-    documentPaths: [],
-});
 
 interface UseSyncProps {
     user: User | null;

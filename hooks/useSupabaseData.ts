@@ -1,7 +1,5 @@
-
-
 import * as React from 'react';
-import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem, CaseDocument, AppData, DeletedIds } from '../types';
+import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem, CaseDocument, AppData, DeletedIds, getInitialDeletedIds } from '../types';
 import { useOnlineStatus } from './useOnlineStatus';
 import { User, RealtimeChannel } from '@supabase/supabase-js';
 import { useSync, SyncStatus as SyncStatusType } from './useSync';
@@ -12,13 +10,6 @@ import { openDB, IDBPDatabase } from 'idb';
 
 export const APP_DATA_KEY = 'lawyerBusinessManagementData';
 export type SyncStatus = SyncStatusType;
-
-const getInitialDeletedIds = (): DeletedIds => ({
-    clients: [], cases: [], stages: [], sessions: [], adminTasks: [], appointments: [], accountingEntries: [], invoices: [], invoiceItems: [], assistants: [],
-    documents: [],
-    documentPaths: [],
-});
-
 
 const defaultAssistants = ['أحمد', 'فاطمة', 'سارة', 'بدون تخصيص'];
 
@@ -347,15 +338,12 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         const currentLocalDocuments = dataRef.current.documents;
         const localDocMap = new Map(currentLocalDocuments.map(doc => [doc.id, doc]));
 
-        // Fix: Cast syncedData.documents to any[] and remoteDoc to any to handle untype data from sync/import.
-        const syncedDocsWithLocalState = ((syncedData.documents as any[]) || [])
+        const syncedDocsWithLocalState = (syncedData.documents || [])
             .filter(doc => doc && doc.id)
             .map((remoteDoc: any): CaseDocument => {
                 const localDoc: CaseDocument | undefined = localDocMap.get(remoteDoc.id);
 
                 if (localDoc) {
-                    // FIX: Manually construct merged object to avoid type errors from spreading untyped remoteDoc.
-                    // This prevents null values from overwriting valid local data and ensures type safety.
                     const mergedDoc: CaseDocument = {
                         id: remoteDoc.id,
                         caseId: String((remoteDoc.caseId ?? localDoc.caseId) || ''),
@@ -371,10 +359,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                     return mergedDoc;
                 } else {
                     // This is a new document from another client. Mark for download if it has a path.
-                    
-                    // @FIX: The original code assigned an empty object `{}`, which violates the `CaseDocument` type.
-                    // This has been corrected by explicitly constructing the object with all required fields,
-                    // using data from the remote object and providing sensible defaults for any missing properties.
                     const newDoc: CaseDocument = {
                         id: remoteDoc.id,
                         caseId: String(remoteDoc.caseId || ''),
@@ -482,7 +466,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                         if (uploadError) throw uploadError;
 
                         setData(prev => {
-                            // FIX: Use 'as const' to prevent TypeScript from widening the 'localState' literal to a generic string.
                             const newDocs = prev.documents.map(d =>
                                 d.id === doc.id ? { ...d, localState: 'synced' as const, storagePath: storagePath, updated_at: new Date() } : d
                             );
@@ -493,7 +476,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                     } catch (error) {
                         console.error(`Failed to upload document ${doc.id}:`, error);
                         setData(prev => {
-                            // FIX: Use 'as const' to prevent TypeScript from widening the 'localState' literal to a generic string.
                             const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'error' as const } : d);
                             return { ...prev, documents: newDocs };
                         });
@@ -513,7 +495,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                         await db.put(DOCS_FILES_STORE_NAME, blob, doc.id);
 
                         setData(prev => {
-                            // FIX: Use 'as const' to prevent TypeScript from widening the 'localState' literal to a generic string.
                             const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'synced' as const } : d
                             );
                             return { ...prev, documents: newDocs };
@@ -522,33 +503,40 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
                     } catch (error) {
                         const err = error as any;
-                        const message = err.message;
-                        const lowerMessage = typeof message === 'string' ? message.toLowerCase() : '';
-                        const statusCode = err.statusCode;
+                        
+                        // FIX: The error indicates that a non-error empty object may be causing issues.
+                        // Refactor `isNotFound` to be more robust and specific to Supabase error signatures.
+                        const isNotFound = (e: any): boolean => {
+                            if (!e) return false;
+                            // Check for Supabase StorageError properties
+                            if (typeof e.statusCode === 'number' && e.statusCode === 404) {
+                                return true;
+                            }
+                            // Check for message content
+                            if (typeof e.message === 'string' && e.message.toLowerCase().includes('not found')) {
+                                return true;
+                            }
+                            // Handle the specific case where Supabase storage returns an empty object for a 404 error
+                            if (typeof e === 'object' && e !== null && Object.keys(e).length === 0 && e.constructor === Object) {
+                                return true;
+                            }
+                            return false;
+                        };
 
-                        const isObject = typeof err === 'object' && err !== null;
-                        const isEmptyObject = isObject && Object.keys(err).length === 0;
-                        const isEmptyMessageObject = isObject && typeof err.message === 'object' && err.message !== null && Object.keys(err.message).length === 0;
 
-                        // Treat network failures, generic server errors (5xx), and these weird empty errors as potentially transient.
-                        if (lowerMessage.includes('failed to fetch') || (statusCode && statusCode >= 500) || isEmptyObject || isEmptyMessageObject) {
-                            console.warn(`Treating as transient error, will retry download for doc ${doc.id} later.`, error);
-                            continue; // Skip setting to 'error' and retry on next sync cycle
+                        if (isNotFound(err)) {
+                            // PERMANENT "Not Found" ERROR
+                            const detailedMessage = `The file was not found or access was denied. It may not exist in cloud storage or permissions may be incorrect. Path: ${doc.storagePath}`;
+                            console.error(`Failed to download document ${doc.id}. Reason: ${detailedMessage}. Original error object:`, error);
+                            setData(prev => {
+                                const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'error' as const } : d);
+                                return { ...prev, documents: newDocs };
+                            });
+                        } else {
+                            // TRANSIENT ERROR (e.g., network failure, server 5xx)
+                            console.warn(`Transient error downloading doc ${doc.id}, will retry later.`, error);
+                            continue;
                         }
-                        
-                        // Treat other errors as permanent (e.g., Not Found 404)
-                        let detailedMessage = `Server error: ${message || 'No details provided'}`;
-                        if (lowerMessage.includes('not found') || statusCode === 404) {
-                            detailedMessage = `The file was not found or access was denied. It may not exist in cloud storage or permissions may be incorrect. Path: ${doc.storagePath}`;
-                        }
-                        
-                        console.error(`Failed to download document ${doc.id}. Reason: ${detailedMessage}. Original error object:`, error);
-                        
-                        // Update UI state to permanent error
-                        setData(prev => {
-                            const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'error' as const } : d);
-                            return { ...prev, documents: newDocs };
-                        });
                     }
                 }
             }
@@ -774,13 +762,15 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         });
         
         channel.subscribe((status, err) => {
+            const REALTIME_ERROR_MSG = `فشل الاتصال بمزامنة الوقت الفعلي.`;
             if (status === 'SUBSCRIBED') {
                 console.log('Successfully subscribed to db-changes channel!');
-                setLastSyncError(prev => prev === `فشل الاتصال بمزامنة الوقت الفعلي.` ? null : prev);
+                setLastSyncError(prev => prev === REALTIME_ERROR_MSG ? null : prev);
             }
             if (status === 'CHANNEL_ERROR' || err) {
                 console.error(`Real-time subscription error:`, err);
-                setLastSyncError(`فشل الاتصال بمزامنة الوقت الفعلي.`);
+                // Prevent setting the same error message repeatedly to avoid loops.
+                setLastSyncError(prev => prev === REALTIME_ERROR_MSG ? prev : REALTIME_ERROR_MSG);
             }
         });
         

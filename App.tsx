@@ -13,7 +13,6 @@ import SubscriptionExpiredPage from './pages/SubscriptionExpiredPage';
 
 
 import ConfigurationModal from './components/ConfigurationModal';
-// @FIX: 'AppData' is not exported from './hooks/useSupabaseData'. It should be imported from './types' instead.
 import { useSupabaseData, SyncStatus } from './hooks/useSupabaseData';
 import { UserIcon, CalculatorIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, ExclamationTriangleIcon, PowerIcon, HomeIcon } from './components/icons';
 import ContextMenu, { MenuItem } from './components/ContextMenu';
@@ -186,7 +185,7 @@ const Navbar: React.FC<{
                 <button onClick={() => onNavigate('home')} className="flex items-center" aria-label="العودة إلى الصفحة الرئيسية">
                     <div className="flex items-baseline gap-2">
                         <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
-                        <span className="text-xs font-mono text-gray-500">الإصدار 5</span>
+                        <span className="text-xs font-mono text-gray-500">الإصدار 6</span>
                     </div>
                 </button>
                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">

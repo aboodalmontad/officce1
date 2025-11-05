@@ -184,7 +184,6 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         assistants: data.assistants?.map(item => ({ ...item, user_id: userId })),
         invoices: data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, client_name: clientName, case_id: caseId, case_subject: caseSubject, issue_date: issueDate, due_date: dueDate, tax_rate: taxRate })),
         invoice_items: data.invoice_items?.map(({ ...item }) => ({ ...item, user_id: userId })),
-        // FIX: Filter out documents that don't have a valid, non-empty storagePath yet to prevent a race condition.
         case_documents: data.case_documents?.filter(doc => doc.storagePath && doc.storagePath.trim() !== '').map(({ caseId, userId: localUserId, addedAt, storagePath, localState, ...rest }) => ({ ...rest, user_id: userId, case_id: caseId, added_at: addedAt, storage_path: storagePath })),
     };
     
