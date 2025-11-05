@@ -337,49 +337,61 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const handleDataSynced = React.useCallback(async (syncedData: AppData) => {
         const currentLocalDocuments = dataRef.current.documents;
         const localDocMap = new Map(currentLocalDocuments.map(doc => [doc.id, doc]));
-
+        
         const syncedDocsWithLocalState = (syncedData.documents || [])
             .filter(doc => doc && doc.id)
-            .map((remoteDoc: any): CaseDocument => {
-                const localDoc: CaseDocument | undefined = localDocMap.get(remoteDoc.id);
-
-                if (localDoc) {
-                    const mergedDoc: CaseDocument = {
-                        id: remoteDoc.id,
-                        caseId: String((remoteDoc.caseId ?? localDoc.caseId) || ''),
-                        userId: String((remoteDoc.userId ?? localDoc.userId) || ''),
-                        name: String((remoteDoc.name ?? localDoc.name) || 'document.bin'),
-                        type: String((remoteDoc.type ?? localDoc.type) || 'application/octet-stream'),
-                        size: typeof remoteDoc.size === 'number' ? remoteDoc.size : (localDoc.size || 0),
-                        storagePath: String((remoteDoc.storagePath ?? localDoc.storagePath) || ''),
-                        localState: localDoc.localState, // Always preserve local state
-                        addedAt: new Date(remoteDoc.addedAt ?? localDoc.addedAt),
-                        updated_at: remoteDoc.updated_at ? new Date(remoteDoc.updated_at) : (localDoc.updated_at ? new Date(localDoc.updated_at) : undefined),
-                    };
-                    return mergedDoc;
-                } else {
-                    // This is a new document from another client. Mark for download if it has a path.
-                    const newDoc: CaseDocument = {
-                        id: remoteDoc.id,
-                        caseId: String(remoteDoc.caseId || ''),
-                        userId: String(remoteDoc.userId || ''),
-                        name: String(remoteDoc.name || 'document.bin'),
-                        type: String(remoteDoc.type || 'application/octet-stream'),
-                        size: typeof remoteDoc.size === 'number' ? remoteDoc.size : 0,
-                        storagePath: String(remoteDoc.storagePath || ''),
-                        localState: 'error' as const, // Default to error
-                        addedAt: remoteDoc.addedAt ? new Date(remoteDoc.addedAt) : new Date(),
-                        updated_at: remoteDoc.updated_at ? new Date(remoteDoc.updated_at) : undefined,
-                    };
-
-                    if (newDoc.storagePath && String(newDoc.storagePath).trim() !== '') {
-                        newDoc.localState = 'pending_download' as const;
+            .map((remoteDoc: any): CaseDocument | null => {
+                 try {
+                    const localDoc: CaseDocument | undefined = localDocMap.get(remoteDoc.id);
+                    if (localDoc) {
+                        const mergedDoc: CaseDocument = {
+                            id: remoteDoc.id,
+                            caseId: String((remoteDoc.caseId ?? localDoc.caseId) || ''),
+                            userId: String((remoteDoc.userId ?? localDoc.userId) || ''),
+                            name: String((remoteDoc.name ?? localDoc.name) || 'document.bin'),
+                            type: String((remoteDoc.type ?? localDoc.type) || 'application/octet-stream'),
+                            size: typeof remoteDoc.size === 'number' ? remoteDoc.size : (localDoc.size || 0),
+                            storagePath: String((remoteDoc.storagePath ?? localDoc.storagePath) || ''),
+                            localState: localDoc.localState, // Always preserve local state
+                            addedAt: new Date(remoteDoc.addedAt ?? localDoc.addedAt),
+                            updated_at: remoteDoc.updated_at ? new Date(remoteDoc.updated_at) : (localDoc.updated_at ? new Date(localDoc.updated_at) : undefined),
+                        };
+                        return mergedDoc;
                     } else {
-                        console.warn(`Synced document ${newDoc.id} is missing a storagePath. Marking as error.`);
+                        // This is a new document from another client. Mark for download if it has a path.
+                        // FIX: Added robust date validation for 'addedAt' and used sanitizeOptionalDate for 'updated_at'
+                        // to prevent type errors and handle potentially invalid date strings from the server.
+                        const addedAtDate = sanitizeOptionalDate(remoteDoc.addedAt);
+                        if (!addedAtDate) {
+                            console.warn('New synced document has an invalid date and will be skipped:', remoteDoc);
+                            return null;
+                        }
+
+                        const newDoc: CaseDocument = {
+                            id: remoteDoc.id,
+                            caseId: String(remoteDoc.caseId || ''),
+                            userId: String(remoteDoc.userId || ''),
+                            name: String(remoteDoc.name || 'document.bin'),
+                            type: String(remoteDoc.type || 'application/octet-stream'),
+                            size: typeof remoteDoc.size === 'number' ? remoteDoc.size : 0,
+                            storagePath: String(remoteDoc.storagePath || ''),
+                            localState: 'error' as const, // Default to error
+                            addedAt: addedAtDate,
+                            updated_at: sanitizeOptionalDate(remoteDoc.updated_at),
+                        };
+
+                        if (newDoc.storagePath && String(newDoc.storagePath).trim() !== '') {
+                            newDoc.localState = 'pending_download' as const;
+                        } else {
+                            console.warn(`Synced document ${newDoc.id} is missing a storagePath. Marking as error.`);
+                        }
+                        return newDoc;
                     }
-                    return newDoc;
+                } catch (e) {
+                    console.error('Error processing a document during sync, skipping it:', remoteDoc, e);
+                    return null;
                 }
-            });
+            }).filter((d): d is CaseDocument => d !== null);
 
         // Add any purely local documents (e.g., pending upload) that weren't in the synced data.
         currentLocalDocuments.forEach(localDoc => {
@@ -504,22 +516,11 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                     } catch (error) {
                         const err = error as any;
                         
-                        // FIX: The error indicates that a non-error empty object may be causing issues.
-                        // Refactor `isNotFound` to be more robust and specific to Supabase error signatures.
+                        // Fix: The check for an empty object is brittle. Safest to assume it's a transient error.
                         const isNotFound = (e: any): boolean => {
                             if (!e) return false;
-                            // Check for Supabase StorageError properties
-                            if (typeof e.statusCode === 'number' && e.statusCode === 404) {
-                                return true;
-                            }
-                            // Check for message content
-                            if (typeof e.message === 'string' && e.message.toLowerCase().includes('not found')) {
-                                return true;
-                            }
-                            // Handle the specific case where Supabase storage returns an empty object for a 404 error
-                            if (typeof e === 'object' && e !== null && Object.keys(e).length === 0 && e.constructor === Object) {
-                                return true;
-                            }
+                            if (typeof e.statusCode === 'number' && e.statusCode === 404) return true;
+                            if (typeof e.message === 'string' && e.message.toLowerCase().includes('not found')) return true;
                             return false;
                         };
 
@@ -720,78 +721,89 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     }, [userId, isAutoSyncEnabled, isAutoBackupEnabled]);
     
     // Effect for real-time data synchronization
-    const isReadyForRealtime = user && isOnline && !isAuthLoading && !isDataLoading;
-    
+    const channelRef = React.useRef<RealtimeChannel | null>(null);
+    const userRefForRealtime = React.useRef(user);
+    userRefForRealtime.current = user;
+    const debounceTimerRef = React.useRef<number | null>(null);
+
     React.useEffect(() => {
-        // This effect now depends on a single boolean, `isReadyForRealtime`.
-        // When it becomes true, we subscribe. When it becomes false (logout, offline),
-        // the cleanup function from the previous render will run, unsubscribing the channel.
-        if (!isReadyForRealtime) {
-            return;
-        }
-    
         const supabase = getSupabaseClient();
         if (!supabase) return;
-    
-        let debounceTimer: number | null = null;
-        const debouncedRefresh = () => {
-            if (debounceTimer) clearTimeout(debounceTimer);
-            debounceTimer = window.setTimeout(() => {
-                if (syncStatusRef.current === 'syncing') {
-                    console.log('Real-time refresh skipped: a sync is already in progress.');
-                    return;
+
+        // If user logs out, ensure channel is removed.
+        if (!user) {
+            if (channelRef.current) {
+                console.log("User logged out, removing real-time channel.");
+                supabase.removeChannel(channelRef.current).catch(err => console.error("Error removing channel on logout:", err));
+                channelRef.current = null;
+            }
+            return;
+        }
+
+        // --- Channel Creation & Event Listener Setup (runs once per user session) ---
+        if (!channelRef.current) {
+            console.log('User detected, creating and configuring real-time channel.');
+            const newChannel = supabase.channel('db-changes');
+
+            const debouncedRefresh = () => {
+                if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+                debounceTimerRef.current = window.setTimeout(() => {
+                    if (syncStatusRef.current === 'syncing') {
+                        console.log('Real-time refresh skipped: a sync is already in progress.');
+                        return;
+                    }
+                    console.log('Real-time change detected, refreshing data...');
+                    fetchAndRefreshRef.current();
+                }, 1500);
+            };
+
+            newChannel.on('postgres_changes', { event: '*', schema: 'public' }, payload => {
+                const currentUser = userRefForRealtime.current;
+                if (!currentUser) return;
+
+                const record = payload.new || payload.old;
+                // @ts-ignore
+                if (record && (record.user_id === currentUser.id || (payload.table === 'profiles' && record.id === currentUser.id))) {
+                    console.log(`Real-time change on table: ${payload.table}, queuing refresh.`);
+                    debouncedRefresh();
                 }
-                console.log('Real-time change detected, refreshing data...');
-                fetchAndRefreshRef.current();
-            }, 1500); // 1.5s debounce to batch updates
-        };
-    
-        const channel = supabase.channel('db-changes');
-    
-        channel.on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-        }, payload => {
-            const record = payload.new || payload.old;
-            // Check if the change is relevant to the current user
-            // @ts-ignore
-            if (record && (record.user_id === user.id || (payload.table === 'profiles' && record.id === user.id))) {
-                 console.log(`Real-time change on table: ${payload.table}, refreshing data.`);
-                 debouncedRefresh();
-            }
-        });
+            });
+
+            channelRef.current = newChannel;
+        }
+
+        // --- Subscription Management (runs when transient states change) ---
+        const isReadyToSubscribe = isOnline && !isAuthLoading && !isDataLoading;
+        const channel = channelRef.current;
+
+        if (isReadyToSubscribe && channel.state !== 'joined') {
+            console.log(`Channel state is '${channel.state}', attempting to subscribe.`);
+            channel.subscribe((status, err) => {
+                const REALTIME_ERROR_MSG = `فشل الاتصال بمزامنة الوقت الفعلي.`;
+                if (status === 'SUBSCRIBED') {
+                    console.log('Successfully subscribed to real-time channel!');
+                    // Clear the error only if it's the specific real-time error
+                    if (lastSyncError === REALTIME_ERROR_MSG) {
+                        handleSyncStatusChange('synced', null);
+                    }
+                } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || err) {
+                    console.error(`Real-time subscription error. Status: ${status}`, err);
+                    handleSyncStatusChange('error', REALTIME_ERROR_MSG);
+                }
+            });
+        } else if (!isReadyToSubscribe && channel.state === 'joined') {
+            console.log(`Conditions not met (offline/loading), unsubscribing from channel.`);
+            channel.unsubscribe().catch(err => console.error("Error on unsubscribe:", err));
+        }
         
-        channel.subscribe((status, err) => {
-            const REALTIME_ERROR_MSG = `فشل الاتصال بمزامنة الوقت الفعلي.`;
-            if (status === 'SUBSCRIBED') {
-                console.log('Successfully subscribed to db-changes channel!');
-                setLastSyncError(prev => prev === REALTIME_ERROR_MSG ? null : prev);
-            }
-            if (status === 'CHANNEL_ERROR' || err) {
-                console.error(`Real-time subscription error:`, err);
-                // Prevent setting the same error message repeatedly to avoid loops.
-                setLastSyncError(prev => prev === REALTIME_ERROR_MSG ? prev : REALTIME_ERROR_MSG);
-            }
-        });
-        
-        console.log(`Subscribed to real-time channel for all tables.`);
-    
+        // --- Cleanup ---
         return () => {
-            if (debounceTimer) clearTimeout(debounceTimer);
-            console.log(`Unsubscribing from real-time channel.`);
-            if (channel) {
-                supabase.removeChannel(channel).catch(error => {
-                    console.error(`Failed to remove real-time channel:`, error);
-                });
-            }
+            if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
         };
-    }, [isReadyForRealtime, user?.id]); // Depend on the stable user ID as well
+    }, [user, isOnline, isAuthLoading, isDataLoading, lastSyncError, handleSyncStatusChange]);
     
 
     const addDocuments = React.useCallback(async (caseId: string, files: FileList) => {
-        // FIX: Create a stable local variable for `userId`. The type checker may have issues
-        // with the `userId` from the hook's scope inside the `useCallback` closure. This
-        // ensures `currentUserId` is correctly inferred as a `string` after the guard clause.
         const currentUserId = userId;
         if (!currentUserId) throw new Error("User not authenticated");
 

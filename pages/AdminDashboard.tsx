@@ -4,8 +4,8 @@ import { PowerIcon, UserGroupIcon, ChartPieIcon, Bars3Icon, XMarkIcon, CurrencyD
 import { getSupabaseClient } from '../supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
-const AdminAnalyticsPage = React.lazy(() => import('./AdminAnalyticsPage'));
-const SiteFinancesPage = React.lazy(() => import('./SiteFinancesPage'));
+import AdminAnalyticsPage from './AdminAnalyticsPage';
+import SiteFinancesPage from './SiteFinancesPage';
 
 interface AdminDashboardProps {
     onLogout: () => void;

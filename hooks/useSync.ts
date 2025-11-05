@@ -147,7 +147,8 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
             const remoteDataRaw = await fetchDataFromSupabase();
             const remoteFlatData = transformRemoteToLocal(remoteDataRaw);
 
-            const isLocalEffectivelyEmpty = (localData.clients.length === 0 && localData.adminTasks.length === 0 && localData.appointments.length === 0 && localData.accountingEntries.length === 0 && localData.invoices.length === 0);
+            // FIX: Added `documents` to the check for local data to prevent accidental data loss on first sync.
+            const isLocalEffectivelyEmpty = (localData.clients.length === 0 && localData.adminTasks.length === 0 && localData.appointments.length === 0 && localData.accountingEntries.length === 0 && localData.invoices.length === 0 && localData.documents.length === 0);
             const hasPendingDeletions = Object.values(deletedIds).some(arr => arr.length > 0);
             const isRemoteEffectivelyEmpty = remoteDataRaw.clients.length === 0 && remoteDataRaw.admin_tasks.length === 0;
 
