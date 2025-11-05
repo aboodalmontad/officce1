@@ -155,6 +155,8 @@ export type AppData = {
     invoices: Invoice[];
     assistants: string[];
     documents: CaseDocument[];
+    profiles: Profile[];
+    siteFinances: SiteFinancialEntry[];
 };
 
 export type DeletedIds = {
@@ -170,10 +172,14 @@ export type DeletedIds = {
     assistants: string[];
     documents: string[];
     documentPaths: string[];
+    profiles: string[];
+    siteFinances: number[];
 };
 
 export const getInitialDeletedIds = (): DeletedIds => ({
     clients: [], cases: [], stages: [], sessions: [], adminTasks: [], appointments: [], accountingEntries: [], invoices: [], invoiceItems: [], assistants: [],
     documents: [],
     documentPaths: [],
+    profiles: [],
+    siteFinances: [],
 });

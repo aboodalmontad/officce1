@@ -4,6 +4,7 @@ import { SiteFinancialEntry, Profile } from '../types';
 import { formatDate, toInputDateString } from '../utils/dateUtils';
 import { PlusIcon, PencilIcon, TrashIcon, ExclamationTriangleIcon } from '../components/icons';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { useData } from '../App';
 
 const StatCard: React.FC<{ title: string; value: string; className?: string }> = ({ title, value, className = '' }) => (
     <div className={`p-6 rounded-lg shadow ${className}`}>
@@ -29,9 +30,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 const SiteFinancesPage: React.FC = () => {
-    const [entries, setEntries] = React.useState<SiteFinancialEntry[]>([]);
-    const [users, setUsers] = React.useState<Profile[]>([]);
-    const [loading, setLoading] = React.useState(true);
+    const { siteFinances: entries, setSiteFinances, profiles: users, isDataLoading: loading } = useData();
     const [error, setError] = React.useState<string | null>(null);
     const [modal, setModal] = React.useState<{ isOpen: boolean; data?: SiteFinancialEntry }>({ isOpen: false });
     const [entryToDelete, setEntryToDelete] = React.useState<SiteFinancialEntry | null>(null);
@@ -39,57 +38,23 @@ const SiteFinancesPage: React.FC = () => {
 
     const supabase = getSupabaseClient();
 
-    const fetchData = React.useCallback(async () => {
-        if (!supabase) {
-            setError("Supabase client not available.");
-            setLoading(false);
-            return;
-        }
-
-        setLoading(true);
-        const { data: entriesData, error: entriesError } = await supabase
-            .from('site_finances')
-            .select('*, profile:profiles(full_name)')
-            .order('payment_date', { ascending: false });
-
-        const { data: usersData, error: usersError } = await supabase
-            .from('profiles')
-            .select('*')
-            .order('full_name');
-
-        if (entriesError || usersError) {
-            let errorMessage;
-            const entriesErrorMessage = entriesError?.message || '';
-
-            if (entriesErrorMessage.includes('schema cache') && (entriesErrorMessage.includes("'category'") || entriesErrorMessage.includes("column site_finances.category does not exist"))) {
-                errorMessage = "خطأ في الاتصال بقاعدة البيانات: لم يتم العثور على عمود 'category'. قد يكون هذا بسبب عدم تحديث ذاكرة التخزين المؤقت للمخطط (Schema Cache) في Supabase. يرجى الذهاب إلى قسم API Docs في لوحة تحكم Supabase والضغط على 'Reload schema' ثم تحديث الصفحة.";
-            } else {
-                const combinedError = [entriesErrorMessage, usersError?.message].filter(Boolean).join('; ');
-                errorMessage = "فشل جلب البيانات: " + combinedError;
-            }
-            setError(errorMessage);
-        } else {
-            const mappedEntries = entriesData.map((entry: any) => ({
-                ...entry,
-                profile_full_name: entry.profile?.full_name,
-            }));
-            setEntries(mappedEntries as SiteFinancialEntry[]);
-            setUsers(usersData as Profile[]);
-        }
-        setLoading(false);
-    }, [supabase]);
-
-    React.useEffect(() => {
-        fetchData();
-    }, [fetchData]);
-
     const handleOpenModal = (entry?: SiteFinancialEntry) => setModal({ isOpen: true, data: entry });
     const handleCloseModal = () => setModal({ isOpen: false });
 
     const handleSubmit = async (formData: any, isSubscriptionRenewal: boolean) => {
         if (!supabase) return;
 
-        // 1. Update subscription if needed
+        const { new_subscription_start, new_subscription_end, ...financialData } = formData;
+        const finalFinancialData = { ...financialData, user_id: financialData.user_id === 'none' ? null : financialData.user_id, updated_at: new Date() };
+
+        if (modal.data) {
+             setSiteFinances(prev => prev.map(e => e.id === modal.data!.id ? { ...e, ...finalFinancialData } : e));
+        } else {
+            const newEntry = { ...finalFinancialData, id: -Date.now() }; // Temporary negative ID
+            setSiteFinances(prev => [...prev, newEntry]);
+        }
+        
+        // This part remains to update profiles which is a separate concern from financial entries
         if (isSubscriptionRenewal && formData.user_id && formData.new_subscription_start && formData.new_subscription_end) {
             const { error: profileError } = await supabase
                 .from('profiles')
@@ -101,38 +66,17 @@ const SiteFinancesPage: React.FC = () => {
 
             if (profileError) {
                 setError("Failed to update subscription: " + profileError.message);
-                return; // Stop if subscription update fails
+                // Optionally revert the financial entry change
             }
         }
         
-        // 2. Add financial entry
-        const { new_subscription_start, new_subscription_end, ...financialData } = formData;
-        const finalFinancialData = { ...financialData, user_id: financialData.user_id === 'none' ? null : financialData.user_id };
-
-        const { error } = modal.data
-            ? await supabase.from('site_finances').update(finalFinancialData).eq('id', modal.data.id)
-            : await supabase.from('site_finances').insert([finalFinancialData]);
-
-        if (error) {
-            let errorMessage = error.message;
-            if (errorMessage.includes('schema cache') && (errorMessage.includes("'category'") || errorMessage.includes("column site_finances.category does not exist"))) {
-                errorMessage = "خطأ في الحفظ: لم يتم العثور على عمود 'category'. يرجى الذهاب إلى قسم API Docs في لوحة تحكم Supabase والضغط على 'Reload schema' ثم المحاولة مرة أخرى.";
-            }
-            setError(errorMessage);
-        } else {
-            handleCloseModal();
-            fetchData();
-        }
+        handleCloseModal();
     };
 
     const handleConfirmDelete = async () => {
         if (!supabase || !entryToDelete) return;
-        const { error } = await supabase.from('site_finances').delete().eq('id', entryToDelete.id);
-        if (error) setError(error.message);
-        else {
-            setEntryToDelete(null);
-            fetchData();
-        }
+        setSiteFinances(prev => prev.filter(e => e.id !== entryToDelete.id));
+        setEntryToDelete(null);
     };
 
     const financialSummary = React.useMemo(() => {
@@ -234,7 +178,7 @@ const SiteFinancesPage: React.FC = () => {
                                             <td className="px-6 py-4">{formatDate(new Date(entry.payment_date))}</td>
                                             <td className="px-6 py-4">{entry.description}</td>
                                             <td className="px-6 py-4">{entry.category || '-'}</td>
-                                            <td className="px-6 py-4">{entry.profile_full_name || 'N/A'}</td>
+                                            <td className="px-6 py-4">{users.find(u => u.id === entry.user_id)?.full_name || 'N/A'}</td>
                                             <td className={`px-6 py-4 font-semibold ${entry.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>{entry.amount.toLocaleString()} ل.س</td>
                                             <td className="px-6 py-4 flex items-center gap-2">
                                                 <button onClick={() => handleOpenModal(entry)} className="p-2 text-gray-500 hover:text-blue-600"><PencilIcon className="w-4 h-4" /></button>

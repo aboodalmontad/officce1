@@ -1,6 +1,5 @@
 import * as React from 'react';
-import { getSupabaseClient } from '../supabaseClient';
-import { Profile, Client, AdminTask, Case } from '../types';
+import { useData } from '../App';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { UserGroupIcon, ChartBarIcon, ClockIcon } from '../components/icons';
 
@@ -31,92 +30,67 @@ const CustomTooltip = ({ active, payload, label, formatter }: any) => {
 };
 
 const AdminAnalyticsPage: React.FC = () => {
+    const { profiles, clients, adminTasks, isDataLoading: loading } = useData();
     const [stats, setStats] = React.useState<any>(null);
-    const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
 
     React.useEffect(() => {
-        const fetchData = async () => {
-            const supabase = getSupabaseClient();
-            if (!supabase) {
-                setError("Supabase client not available.");
-                setLoading(false);
-                return;
-            }
-            try {
-                const [
-                    { data: profiles, error: profilesError },
-                    { data: clients, error: clientsError },
-                    { data: adminTasks, error: adminTasksError },
-                ] = await Promise.all([
-                    supabase.from('profiles').select('*'),
-                    supabase.from('clients').select('*, cases(*)'),
-                    supabase.from('admin_tasks').select('*'),
-                ]);
+        if (loading) return;
 
-                const errors = [profilesError, clientsError, adminTasksError].filter(Boolean);
-                if (errors.length > 0) {
-                    throw new Error(errors.map(e => e!.message).join(', '));
-                }
+        try {
+            const today = new Date();
+            const activeSubscriptions = profiles.filter(p => p.subscription_end_date && new Date(p.subscription_end_date) >= today).length;
+            const pendingApprovals = profiles.filter(p => !p.is_approved).length;
 
-                const today = new Date();
-                const activeSubscriptions = profiles.filter(p => p.subscription_end_date && new Date(p.subscription_end_date) >= today).length;
-                const pendingApprovals = profiles.filter(p => !p.is_approved).length;
-
-                const allCases = (clients as any[]).flatMap(c => c.cases);
-                const caseStatusCounts = allCases.reduce((acc, c) => {
-                    acc[c.status] = (acc[c.status] || 0) + 1;
+            const allCases = clients.flatMap(c => c.cases);
+            const caseStatusCounts = allCases.reduce((acc, c) => {
+                acc[c.status] = (acc[c.status] || 0) + 1;
+                return acc;
+            }, {} as Record<string, number>);
+            const caseStatusData = [
+                { name: 'نشطة', value: caseStatusCounts.active || 0 },
+                { name: 'مغلقة', value: caseStatusCounts.closed || 0 },
+                { name: 'معلقة', value: caseStatusCounts.on_hold || 0 },
+            ];
+            
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(today.getDate() - 30);
+            const userSignups = profiles
+                .filter(p => p.created_at && new Date(p.created_at) >= thirtyDaysAgo)
+                .reduce((acc, p) => {
+                    const dateStr = new Date(p.created_at!).toLocaleDateString('en-CA'); // YYYY-MM-DD
+                    acc[dateStr] = (acc[dateStr] || 0) + 1;
                     return acc;
-                }, {});
-                const caseStatusData = [
-                    { name: 'نشطة', value: caseStatusCounts.active || 0 },
-                    { name: 'مغلقة', value: caseStatusCounts.closed || 0 },
-                    { name: 'معلقة', value: caseStatusCounts.on_hold || 0 },
-                ];
-                
-                const thirtyDaysAgo = new Date();
-                thirtyDaysAgo.setDate(today.getDate() - 30);
-                const userSignups = profiles
-                    .map(p => ({ ...p, createdAt: new Date(p.created_at) }))
-                    .filter(p => p.createdAt >= thirtyDaysAgo)
-                    .reduce((acc, p) => {
-                        const dateStr = p.createdAt.toLocaleDateString('en-CA'); // YYYY-MM-DD
-                        acc[dateStr] = (acc[dateStr] || 0) + 1;
-                        return acc;
-                    }, {} as Record<string, number>);
+                }, {} as Record<string, number>);
 
-                const userSignupsData = Object.entries(userSignups)
-                    .map(([date, count]) => ({ date, "مستخدمين جدد": count }))
-                    .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            const userSignupsData = Object.entries(userSignups)
+                .map(([date, count]) => ({ date, "مستخدمين جدد": count }))
+                .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-                const activityByUser = profiles.map(p => {
-                    const clientCount = (clients as any[]).filter(c => c.user_id === p.id).length;
-                    const caseCount = allCases.filter(c => c.user_id === p.id).length;
-                    const taskCount = (adminTasks as any[]).filter(t => t.user_id === p.id).length;
-                    return { name: p.full_name, "عدد الإدخالات": clientCount + caseCount + taskCount };
-                }).sort((a, b) => b["عدد الإدخالات"] - a["عدد الإدخالات"]).slice(0, 10);
+            const activityByUser = profiles.map(p => {
+                const clientCount = clients.filter(c => (c as any).user_id === p.id).length;
+                const caseCount = allCases.filter(c => (c as any).user_id === p.id).length;
+                const taskCount = adminTasks.filter(t => (t as any).user_id === p.id).length;
+                return { name: p.full_name, "عدد الإدخالات": clientCount + caseCount + taskCount };
+            }).sort((a, b) => b["عدد الإدخالات"] - a["عدد الإدخالات"]).slice(0, 10);
 
-                setStats({
-                    totalUsers: profiles.length,
-                    activeSubscriptions,
-                    pendingApprovals,
-                    caseStatusData,
-                    userSignupsData,
-                    activityByUser
-                });
+            setStats({
+                totalUsers: profiles.length,
+                activeSubscriptions,
+                pendingApprovals,
+                caseStatusData,
+                userSignupsData,
+                activityByUser
+            });
 
-            } catch (err: any) {
-                setError(err.message);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchData();
-    }, []);
+        } catch (err: any) {
+            setError(err.message);
+        }
+    }, [loading, profiles, clients, adminTasks]);
 
     if (loading) return <div className="text-center p-8">جاري تحميل التحليلات...</div>;
     if (error) return <div className="p-4 text-red-700 bg-red-100 rounded-md">{error}</div>;
+    if (!stats) return <div className="text-center p-8">لا توجد بيانات كافية لعرض التحليلات.</div>;
 
     const PIE_COLORS = ['#10B981', '#F59E0B', '#6B7280'];
     

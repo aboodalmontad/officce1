@@ -1,9 +1,7 @@
 import * as React from 'react';
 import AdminPage from './AdminPage';
 import { PowerIcon, UserGroupIcon, ChartPieIcon, Bars3Icon, XMarkIcon, CurrencyDollarIcon } from '../components/icons';
-import { getSupabaseClient } from '../supabaseClient';
-import { RealtimeChannel } from '@supabase/supabase-js';
-
+import { useData } from '../App';
 import AdminAnalyticsPage from './AdminAnalyticsPage';
 import SiteFinancesPage from './SiteFinancesPage';
 
@@ -42,68 +40,25 @@ const NavLink: React.FC<{
 
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
+    const { profiles, isDataLoading: loading } = useData();
     const [view, setView] = React.useState<AdminView>('analytics');
-    const [pendingUsersCount, setPendingUsersCount] = React.useState(0);
-    const [loading, setLoading] = React.useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
 
-    React.useEffect(() => {
-        const supabase = getSupabaseClient();
-        if (!supabase) {
-            setLoading(false);
-            return;
-        }
-
-        const fetchPendingCount = async () => {
-            const { count, error } = await supabase
-                .from('profiles')
-                .select('*', { count: 'exact', head: true })
-                .eq('is_approved', false);
-
-            if (error) {
-                console.error("Error fetching pending users count:", error);
-            } else if (count !== null) {
-                setPendingUsersCount(count);
-            }
-        };
-
-        fetchPendingCount();
-
-        const channel: RealtimeChannel = supabase.channel('public:profiles');
-        
-        channel.on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, 
-            (payload) => {
-                console.log('Profile change received, refetching count.', payload);
-                fetchPendingCount();
-            })
-            .subscribe((status, err) => {
-                if (err) {
-                    console.error("Supabase channel subscription error:", err);
-                }
-            });
-            
-        setLoading(false);
-
-        return () => {
-            if (channel) {
-                supabase.removeChannel(channel).catch(error => {
-                    console.error("Failed to remove Supabase channel on unmount:", error);
-                });
-            }
-        };
-    }, []);
+    const pendingUsersCount = React.useMemo(() => {
+        return profiles.filter(p => !p.is_approved).length;
+    }, [profiles]);
 
 
     const renderView = () => {
         switch (view) {
             case 'analytics':
-                return <React.Suspense fallback={<div className="text-center p-8">جاري تحميل التحليلات...</div>}><AdminAnalyticsPage /></React.Suspense>;
+                return <AdminAnalyticsPage />;
             case 'users':
                 return <AdminPage />;
             case 'finances':
-                return <React.Suspense fallback={<div className="text-center p-8">جاري تحميل صفحة المحاسبة...</div>}><SiteFinancesPage /></React.Suspense>;
+                return <SiteFinancesPage />;
             default:
-                return <React.Suspense fallback={<div className="text-center p-8">جاري تحميل التحليلات...</div>}><AdminAnalyticsPage /></React.Suspense>;
+                return <AdminAnalyticsPage />;
         }
     };
     

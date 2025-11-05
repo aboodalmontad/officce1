@@ -37,6 +37,8 @@ const flattenData = (data: AppData): FlatData => {
         invoices: data.invoices.map(({ items, ...inv }) => inv),
         invoice_items,
         case_documents: data.documents,
+        profiles: data.profiles,
+        site_finances: data.siteFinances,
     };
 };
 
@@ -79,6 +81,8 @@ const constructData = (flatData: Partial<FlatData>): AppData => {
         assistants: (flatData.assistants || []).map(a => a.name),
         invoices: (flatData.invoices || []).map(inv => ({...inv, items: invoiceItemMap.get(inv.id) || []})) as any,
         documents: (flatData.case_documents || []) as any,
+        profiles: (flatData.profiles || []) as any,
+        siteFinances: (flatData.site_finances || []) as any,
     };
 };
 
@@ -150,7 +154,7 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
             // FIX: Added `documents` to the check for local data to prevent accidental data loss on first sync.
             const isLocalEffectivelyEmpty = (localData.clients.length === 0 && localData.adminTasks.length === 0 && localData.appointments.length === 0 && localData.accountingEntries.length === 0 && localData.invoices.length === 0 && localData.documents.length === 0);
             const hasPendingDeletions = Object.values(deletedIds).some(arr => arr.length > 0);
-            const isRemoteEffectivelyEmpty = remoteDataRaw.clients.length === 0 && remoteDataRaw.admin_tasks.length === 0;
+            const isRemoteEffectivelyEmpty = !remoteDataRaw || Object.values(remoteDataRaw).every(arr => arr?.length === 0);
 
             if (isInitialPull || (isLocalEffectivelyEmpty && !isRemoteEffectivelyEmpty && !hasPendingDeletions)) {
                 const freshData = constructData(remoteFlatData);
@@ -170,6 +174,8 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                 accountingEntries: new Set(deletedIds.accountingEntries), invoices: new Set(deletedIds.invoices),
                 invoiceItems: new Set(deletedIds.invoiceItems), assistants: new Set(deletedIds.assistants),
                 documents: new Set(deletedIds.documents),
+                profiles: new Set(deletedIds.profiles),
+                siteFinances: new Set(deletedIds.siteFinances),
             };
 
             for (const key of Object.keys(localFlatData) as (keyof FlatData)[]) {
@@ -216,7 +222,12 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                     const id = remoteItem.id ?? remoteItem.name;
                     if (!localMap.has(id)) {
                         let isDeleted = false;
-                        const entityKey = key === 'admin_tasks' ? 'adminTasks' : key === 'accounting_entries' ? 'accountingEntries' : key === 'invoice_items' ? 'invoiceItems' : key === 'case_documents' ? 'documents' : key;
+                        const entityKey = 
+                            key === 'admin_tasks' ? 'adminTasks' : 
+                            key === 'accounting_entries' ? 'accountingEntries' : 
+                            key === 'invoice_items' ? 'invoiceItems' : 
+                            key === 'case_documents' ? 'documents' :
+                            key === 'site_finances' ? 'siteFinances' : key;
                         const deletedSet = (deletedIdsSets as any)[entityKey];
                         if (deletedSet) isDeleted = deletedSet.has(id);
                         if (!isDeleted) finalMergedItems.set(id, remoteItem);
@@ -250,6 +261,7 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                 invoices: deletedIds.invoices.map(id => ({ id })) as any,
                 invoice_items: deletedIds.invoiceItems.map(id => ({ id })) as any,
                 case_documents: deletedIds.documents.map(id => ({ id })) as any,
+                site_finances: deletedIds.siteFinances.map(id => ({ id })) as any,
             };
 
             if (Object.values(flatDeletes).some(arr => arr && arr.length > 0)) {
@@ -310,6 +322,8 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                 invoiceItems: new Set(deletedIds.invoiceItems),
                 assistants: new Set(deletedIds.assistants),
                 documents: new Set(deletedIds.documents),
+                profiles: new Set(deletedIds.profiles),
+                siteFinances: new Set(deletedIds.siteFinances),
             };
     
             const remoteFlatData: Partial<FlatData> = {};
@@ -318,7 +332,8 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                     key === 'admin_tasks' ? 'adminTasks' :
                     key === 'accounting_entries' ? 'accountingEntries' :
                     key === 'invoice_items' ? 'invoiceItems' :
-                    key === 'case_documents' ? 'documents' : key;
+                    key === 'case_documents' ? 'documents' : 
+                    key === 'site_finances' ? 'siteFinances' : key;
                 
                 const deletedSet = (deletedIdsSets as any)[entityKey];
                 
@@ -348,6 +363,8 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                 invoices: mergeForRefresh(localFlatData.invoices, remoteFlatData.invoices || []),
                 invoice_items: mergeForRefresh(localFlatData.invoice_items, remoteFlatData.invoice_items || []),
                 case_documents: mergeForRefresh(localFlatData.case_documents, remoteFlatData.case_documents || []),
+                profiles: mergeForRefresh(localFlatData.profiles, remoteFlatData.profiles || []),
+                site_finances: mergeForRefresh(localFlatData.site_finances, remoteFlatData.site_finances || []),
             };
     
             const mergedData = constructData(mergedFlatData);

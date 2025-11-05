@@ -1,11 +1,12 @@
 import * as React from 'react';
-import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem, CaseDocument, AppData, DeletedIds, getInitialDeletedIds } from '../types';
+import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem, CaseDocument, AppData, DeletedIds, getInitialDeletedIds, Profile, SiteFinancialEntry } from '../types';
 import { useOnlineStatus } from './useOnlineStatus';
 import { User, RealtimeChannel } from '@supabase/supabase-js';
 import { useSync, SyncStatus as SyncStatusType } from './useSync';
 import { getSupabaseClient } from '../supabaseClient';
-import { isBeforeToday } from '../utils/dateUtils';
+import { isBeforeToday, toInputDateString } from '../utils/dateUtils';
 import { openDB, IDBPDatabase } from 'idb';
+import { RealtimeAlert } from '../components/RealtimeNotifier';
 
 
 export const APP_DATA_KEY = 'lawyerBusinessManagementData';
@@ -21,6 +22,8 @@ const getInitialData = (): AppData => ({
     invoices: [] as Invoice[],
     assistants: [...defaultAssistants],
     documents: [] as CaseDocument[],
+    profiles: [] as Profile[],
+    siteFinances: [] as SiteFinancialEntry[],
 });
 
 
@@ -245,6 +248,43 @@ const validateAndHydrate = (data: any): AppData => {
         };
     }).filter((i): i is Invoice => i !== null);
 
+    const validatedProfiles: Profile[] = safeArray(data.profiles, (p: any, index: number): Profile | null => {
+        if (!p.id) return null;
+        return {
+            id: p.id,
+            full_name: String(p.full_name || 'مستخدم غير معروف'),
+            mobile_number: String(p.mobile_number || ''),
+            is_approved: !!p.is_approved,
+            is_active: 'is_active' in p ? !!p.is_active : true,
+            subscription_start_date: p.subscription_start_date || null,
+            subscription_end_date: p.subscription_end_date || null,
+            role: ['user', 'admin'].includes(p.role) ? p.role : 'user',
+            created_at: p.created_at,
+            updated_at: sanitizeOptionalDate(p.updated_at),
+        };
+    }).filter((p): p is Profile => p !== null);
+
+    const validatedSiteFinances: SiteFinancialEntry[] = safeArray(data.siteFinances, (e: any, index: number): SiteFinancialEntry | null => {
+        const paymentDate = sanitizeOptionalDate(e.payment_date);
+        if (!paymentDate) {
+            console.warn('Filtering out site finance entry with invalid date:', e);
+            return null;
+        }
+        return {
+            id: typeof e.id === 'number' ? e.id : -1,
+            user_id: e.user_id || null,
+            type: ['income', 'expense'].includes(e.type) ? e.type : 'income',
+            payment_date: toInputDateString(paymentDate),
+            amount: typeof e.amount === 'number' ? e.amount : 0,
+            description: e.description || null,
+            payment_method: e.payment_method || null,
+            category: e.category || null,
+            profile_full_name: e.profile_full_name || undefined,
+            updated_at: sanitizeOptionalDate(e.updated_at),
+        };
+    }).filter((e): e is SiteFinancialEntry => e !== null && e.id !== -1);
+
+
     return { 
         clients: validatedClients, 
         adminTasks: validatedAdminTasks, 
@@ -253,6 +293,8 @@ const validateAndHydrate = (data: any): AppData => {
         invoices: validatedInvoices,
         assistants: validatedAssistants,
         documents: validateDocuments(data.documents),
+        profiles: validatedProfiles,
+        siteFinances: validatedSiteFinances,
     };
 };
 
@@ -286,11 +328,23 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const syncStatusRef = React.useRef(syncStatus);
     syncStatusRef.current = syncStatus;
     const [lastSyncError, setLastSyncError] = React.useState<string | null>(null);
+    const lastSyncErrorRef = React.useRef(lastSyncError);
+    lastSyncErrorRef.current = lastSyncError;
     const [isDirty, setIsDirty] = React.useState(false);
     const [isAutoSyncEnabled, setIsAutoSyncEnabled] = React.useState(true);
     const [isAutoBackupEnabled, setIsAutoBackupEnabled] = React.useState(true);
     const [triggeredAlerts, setTriggeredAlerts] = React.useState<Appointment[]>([]);
     const [showUnpostponedSessionsModal, setShowUnpostponedSessionsModal] = React.useState(false);
+    const [realtimeAlerts, setRealtimeAlerts] = React.useState<RealtimeAlert[]>([]);
+
+    const addRealtimeAlert = React.useCallback((message: string) => {
+        const newAlert = { id: Date.now(), message };
+        setRealtimeAlerts(prev => [newAlert, ...prev.slice(0, 2)]); // Show max 3 alerts
+    }, []);
+
+    const dismissRealtimeAlert = React.useCallback((alertId: number) => {
+        setRealtimeAlerts(prev => prev.filter(a => a.id !== alertId));
+    }, []);
     
     const hadCacheOnLoad = React.useRef(false);
     const isInitialLoadAfterHydrate = React.useRef(true);
@@ -316,9 +370,10 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         setDeletedIds(prev => {
             const newDeleted = { ...prev };
             for (const key of Object.keys(syncedDeletions) as (keyof DeletedIds)[]) {
-                const syncedIdSet = new Set(syncedDeletions[key] || []);
+                // Fix: Explicitly type the Set to handle both string and number arrays from DeletedIds.
+                const syncedIdSet = new Set<string | number>(syncedDeletions[key] || []);
                 if (syncedIdSet.size > 0) {
-                    newDeleted[key] = (prev[key] || []).filter(id => !syncedIdSet.has(id));
+                    (newDeleted[key] as (string|number)[]) = (prev[key] || []).filter(id => !syncedIdSet.has(id));
                 }
             }
             return newDeleted;
@@ -336,14 +391,28 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     
     const handleDataSynced = React.useCallback(async (syncedData: AppData) => {
         const currentLocalDocuments = dataRef.current.documents;
-        const localDocMap = new Map(currentLocalDocuments.map(doc => [doc.id, doc]));
+        // Fix: Ensure that all items in currentLocalDocuments are valid objects with an 'id' before creating the map.
+        // This prevents crashes if corrupted or incomplete data (like '{}') is present in the local state.
+        const localDocMap = new Map(
+            (currentLocalDocuments || [])
+                .filter(doc => doc && doc.id)
+                .map(doc => [doc.id, doc])
+        );
         
         const syncedDocsWithLocalState = (syncedData.documents || [])
             .filter(doc => doc && doc.id)
-            .map((remoteDoc: any): CaseDocument | null => {
+            .map((remoteDoc: CaseDocument): CaseDocument | null => {
                  try {
-                    const localDoc: CaseDocument | undefined = localDocMap.get(remoteDoc.id);
+                    // FIX: The type of localDoc was incorrectly assumed to be a full CaseDocument. 
+                    // By casting to 'any', we prevent TypeScript errors and allow the defensive null-coalescing logic to correctly handle potentially incomplete local data.
+                    const localDoc: any = localDocMap.get(remoteDoc.id);
+                    // FIX: Use sanitizeOptionalDate for robust date handling and prevent Invalid Date objects.
                     if (localDoc) {
+                        const addedAtDate = sanitizeOptionalDate(remoteDoc.addedAt ?? localDoc.addedAt);
+                        if (!addedAtDate) {
+                            console.warn('Merged document has an invalid date and will be skipped:', remoteDoc, localDoc);
+                            return null;
+                        }
                         const mergedDoc: CaseDocument = {
                             id: remoteDoc.id,
                             caseId: String((remoteDoc.caseId ?? localDoc.caseId) || ''),
@@ -352,9 +421,11 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                             type: String((remoteDoc.type ?? localDoc.type) || 'application/octet-stream'),
                             size: typeof remoteDoc.size === 'number' ? remoteDoc.size : (localDoc.size || 0),
                             storagePath: String((remoteDoc.storagePath ?? localDoc.storagePath) || ''),
-                            localState: localDoc.localState, // Always preserve local state
-                            addedAt: new Date(remoteDoc.addedAt ?? localDoc.addedAt),
-                            updated_at: remoteDoc.updated_at ? new Date(remoteDoc.updated_at) : (localDoc.updated_at ? new Date(localDoc.updated_at) : undefined),
+                            // FIX: If localDoc is an incomplete object, localDoc.localState could be undefined,
+                            // which violates the CaseDocument type. Provide a fallback to 'error'.
+                            localState: localDoc.localState || 'error', // Always preserve local state
+                            addedAt: addedAtDate,
+                            updated_at: sanitizeOptionalDate(remoteDoc.updated_at ?? localDoc.updated_at),
                         };
                         return mergedDoc;
                     } else {
@@ -394,7 +465,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             }).filter((d): d is CaseDocument => d !== null);
 
         // Add any purely local documents (e.g., pending upload) that weren't in the synced data.
-        currentLocalDocuments.forEach(localDoc => {
+        // Fix for type error: Filter out invalid documents from local data before iterating.
+        (currentLocalDocuments || []).filter(doc => doc && doc.id).forEach(localDoc => {
             if (!syncedDocsWithLocalState.some(d => d.id === localDoc.id)) {
                 syncedDocsWithLocalState.push(localDoc);
             }
@@ -516,11 +588,11 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                     } catch (error) {
                         const err = error as any;
                         
-                        // Fix: The check for an empty object is brittle. Safest to assume it's a transient error.
                         const isNotFound = (e: any): boolean => {
                             if (!e) return false;
                             if (typeof e.statusCode === 'number' && e.statusCode === 404) return true;
                             if (typeof e.message === 'string' && e.message.toLowerCase().includes('not found')) return true;
+                            // The check for an empty object `{}` is brittle. Safest to assume it's a transient error.
                             return false;
                         };
 
@@ -726,82 +798,100 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     userRefForRealtime.current = user;
     const debounceTimerRef = React.useRef<number | null>(null);
 
+    // Create refs for callbacks to remove them from the useEffect dependency array.
+    // This prevents the effect from re-running due to state updates triggered by the callbacks themselves,
+    // breaking potential re-subscription loops.
+    const handleSyncStatusChangeRef = React.useRef(handleSyncStatusChange);
+    handleSyncStatusChangeRef.current = handleSyncStatusChange;
+    const addRealtimeAlertRef = React.useRef(addRealtimeAlert);
+    addRealtimeAlertRef.current = addRealtimeAlert;
+
+    const tableNameMap: Record<string, string> = {
+        clients: 'موكل', cases: 'قضية', stages: 'مرحلة', sessions: 'جلسة',
+        admin_tasks: 'مهمة إدارية', appointments: 'موعد', accounting_entries: 'قيد محاسبي',
+        invoices: 'فاتورة', case_documents: 'وثيقة', assistants: 'مساعد',
+        profiles: 'ملف شخصي', site_finances: 'قيد مالي عام'
+    };
+
+    const eventTypeMap: Record<string, string> = { INSERT: 'تمت إضافة', UPDATE: 'تم تحديث', DELETE: 'تم حذف' };
+
     React.useEffect(() => {
         const supabase = getSupabaseClient();
         if (!supabase) return;
 
-        // If user logs out, ensure channel is removed.
-        if (!user) {
+        // Centralized cleanup function
+        const cleanup = () => {
+            if (debounceTimerRef.current) {
+                clearTimeout(debounceTimerRef.current);
+            }
             if (channelRef.current) {
-                console.log("User logged out, removing real-time channel.");
-                supabase.removeChannel(channelRef.current).catch(err => console.error("Error removing channel on logout:", err));
+                console.log("Cleaning up and removing real-time channel.");
+                // Use removeChannel for a full cleanup.
+                supabase.removeChannel(channelRef.current).catch(err => {
+                    console.error("Error removing real-time channel during cleanup:", err);
+                });
                 channelRef.current = null;
             }
+        };
+
+        const conditionsMet = user && isOnline && !isAuthLoading && !isDataLoading;
+
+        if (!conditionsMet) {
+            cleanup();
             return;
         }
 
-        // --- Channel Creation & Event Listener Setup (runs once per user session) ---
-        if (!channelRef.current) {
-            console.log('User detected, creating and configuring real-time channel.');
-            const newChannel = supabase.channel('db-changes');
-
-            const debouncedRefresh = () => {
-                if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-                debounceTimerRef.current = window.setTimeout(() => {
-                    if (syncStatusRef.current === 'syncing') {
-                        console.log('Real-time refresh skipped: a sync is already in progress.');
-                        return;
-                    }
-                    console.log('Real-time change detected, refreshing data...');
-                    fetchAndRefreshRef.current();
-                }, 1500);
-            };
-
-            newChannel.on('postgres_changes', { event: '*', schema: 'public' }, payload => {
-                const currentUser = userRefForRealtime.current;
-                if (!currentUser) return;
-
-                const record = payload.new || payload.old;
-                // @ts-ignore
-                if (record && (record.user_id === currentUser.id || (payload.table === 'profiles' && record.id === currentUser.id))) {
-                    console.log(`Real-time change on table: ${payload.table}, queuing refresh.`);
-                    debouncedRefresh();
-                }
-            });
-
-            channelRef.current = newChannel;
-        }
-
-        // --- Subscription Management (runs when transient states change) ---
-        const isReadyToSubscribe = isOnline && !isAuthLoading && !isDataLoading;
-        const channel = channelRef.current;
-
-        if (isReadyToSubscribe && channel.state !== 'joined') {
-            console.log(`Channel state is '${channel.state}', attempting to subscribe.`);
-            channel.subscribe((status, err) => {
-                const REALTIME_ERROR_MSG = `فشل الاتصال بمزامنة الوقت الفعلي.`;
-                if (status === 'SUBSCRIBED') {
-                    console.log('Successfully subscribed to real-time channel!');
-                    // Clear the error only if it's the specific real-time error
-                    if (lastSyncError === REALTIME_ERROR_MSG) {
-                        handleSyncStatusChange('synced', null);
-                    }
-                } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || err) {
-                    console.error(`Real-time subscription error. Status: ${status}`, err);
-                    handleSyncStatusChange('error', REALTIME_ERROR_MSG);
-                }
-            });
-        } else if (!isReadyToSubscribe && channel.state === 'joined') {
-            console.log(`Conditions not met (offline/loading), unsubscribing from channel.`);
-            channel.unsubscribe().catch(err => console.error("Error on unsubscribe:", err));
-        }
+        // If we reach here, conditions are met. Set up a new channel.
+        // The cleanup from the effect's previous run will have removed any old channel.
+        console.log("Setting up new real-time channel.");
+        const newChannel = supabase.channel('db-changes');
         
-        // --- Cleanup ---
-        return () => {
+        newChannel.on('postgres_changes', { event: '*', schema: 'public' }, payload => {
+            const currentUser = userRefForRealtime.current;
+            if (!currentUser) return;
+
+            // Debounce the refresh to avoid flooding with updates
             if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+            debounceTimerRef.current = window.setTimeout(() => {
+                if (syncStatusRef.current !== 'syncing') {
+                    console.log("Real-time change detected, triggering data refresh.");
+                    fetchAndRefreshRef.current();
+                }
+            }, 1000); // 1-second debounce
+            
+            // Generate user-facing alert
+            const record = (payload.eventType === 'DELETE') ? payload.old : payload.new;
+            if (record) {
+                const tableName = tableNameMap[payload.table] || 'بيان';
+                const eventType = eventTypeMap[payload.eventType] || 'تغيير';
+                const name = record.full_name || record.name || record.subject || record.task || record.title || record.description || '';
+                const message = `${eventType} ${tableName}${name ? `: ${name}` : '.'}`;
+                addRealtimeAlertRef.current(message);
+            }
+        });
+
+        newChannel.subscribe((status, err) => {
+            const REALTIME_ERROR_MSG = `فشل الاتصال بمزامنة الوقت الفعلي.`;
+            if (status === 'SUBSCRIBED') {
+                console.log('Real-time subscription successful.');
+                // Use ref to get latest value without causing re-subscription
+                if (lastSyncErrorRef.current === REALTIME_ERROR_MSG) {
+                    handleSyncStatusChangeRef.current('synced', null);
+                }
+            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || err) {
+                console.error(`Real-time subscription error. Status: ${status}`, err);
+                handleSyncStatusChangeRef.current('error', REALTIME_ERROR_MSG);
+            }
+        });
+
+        channelRef.current = newChannel;
+
+        // The main cleanup function for the effect, called on unmount or dependency change.
+        return () => {
+            cleanup();
         };
-    }, [user, isOnline, isAuthLoading, isDataLoading, lastSyncError, handleSyncStatusChange]);
-    
+
+    }, [user, isOnline, isAuthLoading, isDataLoading]);
 
     const addDocuments = React.useCallback(async (caseId: string, files: FileList) => {
         const currentUserId = userId;
@@ -918,14 +1008,162 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         return () => clearTimeout(timer);
     }, [isDataLoading, userId, exportData]);
 
+    // Fix: Add implementations for delete and postpone functions
+    const deleteClient = React.useCallback((clientId: string) => {
+        const client = dataRef.current.clients.find(c => c.id === clientId);
+        if (!client) return;
+        const caseIds = client.cases.map(c => c.id);
+        const stageIds = client.cases.flatMap(c => c.stages.map(s => s.id));
+        const sessionIds = client.cases.flatMap(c => c.stages.flatMap(s => s.sessions.map(sess => sess.id)));
+        const invoiceIds = dataRef.current.invoices.filter(i => i.clientId === clientId).map(i => i.id);
+        const invoiceItemIds = dataRef.current.invoices.filter(i => i.clientId === clientId).flatMap(i => i.items.map(item => item.id));
+        const docIdsToDelete = dataRef.current.documents.filter(d => caseIds.includes(d.caseId)).map(d => d.id);
+        const docPathsToDelete = dataRef.current.documents.filter(d => caseIds.includes(d.caseId) && d.storagePath).map(d => d.storagePath);
+
+        setData(prev => ({
+            ...prev,
+            clients: prev.clients.filter(c => c.id !== clientId),
+            accountingEntries: prev.accountingEntries.filter(e => e.clientId !== clientId),
+            invoices: prev.invoices.filter(i => i.clientId !== clientId),
+            documents: prev.documents.filter(d => !caseIds.includes(d.caseId)),
+        }));
+        
+        setDeletedIds(prev => ({
+            ...prev,
+            clients: [...new Set([...prev.clients, clientId])],
+            cases: [...new Set([...prev.cases, ...caseIds])],
+            stages: [...new Set([...prev.stages, ...stageIds])],
+            sessions: [...new Set([...prev.sessions, ...sessionIds])],
+            invoices: [...new Set([...prev.invoices, ...invoiceIds])],
+            invoiceItems: [...new Set([...prev.invoiceItems, ...invoiceItemIds])],
+            documents: [...new Set([...prev.documents, ...docIdsToDelete])],
+            documentPaths: [...new Set([...prev.documentPaths, ...docPathsToDelete])],
+        }));
+    }, []);
+
+    const deleteCase = React.useCallback((caseId: string, clientId: string) => {
+        const client = dataRef.current.clients.find(c => c.id === clientId);
+        const caseToDelete = client?.cases.find(c => c.id === caseId);
+        if (!caseToDelete) return;
+
+        const stageIds = caseToDelete.stages.map(s => s.id);
+        const sessionIds = caseToDelete.stages.flatMap(s => s.sessions.map(sess => sess.id));
+        const invoiceIds = dataRef.current.invoices.filter(i => i.caseId === caseId).map(i => i.id);
+        const invoiceItemIds = dataRef.current.invoices.filter(i => i.caseId === caseId).flatMap(i => i.items.map(item => item.id));
+        const docIdsToDelete = dataRef.current.documents.filter(d => d.caseId === caseId).map(d => d.id);
+        const docPathsToDelete = dataRef.current.documents.filter(d => d.caseId === caseId && d.storagePath).map(d => d.storagePath);
+
+        setData(prev => ({
+            ...prev,
+            clients: prev.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.filter(cs => cs.id !== caseId), updated_at: new Date() } : c),
+            accountingEntries: prev.accountingEntries.filter(e => e.caseId !== caseId),
+            invoices: prev.invoices.filter(i => i.caseId !== caseId),
+            documents: prev.documents.filter(d => d.caseId !== caseId),
+        }));
+        setDeletedIds(prev => ({
+            ...prev,
+            cases: [...new Set([...prev.cases, caseId])],
+            stages: [...new Set([...prev.stages, ...stageIds])],
+            sessions: [...new Set([...prev.sessions, ...sessionIds])],
+            invoices: [...new Set([...prev.invoices, ...invoiceIds])],
+            invoiceItems: [...new Set([...prev.invoiceItems, ...invoiceItemIds])],
+            documents: [...new Set([...prev.documents, ...docIdsToDelete])],
+            documentPaths: [...new Set([...prev.documentPaths, ...docPathsToDelete])],
+        }));
+    }, []);
+
+    const deleteStage = React.useCallback((stageId: string, caseId: string, clientId: string) => {
+        const client = dataRef.current.clients.find(c => c.id === clientId);
+        const caseItem = client?.cases.find(c => c.id === caseId);
+        const stageToDelete = caseItem?.stages.find(s => s.id === stageId);
+        if (!stageToDelete) return;
+
+        const sessionIds = stageToDelete.sessions.map(s => s.id);
+
+        setData(prev => ({
+            ...prev,
+            clients: prev.clients.map(c => c.id === clientId ? { ...c, updated_at: new Date(), cases: c.cases.map(cs => cs.id === caseId ? { ...cs, updated_at: new Date(), stages: cs.stages.filter(st => st.id !== stageId)} : cs) } : c)
+        }));
+        setDeletedIds(prev => ({
+            ...prev,
+            stages: [...new Set([...prev.stages, stageId])],
+            sessions: [...new Set([...prev.sessions, ...sessionIds])]
+        }));
+    }, []);
+
+    const deleteSession = React.useCallback((sessionId: string, stageId: string, caseId: string, clientId: string) => {
+        setData(prev => ({
+            ...prev,
+            clients: prev.clients.map(c => c.id === clientId ? { ...c, updated_at: new Date(), cases: c.cases.map(cs => cs.id === caseId ? { ...cs, updated_at: new Date(), stages: cs.stages.map(st => st.id === stageId ? { ...st, updated_at: new Date(), sessions: st.sessions.filter(s => s.id !== sessionId)} : st)} : cs) } : c)
+        }));
+        setDeletedIds(prev => ({ ...prev, sessions: [...new Set([...prev.sessions, sessionId])] }));
+    }, []);
+
+    const deleteAdminTask = React.useCallback((taskId: string) => {
+        setData(prev => ({ ...prev, adminTasks: prev.adminTasks.filter(t => t.id !== taskId) }));
+        setDeletedIds(prev => ({ ...prev, adminTasks: [...new Set([...prev.adminTasks, taskId])] }));
+    }, []);
+
+    const deleteAppointment = React.useCallback((appointmentId: string) => {
+        setData(prev => ({ ...prev, appointments: prev.appointments.filter(a => a.id !== appointmentId) }));
+        setDeletedIds(prev => ({ ...prev, appointments: [...new Set([...prev.appointments, appointmentId])] }));
+    }, []);
+
+    const deleteAccountingEntry = React.useCallback((entryId: string) => {
+        setData(prev => ({ ...prev, accountingEntries: prev.accountingEntries.filter(e => e.id !== entryId) }));
+        setDeletedIds(prev => ({ ...prev, accountingEntries: [...new Set([...prev.accountingEntries, entryId])] }));
+    }, []);
+
+    const deleteInvoice = React.useCallback((invoiceId: string) => {
+        const invoice = dataRef.current.invoices.find(i => i.id === invoiceId);
+        if (!invoice) return;
+
+        const itemIds = invoice.items.map(item => item.id);
+        setData(prev => ({ ...prev, invoices: prev.invoices.filter(i => i.id !== invoiceId) }));
+        setDeletedIds(prev => ({
+            ...prev,
+            invoices: [...new Set([...prev.invoices, invoiceId])],
+            invoiceItems: [...new Set([...prev.invoiceItems, ...itemIds])]
+        }));
+    }, []);
+    
+    const deleteAssistant = React.useCallback((name: string) => {
+        if (name === 'بدون تخصيص') return;
+        setData(prev => ({...prev, assistants: prev.assistants.filter(a => a !== name)}));
+        setDeletedIds(prev => ({...prev, assistants: [...new Set([...prev.assistants, name])]}));
+    }, []);
+
+    const postponeSession = React.useCallback((sessionId: string, newDate: Date, newReason: string) => {
+        setData(prev => {
+            const newClients = prev.clients.map(client => ({
+                ...client,
+                cases: client.cases.map(caseItem => ({
+                    ...caseItem,
+                    stages: caseItem.stages.map(stage => {
+                        const sessionIndex = stage.sessions.findIndex(s => s.id === sessionId);
+                        if (sessionIndex === -1) return stage;
+                        
+                        const updatedSessions = [...stage.sessions];
+                        const oldSession = updatedSessions[sessionIndex];
+                        
+                        updatedSessions[sessionIndex] = {
+                            ...oldSession,
+                            isPostponed: true,
+                            nextSessionDate: newDate,
+                            nextPostponementReason: newReason,
+                            updated_at: new Date(),
+                        };
+
+                        return { ...stage, sessions: updatedSessions, updated_at: new Date() };
+                    })
+                }))
+            }));
+            return {...prev, clients: newClients};
+        });
+    }, []);
+
     return {
-        clients: data.clients,
-        adminTasks: data.adminTasks,
-        appointments: data.appointments,
-        accountingEntries: data.accountingEntries,
-        invoices: data.invoices,
-        assistants: data.assistants,
-        documents: data.documents,
+        ...data,
         setClients: (updater) => setData(prev => ({...prev, clients: typeof updater === 'function' ? updater(prev.clients) : updater})),
         setAdminTasks: (updater) => setData(prev => ({...prev, adminTasks: typeof updater === 'function' ? updater(prev.adminTasks) : updater})),
         setAppointments: (updater) => setData(prev => ({...prev, appointments: typeof updater === 'function' ? updater(prev.appointments) : updater})),
@@ -933,80 +1171,54 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         setInvoices: (updater) => setData(prev => ({...prev, invoices: typeof updater === 'function' ? updater(prev.invoices) : updater})),
         setAssistants: (updater) => setData(prev => ({...prev, assistants: typeof updater === 'function' ? updater(prev.assistants) : updater})),
         setDocuments: (updater) => setData(prev => ({ ...prev, documents: typeof updater === 'function' ? updater(prev.documents) : updater })),
+        setProfiles: (updater) => setData(prev => ({...prev, profiles: typeof updater === 'function' ? updater(prev.profiles) : updater})),
+        setSiteFinances: (updater) => setData(prev => ({...prev, siteFinances: typeof updater === 'function' ? updater(prev.siteFinances) : updater})),
         setFullData: (fullData) => {
             handleDataSynced(fullData as AppData);
         },
         allSessions: React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.map(s => ({...s, stageId: st.id, stageDecisionDate: st.decisionDate})) ))), [data.clients]),
-        unpostponedSessions: React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.filter(s => !s.isPostponed && isBeforeToday(s.date) && !st.decisionDate).map(s => ({...s, stageId: st.id, stageDecisionDate: st.decisionDate}))))) , [data.clients]),
+        // Fix: Corrected corrupted code and completed the function logic.
+        // FIX: Replaced potentially problematic flatMap chain with a more robust and defensive implementation to avoid errors with malformed data structures before full hydration.
+        unpostponedSessions: React.useMemo(() =>
+            (data.clients || []).flatMap(c =>
+                (c.cases || []).flatMap(cs =>
+                    (cs.stages || []).flatMap(st =>
+                        (st.sessions || [])
+                            .filter(s => s && s.date && !s.isPostponed && isBeforeToday(new Date(s.date)) && !st.decisionDate)
+                            .map(s => ({...s, stageId: st.id, stageDecisionDate: st.decisionDate}))
+                    )
+                )
+            ),
+        [data.clients]),
         syncStatus,
-        manualSync: manualSyncRef.current,
+        manualSync,
         lastSyncError,
         isDirty,
         userId,
         isDataLoading,
-        isAuthLoading,
         isAutoSyncEnabled,
         setAutoSyncEnabled: setIsAutoSyncEnabled,
         isAutoBackupEnabled,
         setAutoBackupEnabled: setIsAutoBackupEnabled,
         exportData,
         triggeredAlerts,
-        dismissAlert: React.useCallback((appointmentId: string) => { setTriggeredAlerts(prev => prev.filter(a => a.id !== appointmentId)); }, []),
+        dismissAlert: (appointmentId: string) => setTriggeredAlerts(prev => prev.filter(a => a.id !== appointmentId)),
+        realtimeAlerts,
+        dismissRealtimeAlert,
+        deleteClient,
+        deleteCase,
+        deleteStage,
+        deleteSession,
+        deleteAdminTask,
+        deleteAppointment,
+        deleteAccountingEntry,
+        deleteInvoice,
+        deleteAssistant,
+        deleteDocument,
+        addDocuments,
+        getDocumentFile,
+        postponeSession,
         showUnpostponedSessionsModal,
         setShowUnpostponedSessionsModal,
-        deleteClient: React.useCallback((clientId: string) => { setDeletedIds(prev => ({...prev, clients: [...prev.clients, clientId]})); setData(prev => ({...prev, clients: prev.clients.filter(c => c.id !== clientId)})); }, []),
-        deleteCase: React.useCallback((caseId: string, clientId: string) => { setDeletedIds(prev => ({...prev, cases: [...prev.cases, caseId]})); setData(prev => ({...prev, clients: prev.clients.map(c => c.id === clientId ? {...c, cases: c.cases.filter(cs => cs.id !== caseId)} : c)})); }, []),
-        deleteStage: React.useCallback((stageId: string, caseId: string, clientId: string) => { setDeletedIds(prev => ({...prev, stages: [...prev.stages, stageId]})); setData(prev => ({...prev, clients: prev.clients.map(c => c.id === clientId ? {...c, cases: c.cases.map(cs => cs.id === caseId ? {...cs, stages: cs.stages.filter(st => st.id !== stageId)} : cs)} : c)})); }, []),
-        deleteSession: React.useCallback((sessionId: string, stageId: string, caseId: string, clientId: string) => { setDeletedIds(prev => ({...prev, sessions: [...prev.sessions, sessionId]})); setData(prev => ({...prev, clients: prev.clients.map(c => c.id === clientId ? {...c, cases: c.cases.map(cs => cs.id === caseId ? {...cs, stages: cs.stages.map(st => st.id === stageId ? {...st, sessions: st.sessions.filter(s => s.id !== sessionId)} : st)} : cs)} : c)})); }, []),
-        deleteAdminTask: React.useCallback((taskId: string) => { setDeletedIds(prev => ({...prev, adminTasks: [...prev.adminTasks, taskId]})); setData(prev => ({...prev, adminTasks: prev.adminTasks.filter(t => t.id !== taskId)})); }, []),
-        deleteAppointment: React.useCallback((appointmentId: string) => { setDeletedIds(prev => ({...prev, appointments: [...prev.appointments, appointmentId]})); setData(prev => ({...prev, appointments: prev.appointments.filter(a => a.id !== appointmentId)})); }, []),
-        deleteAccountingEntry: React.useCallback((entryId: string) => { setDeletedIds(prev => ({...prev, accountingEntries: [...prev.accountingEntries, entryId]})); setData(prev => ({...prev, accountingEntries: prev.accountingEntries.filter(e => e.id !== entryId)})); }, []),
-        deleteInvoice: React.useCallback((invoiceId: string) => { setDeletedIds(prev => ({...prev, invoices: [...prev.invoices, invoiceId]})); setData(prev => ({...prev, invoices: prev.invoices.filter(i => i.id !== invoiceId)})); }, []),
-        deleteAssistant: React.useCallback((name: string) => { setDeletedIds(prev => ({...prev, assistants: [...prev.assistants, name]})); setData(prev => ({...prev, assistants: prev.assistants.filter(a => a !== name)})); }, []),
-        addDocuments,
-        deleteDocument,
-        getDocumentFile,
-        postponeSession: React.useCallback((sessionId: string, newDate: Date, newReason: string) => {
-            setData(prev => {
-                const newClients = prev.clients.map(client => ({
-                    ...client,
-                    cases: client.cases.map(caseItem => ({
-                        ...caseItem,
-                        stages: caseItem.stages.map(stage => {
-                            const sessionIndex = stage.sessions.findIndex(s => s.id === sessionId);
-                            if (sessionIndex === -1) return stage;
-
-                            const updatedSessions = [...stage.sessions];
-                            const sessionToUpdate = updatedSessions[sessionIndex];
-                            
-                            updatedSessions[sessionIndex] = {
-                                ...sessionToUpdate,
-                                isPostponed: true,
-                                nextSessionDate: newDate,
-                                nextPostponementReason: newReason,
-                                updated_at: new Date(),
-                            };
-                            
-                            const newSession: Session = {
-                                id: `session-${Date.now()}`,
-                                court: sessionToUpdate.court,
-                                caseNumber: sessionToUpdate.caseNumber,
-                                date: newDate,
-                                clientName: sessionToUpdate.clientName,
-                                opponentName: sessionToUpdate.opponentName,
-                                isPostponed: false,
-                                postponementReason: newReason,
-                                assignee: sessionToUpdate.assignee,
-                                updated_at: new Date()
-                            };
-                            updatedSessions.push(newSession);
-
-                            return { ...stage, sessions: updatedSessions, updated_at: new Date() };
-                        })
-                    }))
-                }));
-                return { ...prev, clients: newClients };
-            });
-        }, []),
     };
 };

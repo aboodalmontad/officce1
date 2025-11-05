@@ -4,6 +4,16 @@ import App from './App';
 
 // Register Service Worker for offline capabilities
 if ('serviceWorker' in navigator) {
+  // This block handles service worker updates. When a new worker takes control,
+  // the page is reloaded to ensure the latest assets are used.
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    console.log('A new version of the application is available. Reloading page...');
+    refreshing = true;
+    window.location.reload();
+  });
+
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js')
       .then(registration => {

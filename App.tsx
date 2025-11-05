@@ -17,11 +17,12 @@ import { useSupabaseData, SyncStatus } from './hooks/useSupabaseData';
 import { UserIcon, CalculatorIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, ExclamationTriangleIcon, PowerIcon, HomeIcon } from './components/icons';
 import ContextMenu, { MenuItem } from './components/ContextMenu';
 import AdminTaskModal from './components/AdminTaskModal';
-import { AdminTask, Profile, Session, Client, Appointment, AccountingEntry, Invoice, CaseDocument, AppData } from './types';
+import { AdminTask, Profile, Session, Client, Appointment, AccountingEntry, Invoice, CaseDocument, AppData, SiteFinancialEntry } from './types';
 import { getSupabaseClient } from './supabaseClient';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import AppointmentNotifier from './components/AppointmentNotifier';
 import UnpostponedSessionsModal from './components/UnpostponedSessionsModal';
+import RealtimeNotifier, { RealtimeAlert } from './components/RealtimeNotifier';
 
 
 // --- Data Context for avoiding prop drilling ---
@@ -33,6 +34,8 @@ interface IDataContext extends AppData {
     setInvoices: (updater: React.SetStateAction<Invoice[]>) => void;
     setAssistants: (updater: React.SetStateAction<string[]>) => void;
     setDocuments: (updater: React.SetStateAction<CaseDocument[]>) => void;
+    setProfiles: (updater: React.SetStateAction<Profile[]>) => void;
+    setSiteFinances: (updater: React.SetStateAction<SiteFinancialEntry[]>) => void;
     allSessions: (Session & { stageId?: string, stageDecisionDate?: Date })[];
     unpostponedSessions: (Session & { stageId?: string, stageDecisionDate?: Date })[];
     setFullData: (data: any) => void;
@@ -50,6 +53,8 @@ interface IDataContext extends AppData {
     exportData: () => boolean;
     triggeredAlerts: Appointment[];
     dismissAlert: (appointmentId: string) => void;
+    realtimeAlerts: RealtimeAlert[];
+    dismissRealtimeAlert: (alertId: number) => void;
     deleteClient: (clientId: string) => void;
     deleteCase: (caseId: string, clientId: string) => void;
     deleteStage: (stageId: string, caseId: string, clientId: string) => void;
@@ -185,7 +190,7 @@ const Navbar: React.FC<{
                 <button onClick={() => onNavigate('home')} className="flex items-center" aria-label="العودة إلى الصفحة الرئيسية">
                     <div className="flex items-baseline gap-2">
                         <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
-                        <span className="text-xs font-mono text-gray-500">الإصدار 5</span>
+                        <span className="text-xs font-mono text-gray-500">الإصدار 8</span>
                     </div>
                 </button>
                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
@@ -540,67 +545,73 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         return <SubscriptionExpiredPage onLogout={handleLogout} />;
     }
     
-    if (profile.role === 'admin') {
-        return <AdminDashboard onLogout={handleLogout} />;
-    }
-
     return (
-        <DataProvider value={{...supabaseData, isAuthLoading}}>
-            <div className="min-h-screen flex flex-col bg-gray-100">
-                <Navbar
-                    currentPage={currentPage}
-                    onNavigate={setCurrentPage}
-                    onLogout={handleLogout}
-                    profile={profile}
-                    syncStatus={supabaseData.syncStatus}
-                    lastSyncError={supabaseData.lastSyncError}
-                    isDirty={supabaseData.isDirty}
-                    isOnline={isOnline}
-                    onManualSync={supabaseData.manualSync}
-                    isAutoSyncEnabled={supabaseData.isAutoSyncEnabled}
-                />
-                <OfflineBanner />
-                {loginMessage && (
-                    <div 
-                        className="no-print w-full bg-blue-100 text-blue-800 p-3 text-center text-sm font-semibold flex items-center justify-center gap-2 animate-fade-in"
-                        role="status"
-                    >
-                        <CheckCircleIcon className="w-5 h-5" />
-                        <span>{loginMessage}</span>
+        <DataProvider value={{ ...supabaseData, isAuthLoading }}>
+            {profile.role === 'admin' ? (
+                <AdminDashboard onLogout={handleLogout} />
+            ) : (
+                <>
+                    <div className="min-h-screen flex flex-col bg-gray-100">
+                        <Navbar
+                            currentPage={currentPage}
+                            onNavigate={setCurrentPage}
+                            onLogout={handleLogout}
+                            profile={profile}
+                            syncStatus={supabaseData.syncStatus}
+                            lastSyncError={supabaseData.lastSyncError}
+                            isDirty={supabaseData.isDirty}
+                            isOnline={isOnline}
+                            onManualSync={supabaseData.manualSync}
+                            isAutoSyncEnabled={supabaseData.isAutoSyncEnabled}
+                        />
+                        <OfflineBanner />
+                        {loginMessage && (
+                            <div 
+                                className="no-print w-full bg-blue-100 text-blue-800 p-3 text-center text-sm font-semibold flex items-center justify-center gap-2 animate-fade-in"
+                                role="status"
+                            >
+                                <CheckCircleIcon className="w-5 h-5" />
+                                <span>{loginMessage}</span>
+                            </div>
+                        )}
+                        <main className="flex-grow p-4 sm:p-6">
+                            {renderPage()}
+                        </main>
                     </div>
-                )}
-                <main className="flex-grow p-4 sm:p-6">
-                    {renderPage()}
-                </main>
-            </div>
-            <AdminTaskModal
-                isOpen={isAdminTaskModalOpen}
-                onClose={() => setIsAdminTaskModalOpen(false)}
-                onSubmit={handleAdminTaskSubmit}
-                initialData={initialAdminTaskData}
-                assistants={supabaseData.assistants}
-            />
-            <ContextMenu 
-                isOpen={contextMenu.isOpen}
-                position={contextMenu.position}
-                menuItems={contextMenu.menuItems}
-                onClose={() => setContextMenu(p => ({...p, isOpen: false}))}
-            />
-            <AppointmentNotifier
-                triggeredAlerts={supabaseData.triggeredAlerts}
-                dismissAlert={supabaseData.dismissAlert}
-            />
-             {supabaseData.showUnpostponedSessionsModal && (
-                <UnpostponedSessionsModal
-                    isOpen={supabaseData.showUnpostponedSessionsModal}
-                    onClose={() => {
-                        supabaseData.setShowUnpostponedSessionsModal(false);
-                        sessionStorage.setItem(UNPOSTPONED_MODAL_SHOWN_KEY, 'true');
-                    }}
-                    sessions={supabaseData.unpostponedSessions}
-                    onPostpone={supabaseData.postponeSession}
-                    assistants={supabaseData.assistants}
-                />
+                    <AdminTaskModal
+                        isOpen={isAdminTaskModalOpen}
+                        onClose={() => setIsAdminTaskModalOpen(false)}
+                        onSubmit={handleAdminTaskSubmit}
+                        initialData={initialAdminTaskData}
+                        assistants={supabaseData.assistants}
+                    />
+                    <ContextMenu 
+                        isOpen={contextMenu.isOpen}
+                        position={contextMenu.position}
+                        menuItems={contextMenu.menuItems}
+                        onClose={() => setContextMenu(p => ({...p, isOpen: false}))}
+                    />
+                    <AppointmentNotifier
+                        triggeredAlerts={supabaseData.triggeredAlerts}
+                        dismissAlert={supabaseData.dismissAlert}
+                    />
+                     {supabaseData.showUnpostponedSessionsModal && (
+                        <UnpostponedSessionsModal
+                            isOpen={supabaseData.showUnpostponedSessionsModal}
+                            onClose={() => {
+                                supabaseData.setShowUnpostponedSessionsModal(false);
+                                sessionStorage.setItem(UNPOSTPONED_MODAL_SHOWN_KEY, 'true');
+                            }}
+                            sessions={supabaseData.unpostponedSessions}
+                            onPostpone={supabaseData.postponeSession}
+                            assistants={supabaseData.assistants}
+                        />
+                    )}
+                    <RealtimeNotifier
+                        alerts={supabaseData.realtimeAlerts}
+                        dismissAlert={supabaseData.dismissRealtimeAlert}
+                    />
+                </>
             )}
         </DataProvider>
     );

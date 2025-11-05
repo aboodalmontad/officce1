@@ -3,6 +3,7 @@ import { getSupabaseClient } from '../supabaseClient';
 import { Profile } from '../types';
 import { formatDate, toInputDateString } from '../utils/dateUtils';
 import { CheckCircleIcon, NoSymbolIcon, PencilIcon, TrashIcon, ExclamationTriangleIcon } from '../components/icons';
+import { useData } from '../App';
 
 /**
  * A robust helper function to format the subscription date range for display.
@@ -61,84 +62,23 @@ const getDisplayPhoneNumber = (mobile: string | null | undefined): string => {
 
 
 const AdminPage: React.FC = () => {
-    const [users, setUsers] = React.useState<Profile[]>([]);
-    const [loading, setLoading] = React.useState(true);
+    const { profiles: users, setProfiles: setUsers, isDataLoading: loading, userId } = useData();
     const [error, setError] = React.useState<string | null>(null);
     const [editingUser, setEditingUser] = React.useState<Profile | null>(null);
     const [userToDelete, setUserToDelete] = React.useState<Profile | null>(null);
-    const [currentAdminId, setCurrentAdminId] = React.useState<string | null>(null);
+    const currentAdminId = userId;
     
     const supabase = getSupabaseClient();
 
-    const fetchUsers = React.useCallback(async () => {
-        if (!supabase) {
-            setError("Supabase client not available.");
-            setLoading(false);
-            return;
-        }
-
-        setLoading(true);
-        
-        const { data: { user: adminUser }, error: adminUserError } = await supabase.auth.getUser();
-        if (adminUserError) {
-             console.error("Error fetching current admin user:", adminUserError);
-        }
-        setCurrentAdminId(adminUser?.id || null);
-        
-        const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .order('is_approved', { ascending: true })
-            .order('created_at', { ascending: false });
-
-        if (error) {
-            console.error("Error fetching users:", error);
-            setError("Failed to fetch users. " + error.message);
-        } else {
-            setUsers(data as Profile[]);
-        }
-        setLoading(false);
-    }, [supabase]);
-
-    React.useEffect(() => {
-        fetchUsers();
-        // Set up a subscription to listen for changes in the profiles table
-        const channel = supabase?.channel('public:profiles')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, 
-            (payload) => {
-                console.log('Profile change received, refetching users.', payload);
-                fetchUsers();
-            })
-            .subscribe();
-
-        // Cleanup subscription on component unmount
-        return () => {
-            if (supabase && channel) {
-                supabase.removeChannel(channel);
-            }
-        };
-    }, [fetchUsers, supabase]);
-
     const handleUpdateUser = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        if (!supabase || !editingUser) return;
-
-        const { error } = await supabase
-            .from('profiles')
-            .update({
-                full_name: editingUser.full_name,
-                is_approved: editingUser.is_approved,
-                is_active: editingUser.is_active,
-                subscription_start_date: editingUser.subscription_start_date,
-                subscription_end_date: editingUser.subscription_end_date,
-            })
-            .eq('id', editingUser.id);
+        if (!editingUser) return;
         
-        if (error) {
-            setError("Failed to update user: " + error.message);
-        } else {
-            setEditingUser(null);
-        }
+        setUsers(prevUsers => prevUsers.map(u => 
+            u.id === editingUser.id ? { ...editingUser, updated_at: new Date() } : u
+        ));
+
+        setEditingUser(null);
     };
 
     const handleConfirmDelete = async () => {
@@ -151,27 +91,32 @@ const AdminPage: React.FC = () => {
         if (error) {
             setError("Failed to delete user: " + error.message);
         }
+        // Let realtime handle the UI update for consistency
         setUserToDelete(null);
     };
     
     // Quick toggle functions
-    const toggleUserApproval = async (user: Profile) => {
+    const toggleUserApproval = (user: Profile) => {
          if (!supabase || user.role === 'admin') return;
-         const { error } = await supabase
-            .from('profiles')
-            .update({ is_approved: !user.is_approved })
-            .eq('id', user.id);
-        if (error) setError("Failed to update approval: " + error.message);
+         const updatedUser = { ...user, is_approved: !user.is_approved, updated_at: new Date() };
+         setUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
     }
     
-    const toggleUserActiveStatus = async (user: Profile) => {
+    const toggleUserActiveStatus = (user: Profile) => {
          if (!supabase || user.role === 'admin') return;
-         const { error } = await supabase
-            .from('profiles')
-            .update({ is_active: !user.is_active })
-            .eq('id', user.id);
-        if (error) setError("Failed to update status: " + error.message);
+         const updatedUser = { ...user, is_active: !user.is_active, updated_at: new Date() };
+         setUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
     }
+    
+    const sortedUsers = React.useMemo(() => {
+        return [...users].sort((a, b) => {
+            if (a.is_approved !== b.is_approved) return a.is_approved ? 1 : -1;
+            const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+            return dateB - dateA;
+        });
+    }, [users]);
+
 
     if (loading) {
         return <div className="text-center p-8">جاري تحميل المستخدمين...</div>;
@@ -199,7 +144,7 @@ const AdminPage: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {users.map(user => (
+                        {sortedUsers.map(user => (
                             <tr key={user.id} className={`border-b ${!user.is_approved ? 'bg-yellow-50' : 'bg-white'}`}>
                                 <td className="px-6 py-4 font-medium text-gray-900">{user.full_name} {user.role === 'admin' && <span className="text-xs font-semibold text-blue-600">(مدير)</span>}</td>
                                 <td className="px-6 py-4">{getDisplayPhoneNumber(user.mobile_number)}</td>

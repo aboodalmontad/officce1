@@ -29,6 +29,19 @@
             animation: fade-in 0.5s ease-out forwards;
         }
         
+        @keyframes slide-in-down-fade {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .animate-slide-in-down-fade {
+            animation: slide-in-down-fade 0.5s ease-out forwards;
+        }
     </style>
     <!-- Import Map -->
     <script type="importmap">

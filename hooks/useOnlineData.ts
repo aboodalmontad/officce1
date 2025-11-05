@@ -1,5 +1,5 @@
 import { getSupabaseClient } from '../supabaseClient';
-import { Client, AdminTask, Appointment, AccountingEntry, Invoice, InvoiceItem, CaseDocument } from '../types';
+import { Client, AdminTask, Appointment, AccountingEntry, Invoice, InvoiceItem, CaseDocument, Profile, SiteFinancialEntry } from '../types';
 import { User } from '@supabase/supabase-js';
 
 // This file defines the shape of data when flattened for sync operations.
@@ -15,6 +15,8 @@ export type FlatData = {
     invoices: Omit<Invoice, 'items'>[];
     invoice_items: InvoiceItem[];
     case_documents: CaseDocument[];
+    profiles: Profile[];
+    site_finances: SiteFinancialEntry[];
 };
 
 
@@ -34,6 +36,7 @@ export const checkSupabaseSchema = async () => {
         'stages': 'id', 'sessions': 'id', 'admin_tasks': 'id',
         'appointments': 'id', 'accounting_entries': 'id', 'assistants': 'name',
         'invoices': 'id', 'invoice_items': 'id', 'case_documents': 'id',
+        'site_finances': 'id',
     };
     
     const tableCheckPromises = Object.entries(tableChecks).map(([table, query]) =>
@@ -77,14 +80,14 @@ export const checkSupabaseSchema = async () => {
  * @returns A promise that resolves with the user's data.
  * @throws An error if the Supabase client is unavailable or if the fetch fails.
  */
-export const fetchDataFromSupabase = async (): Promise<FlatData> => {
+export const fetchDataFromSupabase = async (): Promise<Partial<FlatData>> => {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase client not available.');
 
     const [
         clientsRes, adminTasksRes, appointmentsRes, accountingEntriesRes,
         assistantsRes, invoicesRes, casesRes, stagesRes, sessionsRes, invoiceItemsRes,
-        caseDocumentsRes
+        caseDocumentsRes, profilesRes, siteFinancesRes
     ] = await Promise.all([
         supabase.from('clients').select('*'),
         supabase.from('admin_tasks').select('*'),
@@ -97,6 +100,8 @@ export const fetchDataFromSupabase = async (): Promise<FlatData> => {
         supabase.from('sessions').select('*'),
         supabase.from('invoice_items').select('*'),
         supabase.from('case_documents').select('*'),
+        supabase.from('profiles').select('*'),
+        supabase.from('site_finances').select('*'),
     ]);
 
     const results = [
@@ -111,6 +116,8 @@ export const fetchDataFromSupabase = async (): Promise<FlatData> => {
         { res: sessionsRes, name: 'sessions' },
         { res: invoiceItemsRes, name: 'invoice_items' },
         { res: caseDocumentsRes, name: 'case_documents' },
+        { res: profilesRes, name: 'profiles' },
+        { res: siteFinancesRes, name: 'site_finances' },
     ];
 
     for (const { res, name } of results) {
@@ -131,6 +138,8 @@ export const fetchDataFromSupabase = async (): Promise<FlatData> => {
         invoices: invoicesRes.data || [],
         invoice_items: invoiceItemsRes.data || [],
         case_documents: caseDocumentsRes.data || [],
+        profiles: profilesRes.data || [],
+        site_finances: siteFinancesRes.data || [],
     };
 };
 
@@ -141,7 +150,9 @@ export const deleteDataFromSupabase = async (deletions: Partial<FlatData>, user:
     // Deletion order matters due to foreign keys. Children first.
     const deletionOrder: (keyof FlatData)[] = [
         'case_documents', 'invoice_items', 'sessions', 'stages', 'cases', 'invoices', 
-        'admin_tasks', 'appointments', 'accounting_entries', 'assistants', 'clients'
+        'admin_tasks', 'appointments', 'accounting_entries', 'assistants', 'clients',
+        'site_finances', // Admin only
+        'profiles',      // Admin only, handled by RPC
     ];
 
     for (const table of deletionOrder) {
@@ -185,6 +196,8 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         invoices: data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, client_name: clientName, case_id: caseId, case_subject: caseSubject, issue_date: issueDate, due_date: dueDate, tax_rate: taxRate })),
         invoice_items: data.invoice_items?.map(({ ...item }) => ({ ...item, user_id: userId })),
         case_documents: data.case_documents?.filter(doc => doc.storagePath && doc.storagePath.trim() !== '').map(({ caseId, userId: localUserId, addedAt, storagePath, localState, ...rest }) => ({ ...rest, user_id: userId, case_id: caseId, added_at: addedAt, storage_path: storagePath })),
+        profiles: data.profiles?.map(({ full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, ...rest }) => ({ ...rest, full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date })),
+        site_finances: data.site_finances?.map(({ user_id, payment_date, ...rest }) => ({ ...rest, user_id, payment_date })),
     };
     
     const upsertTable = async (table: string, records: any[] | undefined, options: { onConflict?: string } = {}) => {
@@ -203,14 +216,18 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
 
     results.assistants = await upsertTable('assistants', dataToUpsert.assistants, { onConflict: 'user_id,name' });
 
-    const [adminTasks, appointments, accountingEntries] = await Promise.all([
+    const [adminTasks, appointments, accountingEntries, profiles, site_finances] = await Promise.all([
         upsertTable('admin_tasks', dataToUpsert.admin_tasks),
         upsertTable('appointments', dataToUpsert.appointments),
         upsertTable('accounting_entries', dataToUpsert.accounting_entries),
+        upsertTable('profiles', dataToUpsert.profiles),
+        upsertTable('site_finances', dataToUpsert.site_finances),
     ]);
     results.admin_tasks = adminTasks;
     results.appointments = appointments;
     results.accounting_entries = accountingEntries;
+    results.profiles = profiles;
+    results.site_finances = site_finances;
 
     results.clients = await upsertTable('clients', dataToUpsert.clients);
     results.cases = await upsertTable('cases', dataToUpsert.cases);
@@ -239,5 +256,7 @@ export const transformRemoteToLocal = (remote: any): Partial<FlatData> => {
         invoices: remote.invoices?.map(({ client_id, client_name, case_id, case_subject, issue_date, due_date, tax_rate, ...r }: any) => ({ ...r, clientId: client_id, clientName: client_name, caseId: case_id, caseSubject: case_subject, issueDate: issue_date, dueDate: due_date, taxRate: tax_rate })),
         invoice_items: remote.invoice_items,
         case_documents: remote.case_documents?.map(({ user_id, case_id, added_at, storage_path, ...r }: any) => ({...r, userId: user_id, caseId: case_id, addedAt: added_at, storagePath: storage_path })),
+        profiles: remote.profiles?.map(({ full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, ...r }: any) => ({ ...r, full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date })),
+        site_finances: remote.site_finances,
     };
 };
