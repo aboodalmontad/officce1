@@ -688,32 +688,62 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 const rawDeleted = localStorage.getItem(`lawyerAppDeletedIds_${userId}`);
                 setDeletedIds(rawDeleted ? JSON.parse(rawDeleted) : getInitialDeletedIds());
                 
-                const savedSettingsRaw = localStorage.getItem(`lawyerAppSettings_${userId}`);
+                // --- Refactored User Settings Loading & Migration ---
+                const settingsKey = `lawyerAppSettings_${userId}`;
+                let userSettings: UserSettings;
+
+                const savedSettingsRaw = localStorage.getItem(settingsKey);
                 if (savedSettingsRaw) {
                     try {
                         const savedSettings = JSON.parse(savedSettingsRaw);
-                        setSettings({ ...defaultSettings, ...savedSettings });
-                    } catch {
-                        setSettings(defaultSettings);
+                        // Ensure all properties exist, falling back to defaults for any missing ones.
+                        userSettings = { ...defaultSettings, ...savedSettings };
+                    } catch (e) {
+                        console.error("Failed to parse user settings, falling back to defaults.", e);
+                        userSettings = defaultSettings;
                     }
                 } else {
-                    // Migration from old keys
-                    const autoSyncEnabled = localStorage.getItem(`lawyerAppAutoSyncEnabled_${userId}`);
-                    const autoBackupEnabled = localStorage.getItem(`lawyerAppAutoBackupEnabled_${userId}`);
-                    const tasksLayout = localStorage.getItem(`lawyerAppAdminTasksLayout_${userId}`);
-                    
-                    const migratedSettings = {
-                        isAutoSyncEnabled: autoSyncEnabled === null ? true : autoSyncEnabled === 'true',
-                        isAutoBackupEnabled: autoBackupEnabled === null ? true : autoBackupEnabled === 'true',
-                        adminTasksLayout: tasksLayout === 'vertical' ? 'vertical' : 'horizontal' as 'horizontal' | 'vertical',
-                    };
-                    setSettings(migratedSettings);
+                    // No unified settings object found, attempt migration from old individual keys.
+                    const autoSyncKey = `lawyerAppAutoSyncEnabled_${userId}`;
+                    const autoBackupKey = `lawyerAppAutoBackupEnabled_${userId}`;
+                    const layoutKey = `lawyerAppAdminTasksLayout_${userId}`;
 
-                    // Clean up old keys if they existed
-                    if (autoSyncEnabled !== null) localStorage.removeItem(`lawyerAppAutoSyncEnabled_${userId}`);
-                    if (autoBackupEnabled !== null) localStorage.removeItem(`lawyerAppAutoBackupEnabled_${userId}`);
-                    if (tasksLayout !== null) localStorage.removeItem(`lawyerAppAdminTasksLayout_${userId}`);
+                    const oldAutoSync = localStorage.getItem(autoSyncKey);
+                    const oldAutoBackup = localStorage.getItem(autoBackupKey);
+                    const oldLayout = localStorage.getItem(layoutKey);
+
+                    const needsMigration = oldAutoSync !== null || oldAutoBackup !== null || oldLayout !== null;
+
+                    if (needsMigration) {
+                        console.log("Migrating old user settings to new unified format.");
+                        const migratedSettings: UserSettings = {
+                            isAutoSyncEnabled: oldAutoSync === null ? defaultSettings.isAutoSyncEnabled : oldAutoSync === 'true',
+                            isAutoBackupEnabled: oldAutoBackup === null ? defaultSettings.isAutoBackupEnabled : oldAutoBackup === 'true',
+                            adminTasksLayout: (oldLayout === 'vertical' ? 'vertical' : 'horizontal'),
+                        };
+                        
+                        // Immediately save the migrated settings under the new key before removing old keys.
+                        try {
+                            localStorage.setItem(settingsKey, JSON.stringify(migratedSettings));
+                            localStorage.removeItem(autoSyncKey);
+                            localStorage.removeItem(autoBackupKey);
+                            localStorage.removeItem(layoutKey);
+                        } catch(e) {
+                             console.error("Failed to persist migrated settings.", e);
+                        }
+                        userSettings = migratedSettings;
+
+                    } else {
+                        // No old or new settings found, use defaults and save them for next time.
+                        userSettings = defaultSettings;
+                        try {
+                            localStorage.setItem(settingsKey, JSON.stringify(defaultSettings));
+                        } catch (e) {
+                            console.error("Failed to save default settings.", e);
+                        }
+                    }
                 }
+                setSettings(userSettings);
 
 
                 const combinedData = { ...(rawData || {}), documents: rawDocuments || [] };
