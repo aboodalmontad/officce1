@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { Session as AuthSession, User } from '@supabase/supabase-js';
+// Fix: Use `import type` for Session and User as they are used as types, not values. This resolves module resolution errors in some environments.
+import type { Session as AuthSession, User } from '@supabase/supabase-js';
 
 // Statically import ALL page components to fix critical lazy loading/module errors.
 import ClientsPage from './pages/ClientsPage';
@@ -49,6 +50,8 @@ interface IDataContext extends AppData {
     setAutoSyncEnabled: (enabled: boolean) => void;
     isAutoBackupEnabled: boolean;
     setAutoBackupEnabled: (enabled: boolean) => void;
+    adminTasksLayout: 'horizontal' | 'vertical';
+    setAdminTasksLayout: (layout: 'horizontal' | 'vertical') => void;
     exportData: () => boolean;
     triggeredAlerts: Appointment[];
     dismissAlert: (appointmentId: string) => void;
@@ -189,7 +192,7 @@ const Navbar: React.FC<{
                 <button onClick={() => onNavigate('home')} className="flex items-center" aria-label="العودة إلى الصفحة الرئيسية">
                     <div className="flex items-baseline gap-2">
                         <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
-                        <span className="text-xs font-mono text-gray-500">الإصدار 7</span>
+                        <span className="text-xs font-mono text-gray-500">الإصدار 8</span>
                     </div>
                 </button>
                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">

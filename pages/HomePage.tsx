@@ -132,6 +132,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
         postponeSession,
         setClients,
         clients,
+        adminTasksLayout,
     } = useData();
 
     const [selectedDate, setSelectedDate] = React.useState(new Date());
@@ -1086,63 +1087,127 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                             </nav>
                                         </div>
 
-                                        {locationOrder.length > 0 && (
-                                            <nav className="-mb-px flex space-x-2 overflow-x-auto border-b border-gray-200" aria-label="Location Tabs">
-                                                {locationOrder.map(location => (
-                                                    <button
-                                                        key={location}
-                                                        onClick={() => setActiveLocationTab(location)}
-                                                        draggable
-                                                        onDragStart={e => handleDragStart(e, 'group', location)}
-                                                        onDragEnd={handleDragEnd}
-                                                        onDragOver={e => e.preventDefault()}
-                                                        onDrop={e => {
-                                                            e.preventDefault();
-                                                            e.stopPropagation();
-                                                            if (!draggedGroupLocation || draggedGroupLocation === location) {
-                                                                return;
-                                                            }
-                                                            setLocationOrder(currentOrder => {
-                                                                const sourceIndex = currentOrder.indexOf(draggedGroupLocation);
-                                                                const targetIndex = currentOrder.indexOf(location);
-                                                                if (sourceIndex === -1 || targetIndex === -1) return currentOrder;
-                                                                const newOrder = [...currentOrder];
-                                                                const [movedItem] = newOrder.splice(sourceIndex, 1);
-                                                                newOrder.splice(targetIndex, 0, movedItem);
-                                                                return newOrder;
-                                                            });
-                                                        }}
-                                                        className={`whitespace-nowrap py-3 px-4 border rounded-t-lg font-medium text-sm cursor-grab transition-colors duration-150 focus:outline-none ${
-                                                            activeLocationTab === location
-                                                                ? 'bg-gray-50 border-gray-200 border-b-gray-50 text-blue-600 font-semibold -mb-px' // Active tab
-                                                                : 'bg-white border-gray-200 border-b-0 text-gray-500 hover:bg-gray-100' // Inactive tab
-                                                        } ${
-                                                            draggedGroupLocation === location ? 'opacity-30 scale-95' : 'opacity-100'
-                                                        }`}
-                                                    >
-                                                        {location}
-                                                    </button>
-                                                ))}
-                                            </nav>
-                                        )}
-                                        
-                                        <div className="mt-4 space-y-6">
-                                            {locationOrder.length > 0 && activeLocationTab ? (
-                                                <div 
-                                                    onDragOver={handleGroupDragOver}
-                                                    onDrop={e => handleGroupDrop(e, activeLocationTab)}
-                                                    className="bg-gray-50 p-2 sm:p-4 space-y-3 border border-gray-200 border-t-0 rounded-b-lg min-h-[100px]"
-                                                >
-                                                    {(groupedTasks[activeLocationTab] || []).length > 0 ? (
-                                                        (groupedTasks[activeLocationTab] || []).map(task => renderTaskItem(task, activeLocationTab))
+                                        {adminTasksLayout === 'vertical' ? (
+                                            <div className="flex flex-col md:flex-row gap-6 pt-4">
+                                                {locationOrder.length > 0 && (
+                                                    <nav className="flex flex-row md:flex-col gap-2 md:w-1/4 lg:w-1/5 overflow-x-auto md:overflow-x-visible pb-2 md:pb-0" aria-label="Location Tabs">
+                                                        {locationOrder.map(location => (
+                                                            <button
+                                                                key={location}
+                                                                onClick={() => setActiveLocationTab(location)}
+                                                                draggable={activeTaskTab === 'pending'}
+                                                                onDragStart={e => handleDragStart(e, 'group', location)}
+                                                                onDragEnd={handleDragEnd}
+                                                                onDragOver={e => e.preventDefault()}
+                                                                onDrop={e => {
+                                                                    if (activeTaskTab !== 'pending') return;
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    if (!draggedGroupLocation || draggedGroupLocation === location) return;
+                                                                    setLocationOrder(currentOrder => {
+                                                                        const sourceIndex = currentOrder.indexOf(draggedGroupLocation);
+                                                                        const targetIndex = currentOrder.indexOf(location);
+                                                                        if (sourceIndex === -1 || targetIndex === -1) return currentOrder;
+                                                                        const newOrder = [...currentOrder];
+                                                                        const [movedItem] = newOrder.splice(sourceIndex, 1);
+                                                                        newOrder.splice(targetIndex, 0, movedItem);
+                                                                        return newOrder;
+                                                                    });
+                                                                }}
+                                                                className={`whitespace-nowrap w-full text-right px-4 py-2 border-r-4 font-medium text-sm transition-colors duration-150 focus:outline-none ${activeTaskTab === 'pending' ? 'cursor-grab' : ''} ${
+                                                                    activeLocationTab === location
+                                                                        ? 'border-blue-500 bg-blue-50 text-blue-600 font-semibold'
+                                                                        : 'border-transparent text-gray-600 hover:bg-gray-100'
+                                                                } ${
+                                                                    draggedGroupLocation === location ? 'opacity-30' : 'opacity-100'
+                                                                }`}
+                                                            >
+                                                                {location}
+                                                            </button>
+                                                        ))}
+                                                    </nav>
+                                                )}
+                                                <div className="flex-grow md:w-3/4 lg:w-4/5">
+                                                     {locationOrder.length > 0 && activeLocationTab ? (
+                                                        <div 
+                                                            onDragOver={handleGroupDragOver}
+                                                            onDrop={e => handleGroupDrop(e, activeLocationTab)}
+                                                            className="bg-gray-50 p-2 sm:p-4 space-y-3 border border-gray-200 rounded-lg min-h-[200px]"
+                                                        >
+                                                            {(groupedTasks[activeLocationTab] || []).length > 0 ? (
+                                                                (groupedTasks[activeLocationTab] || []).map(task => renderTaskItem(task, activeLocationTab))
+                                                            ) : (
+                                                                <p className="text-center text-gray-500 py-8">لا توجد مهام في هذا المكان.</p>
+                                                            )}
+                                                        </div>
                                                     ) : (
-                                                         <p className="text-center text-gray-500 py-8">لا توجد مهام في هذا المكان.</p>
+                                                        <div className="flex items-center justify-center bg-gray-50 border border-dashed rounded-lg min-h-[200px]">
+                                                            <p className="text-center text-gray-500 py-8">
+                                                                {locationOrder.length > 0 ? "اختر مجموعة لعرض المهام" : "لا توجد مهام لعرضها."}
+                                                            </p>
+                                                        </div>
                                                     )}
                                                 </div>
-                                            ) : (
-                                                <p className="text-center text-gray-500 py-8">لا توجد مهام لعرضها.</p>
-                                            )}
-                                        </div>
+                                            </div>
+                                        ) : (
+                                            <div className="pt-4">
+                                                {locationOrder.length > 0 ? (
+                                                    <div>
+                                                        <nav className="-mb-px flex space-x-2 overflow-x-auto" aria-label="Location Tabs">
+                                                            {locationOrder.map(location => (
+                                                                <button
+                                                                    key={location}
+                                                                    onClick={() => setActiveLocationTab(location)}
+                                                                    draggable={activeTaskTab === 'pending'}
+                                                                    onDragStart={e => handleDragStart(e, 'group', location)}
+                                                                    onDragEnd={handleDragEnd}
+                                                                    onDragOver={e => e.preventDefault()}
+                                                                    onDrop={e => {
+                                                                        if (activeTaskTab !== 'pending') return;
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        if (!draggedGroupLocation || draggedGroupLocation === location) return;
+                                                                        setLocationOrder(currentOrder => {
+                                                                            const sourceIndex = currentOrder.indexOf(draggedGroupLocation);
+                                                                            const targetIndex = currentOrder.indexOf(location);
+                                                                            if (sourceIndex === -1 || targetIndex === -1) return currentOrder;
+                                                                            const newOrder = [...currentOrder];
+                                                                            const [movedItem] = newOrder.splice(sourceIndex, 1);
+                                                                            newOrder.splice(targetIndex, 0, movedItem);
+                                                                            return newOrder;
+                                                                        });
+                                                                    }}
+                                                                    className={`whitespace-nowrap py-3 px-4 border font-medium text-sm rounded-t-lg transition-colors duration-150 focus:outline-none ${activeTaskTab === 'pending' ? 'cursor-grab' : ''} ${
+                                                                        activeLocationTab === location
+                                                                            ? 'bg-gray-50 border-gray-200 border-b-gray-50 text-blue-600 font-semibold' // Active tab
+                                                                            : 'bg-white border-transparent border-b-gray-200 text-gray-500 hover:text-gray-700' // Inactive tab
+                                                                    } ${
+                                                                        draggedGroupLocation === location ? 'opacity-30' : ''
+                                                                    }`}
+                                                                >
+                                                                    {location}
+                                                                </button>
+                                                            ))}
+                                                        </nav>
+                                                        <div 
+                                                            onDragOver={handleGroupDragOver}
+                                                            onDrop={e => handleGroupDrop(e, activeLocationTab)}
+                                                            className="bg-gray-50 p-2 sm:p-4 space-y-3 border border-gray-200 rounded-b-lg min-h-[100px]"
+                                                        >
+                                                            {(groupedTasks[activeLocationTab] || []).length > 0 ? (
+                                                                (groupedTasks[activeLocationTab] || []).map(task => renderTaskItem(task, activeLocationTab))
+                                                            ) : (
+                                                                <p className="text-center text-gray-500 py-8">لا توجد مهام في هذا المكان.</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center justify-center border border-dashed rounded-lg min-h-[200px]">
+                                                        <p className="text-center text-gray-500 py-8">لا توجد مهام لعرضها.</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                     <AppointmentsTable appointments={dailyData.dailyAppointments} onAddAppointment={handleOpenAddAppointmentModal} onEdit={handleOpenEditAppointmentModal} onDelete={openDeleteAppointmentModal} onContextMenu={handleAppointmentContextMenu} onToggleComplete={handleToggleAppointmentComplete} />
                                 </>

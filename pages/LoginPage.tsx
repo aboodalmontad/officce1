@@ -2,7 +2,8 @@ import * as React from 'react';
 import { getSupabaseClient } from '../supabaseClient';
 import { ExclamationCircleIcon, EyeIcon, EyeSlashIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, ArrowTopRightOnSquareIcon } from '../components/icons';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
-import { User } from '@supabase/supabase-js';
+// Fix: Use `import type` for User as it is used as a type, not a value. This resolves module resolution errors in some environments.
+import type { User } from '@supabase/supabase-js';
 
 /*
  * =============================================================================

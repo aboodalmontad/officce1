@@ -1,4 +1,5 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+// Fix: Use `import type` for SupabaseClient as it is used as a type, not a value. This resolves module resolution errors in some environments.
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 // Hardcoded Supabase credentials provided by the user.
 const supabaseUrl = "https://gvafdhyudvdymletqjee.supabase.co";

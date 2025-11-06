@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { User } from '@supabase/supabase-js';
+// Fix: Use `import type` for User as it is used as a type, not a value. This resolves module resolution errors in some environments.
+import type { User } from '@supabase/supabase-js';
 import { checkSupabaseSchema, fetchDataFromSupabase, upsertDataToSupabase, FlatData, deleteDataFromSupabase, transformRemoteToLocal } from './useOnlineData';
 import { getSupabaseClient } from '../supabaseClient';
 import { Client, Case, Stage, Session, CaseDocument, AppData, DeletedIds, getInitialDeletedIds } from '../types';

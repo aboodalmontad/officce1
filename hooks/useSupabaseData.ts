@@ -1,7 +1,8 @@
 import * as React from 'react';
 import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem, CaseDocument, AppData, DeletedIds, getInitialDeletedIds, Profile, SiteFinancialEntry } from '../types';
 import { useOnlineStatus } from './useOnlineStatus';
-import { User, RealtimeChannel } from '@supabase/supabase-js';
+// Fix: Use `import type` for User and RealtimeChannel as they are used as types, not values. This resolves module resolution errors in some environments.
+import type { User, RealtimeChannel } from '@supabase/supabase-js';
 import { useSync, SyncStatus as SyncStatusType } from './useSync';
 import { getSupabaseClient } from '../supabaseClient';
 import { isBeforeToday, toInputDateString } from '../utils/dateUtils';
@@ -331,6 +332,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const [isDirty, setIsDirty] = React.useState(false);
     const [isAutoSyncEnabled, setIsAutoSyncEnabled] = React.useState(true);
     const [isAutoBackupEnabled, setIsAutoBackupEnabled] = React.useState(true);
+    const [adminTasksLayout, setAdminTasksLayout] = React.useState<'horizontal' | 'vertical'>('horizontal');
     const [triggeredAlerts, setTriggeredAlerts] = React.useState<Appointment[]>([]);
     const [showUnpostponedSessionsModal, setShowUnpostponedSessionsModal] = React.useState(false);
     const [realtimeAlerts, setRealtimeAlerts] = React.useState<RealtimeAlert[]>([]);
@@ -460,7 +462,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
         // Add any purely local documents (e.g., pending upload) that weren't in the synced data.
         // Fix for type error: Filter out invalid documents from local data before iterating.
-        for (const localDoc of (currentLocalDocuments || [])) {
+        // FIX: Filter the local documents array to prevent processing invalid objects, resolving a TypeScript error.
+        for (const localDoc of (currentLocalDocuments || []).filter(doc => doc && doc.id)) {
             // Defensively check if localDoc is a valid object with an ID before processing.
             if (localDoc && localDoc.id) {
                 if (!syncedDocsWithLocalState.some(d => d.id === localDoc.id)) {
@@ -657,6 +660,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             setIsDataLoading(false);
             setIsAutoSyncEnabled(true);
             setIsAutoBackupEnabled(true);
+            setAdminTasksLayout('horizontal');
             hadCacheOnLoad.current = false;
             return;
         }
@@ -677,6 +681,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 setIsAutoSyncEnabled(autoSyncEnabled === null ? true : autoSyncEnabled === 'true');
                 const autoBackupEnabled = localStorage.getItem(`lawyerAppAutoBackupEnabled_${userId}`);
                 setIsAutoBackupEnabled(autoBackupEnabled === null ? true : autoBackupEnabled === 'true');
+                const tasksLayout = localStorage.getItem(`lawyerAppAdminTasksLayout_${userId}`);
+                setAdminTasksLayout(tasksLayout === 'vertical' ? 'vertical' : 'horizontal');
 
                 const combinedData = { ...(rawData || {}), documents: rawDocuments || [] };
 
@@ -786,8 +792,9 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         if (userId) {
             localStorage.setItem(`lawyerAppAutoSyncEnabled_${userId}`, String(isAutoSyncEnabled));
             localStorage.setItem(`lawyerAppAutoBackupEnabled_${userId}`, String(isAutoBackupEnabled));
+            localStorage.setItem(`lawyerAppAdminTasksLayout_${userId}`, adminTasksLayout);
         }
-    }, [userId, isAutoSyncEnabled, isAutoBackupEnabled]);
+    }, [userId, isAutoSyncEnabled, isAutoBackupEnabled, adminTasksLayout]);
     
     // Effect for real-time data synchronization
     const channelRef = React.useRef<RealtimeChannel | null>(null);
@@ -1185,6 +1192,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         setAutoSyncEnabled: setIsAutoSyncEnabled,
         isAutoBackupEnabled,
         setAutoBackupEnabled: setIsAutoBackupEnabled,
+        adminTasksLayout,
+        setAdminTasksLayout,
         exportData,
         triggeredAlerts,
         dismissAlert: (appointmentId: string) => setTriggeredAlerts(prev => prev.filter(a => a.id !== appointmentId)),

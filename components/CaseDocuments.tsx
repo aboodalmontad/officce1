@@ -215,7 +215,7 @@ const Previewer: React.FC<{ doc: CaseDocument; file: File; onClose: () => void }
     const isWordFile = ['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(doc.type) || lowerCaseName.endsWith('.docx') || lowerCaseName.endsWith('.doc');
     const isTextFile = doc.type.startsWith('text/');
     const isImageFile = doc.type.startsWith('image/');
-    const isPdfFile = doc.type === 'application/pdf';
+    const isPdfFile = doc.type === 'application/pdf' || lowerCaseName.endsWith('.pdf');
     const isVideoFile = doc.type.startsWith('video/');
     const isAudioFile = doc.type.startsWith('audio/');
 

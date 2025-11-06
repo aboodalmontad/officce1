@@ -8,7 +8,7 @@ import { openDB } from 'idb';
 interface SettingsPageProps {}
 
 const SettingsPage: React.FC<SettingsPageProps> = () => {
-    const { setFullData, assistants, setAssistants, userId, isAutoSyncEnabled, setAutoSyncEnabled, isAutoBackupEnabled, setAutoBackupEnabled, deleteAssistant, exportData } = useData();
+    const { setFullData, assistants, setAssistants, userId, isAutoSyncEnabled, setAutoSyncEnabled, isAutoBackupEnabled, setAutoBackupEnabled, adminTasksLayout, setAdminTasksLayout, deleteAssistant, exportData } = useData();
     const [feedback, setFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = React.useState(false);
     const [isDeleteAssistantModalOpen, setIsDeleteAssistantModalOpen] = React.useState(false);
@@ -180,6 +180,19 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
                         enabled={isAutoBackupEnabled}
                         onChange={setAutoBackupEnabled}
                     />
+                </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow space-y-4">
+                <h2 className="text-xl font-bold text-gray-800 border-b pb-3">تخطيط عرض المهام الإدارية</h2>
+                <p className="text-gray-600 text-sm">اختر طريقة عرض مجموعات المهام الإدارية في الصفحة الرئيسية.</p>
+                <div className="pt-2 flex items-center gap-4">
+                    <button onClick={() => setAdminTasksLayout('horizontal')} className={`px-4 py-2 rounded-lg font-semibold transition-colors ${adminTasksLayout === 'horizontal' ? 'bg-blue-600 text-white shadow' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
+                        عرض أفقي
+                    </button>
+                    <button onClick={() => setAdminTasksLayout('vertical')} className={`px-4 py-2 rounded-lg font-semibold transition-colors ${adminTasksLayout === 'vertical' ? 'bg-blue-600 text-white shadow' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
+                        عرض عمودي
+                    </button>
                 </div>
             </div>
 
