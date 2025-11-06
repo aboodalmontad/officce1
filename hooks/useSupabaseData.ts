@@ -407,7 +407,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         // This prevents crashes if corrupted or incomplete data (like '{}') is present in the local state.
         const localDocMap = new Map(
             (currentLocalDocuments || [])
-                .filter(doc => doc && doc.id)
+                // FIX: Replaced a simple filter with a TypeScript type guard to correctly narrow the type of `doc` to `CaseDocument`, resolving an error where an empty object `{}` was being incorrectly typed and causing a compile-time failure. This ensures that only valid document objects are processed.
+                .filter((doc): doc is CaseDocument => !!(doc && doc.id))
                 .map(doc => [doc.id, doc])
         );
         
@@ -423,18 +424,19 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                             console.warn('Merged document has an invalid date and will be skipped:', remoteDoc, localDoc);
                             return null;
                         }
-                        const mergedDoc: CaseDocument = {
+// FIX: The type `CaseDocument` could not be correctly inferred because `localDoc` was potentially a partial object. By explicitly casting `localDoc` to `any`, we bypass the strict type checking that was causing the error, allowing the merge logic to proceed with the available data. This is a pragmatic fix for a complex type inference issue.
+                        const mergedDoc: CaseDocument = ({
                             id: remoteDoc.id,
-                            caseId: String((remoteDoc.caseId ?? localDoc.caseId) || ''),
-                            userId: String((remoteDoc.userId ?? localDoc.userId) || ''),
-                            name: String((remoteDoc.name ?? localDoc.name) || 'document.bin'),
-                            type: String((remoteDoc.type ?? localDoc.type) || 'application/octet-stream'),
-                            size: typeof remoteDoc.size === 'number' ? remoteDoc.size : (localDoc.size || 0),
-                            storagePath: String((remoteDoc.storagePath ?? localDoc.storagePath) || ''),
-                            localState: localDoc.localState, // Always preserve local state
+                            caseId: String((remoteDoc.caseId ?? (localDoc as any).caseId) || ''),
+                            userId: String((remoteDoc.userId ?? (localDoc as any).userId) || ''),
+                            name: String((remoteDoc.name ?? (localDoc as any).name) || 'document.bin'),
+                            type: String((remoteDoc.type ?? (localDoc as any).type) || 'application/octet-stream'),
+                            size: typeof remoteDoc.size === 'number' ? remoteDoc.size : ((localDoc as any).size || 0),
+                            storagePath: String((remoteDoc.storagePath ?? (localDoc as any).storagePath) || ''),
+                            localState: (localDoc as any).localState, // Always preserve local state
                             addedAt: addedAtDate,
-                            updated_at: sanitizeOptionalDate(remoteDoc.updated_at ?? localDoc.updated_at),
-                        };
+                            updated_at: sanitizeOptionalDate(remoteDoc.updated_at ?? (localDoc as any).updated_at),
+                        } as CaseDocument);
                         return mergedDoc;
                     } else {
                         // This is a new document from another client. Mark for download if it has a path.
@@ -474,13 +476,10 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
         // Add any purely local documents (e.g., pending upload) that weren't in the synced data.
         // Fix for type error: Filter out invalid documents from local data before iterating.
-        // FIX: Filter the local documents array to prevent processing invalid objects, resolving a TypeScript error.
-        for (const localDoc of (currentLocalDocuments || []).filter(doc => doc && doc.id)) {
-            // Defensively check if localDoc is a valid object with an ID before processing.
-            if (localDoc && localDoc.id) {
-                if (!syncedDocsWithLocalState.some(d => d.id === localDoc.id)) {
-                    syncedDocsWithLocalState.push(localDoc);
-                }
+        // FIX: Replaced a simple filter with a TypeScript type guard to correctly narrow the type of `localDoc` to `CaseDocument`, resolving an error where an empty object `{}` was being incorrectly typed and causing a compile-time failure. This ensures that only valid document objects are processed in the loop.
+        for (const localDoc of (currentLocalDocuments || []).filter((doc): doc is CaseDocument => !!(doc && doc.id))) {
+            if (!syncedDocsWithLocalState.some(d => d.id === localDoc.id)) {
+                syncedDocsWithLocalState.push(localDoc);
             }
         }
 
@@ -869,15 +868,13 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         profiles: 'ملف شخصي', site_finances: 'قيد مالي عام'
     };
 
-    const eventTypeMap: Record<string, string> = { INSERT: 'تمت إضافة', UPDATE: 'تم تحديث', DELETE: 'تم حذف' };
-
     React.useEffect(() => {
         const supabase = getSupabaseClient();
         if (!supabase) return;
 
         if (user && !channelRef.current) {
-            console.log('User detected, creating real-time channel object.');
-            const newChannel = supabase.channel('db-changes');
+            console.log(`User detected, creating real-time channel object: lawyer-app-changes-${user.id}`);
+            const newChannel = supabase.channel('lawyer-app-changes-' + user.id);
             newChannel.on('postgres_changes', { event: '*', schema: 'public' }, payload => {
                 const currentUser = userRefForRealtime.current;
                 if (!currentUser) return;
@@ -889,25 +886,52 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                     }
                 }, 1000);
                 
-                const record = payload.new || payload.old;
-                if (record) {
-                    const tableName = tableNameMap[payload.table] || 'بيان';
-                    const eventType = eventTypeMap[payload.eventType] || 'تغيير';
-                    
-                    let name = '';
-                    let recordForName: any = null;
-
-                    if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-                        recordForName = payload.new;
-                    } else if (payload.eventType === 'DELETE') {
-                        recordForName = payload.old;
+                const { table, eventType, new: newRecord, old: oldRecord } = payload as any;
+                let message: string | null = null;
+    
+                // 1. Handle UPDATE events for specific state changes
+                if (eventType === 'UPDATE') {
+                    // Session postponed
+                    if (table === 'sessions' && oldRecord.is_postponed === false && newRecord.is_postponed === true) {
+                        message = `تم ترحيل جلسة قضية (${newRecord.client_name || ''})`;
                     }
-
-                    if (recordForName) {
-                        name = recordForName.full_name || recordForName.name || recordForName.subject || recordForName.task || recordForName.title || recordForName.description || '';
+                    // Admin task completed/reopened
+                    else if (table === 'admin_tasks') {
+                        if (oldRecord.completed === false && newRecord.completed === true) {
+                            message = `تم إتمام المهمة: "${newRecord.task || ''}"`;
+                        } else if (oldRecord.completed === true && newRecord.completed === false) {
+                            message = `أُعيد فتح المهمة: "${newRecord.task || ''}"`;
+                        }
                     }
-                    
-                    const message = `${eventType} ${tableName}${name ? `: ${name}` : '.'}`;
+                    // Appointment completed/reopened
+                    else if (table === 'appointments') {
+                        if (oldRecord.completed === false && newRecord.completed === true) {
+                            message = `تم إتمام الموعد: "${newRecord.title || ''}"`;
+                        } else if (oldRecord.completed === true && newRecord.completed === false) {
+                            message = `أُعيد فتح الموعد: "${newRecord.title || ''}"`;
+                        }
+                    }
+                } 
+                // 2. Handle INSERT events, but suppress noise
+                else if (eventType === 'INSERT') {
+                    // Suppress notification for the new session created by a postponement action.
+                    if (table === 'sessions' && newRecord.postponement_reason) {
+                        // Do nothing, this is handled by the UPDATE event on the old session.
+                    } 
+                    else if (table === 'clients') {
+                        message = `تمت إضافة موكل جديد: ${newRecord.name || ''}`;
+                    } else if (table === 'cases') {
+                        message = `تمت إضافة قضية جديدة: ${newRecord.subject || ''}`;
+                    }
+                } 
+                // 3. Handle DELETE events
+                else if (eventType === 'DELETE') {
+                    const tableName = tableNameMap[table] || 'بيان';
+                    const name = oldRecord.full_name || oldRecord.name || oldRecord.subject || oldRecord.task || oldRecord.title || oldRecord.description || '';
+                    message = `تم حذف ${tableName}${name ? `: "${name}"` : '.'}`;
+                }
+
+                if (message) {
                     addRealtimeAlert(message);
                 }
             });
@@ -1189,15 +1213,20 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         setData(prev => {
             const newClients = prev.clients.map(client => ({
                 ...client,
+                updated_at: new Date(),
                 cases: client.cases.map(caseItem => ({
                     ...caseItem,
+                    updated_at: new Date(),
                     stages: caseItem.stages.map(stage => {
                         const sessionIndex = stage.sessions.findIndex(s => s.id === sessionId);
-                        if (sessionIndex === -1) return stage;
-                        
+                        if (sessionIndex === -1) {
+                            return stage;
+                        }
+
                         const updatedSessions = [...stage.sessions];
                         const oldSession = updatedSessions[sessionIndex];
-                        
+
+                        // Mark the old session as postponed
                         updatedSessions[sessionIndex] = {
                             ...oldSession,
                             isPostponed: true,
@@ -1206,11 +1235,27 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                             updated_at: new Date(),
                         };
 
+                        // Create the new session for the future date
+                        const newSession: Session = {
+                            id: `session-${Date.now()}`,
+                            court: oldSession.court,
+                            caseNumber: oldSession.caseNumber,
+                            date: newDate,
+                            clientName: oldSession.clientName,
+                            opponentName: oldSession.opponentName,
+                            isPostponed: false,
+                            postponementReason: newReason, // The reason for this new session is the postponement of the old one
+                            assignee: oldSession.assignee, // Carry over the assignee
+                            updated_at: new Date(),
+                        };
+                        
+                        updatedSessions.push(newSession);
+
                         return { ...stage, sessions: updatedSessions, updated_at: new Date() };
                     })
                 }))
             }));
-            return {...prev, clients: newClients};
+            return { ...prev, clients: newClients };
         });
     }, []);
 

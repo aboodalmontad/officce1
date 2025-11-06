@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Session, Stage } from '../types';
-import { formatDate, isBeforeToday, isWeekend, getPublicHoliday } from '../utils/dateUtils';
+import { formatDate, isBeforeToday, isWeekend, getPublicHoliday, parseInputDateString } from '../utils/dateUtils';
 import { PencilIcon, TrashIcon, ScaleIcon, GavelIcon } from './icons';
 
 interface SessionsTableProps {
@@ -68,7 +68,12 @@ const SessionsTable: React.FC<SessionsTableProps> = ({ sessions, onPostpone, onE
         }
 
         if (data && data.date && data.reason) {
-            const newDate = new Date(data.date);
+            const newDate = parseInputDateString(data.date);
+
+            if (!newDate) {
+                setErrors(prev => ({ ...prev, [sessionId]: "التاريخ المحدد غير صالح." }));
+                return;
+            }
             
             // Normalize dates to the beginning of the day for accurate comparison
             const newDateStart = new Date(newDate.getFullYear(), newDate.getMonth(), newDate.getDate());

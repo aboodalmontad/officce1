@@ -4,7 +4,7 @@ import ClientsTreeView from '../components/ClientsTreeView';
 import ClientsListView from '../components/ClientsListView';
 import { PlusIcon, SearchIcon, ListBulletIcon, ViewColumnsIcon, ExclamationTriangleIcon, PrintIcon, ScaleIcon, FolderOpenIcon, SparklesIcon, ArrowPathIcon } from '../components/icons';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
-import { formatDate, toInputDateString } from '../utils/dateUtils';
+import { formatDate, toInputDateString, parseInputDateString } from '../utils/dateUtils';
 import PrintableClientReport from '../components/PrintableClientReport';
 import { printElement } from '../utils/printUtils';
 import { MenuItem } from '../components/ContextMenu';
@@ -218,21 +218,22 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
         
                     const { court, caseNumber, firstSessionDate, firstSessionReason } = formData;
                     if (court || caseNumber || firstSessionDate) {
+                        const parsedFirstSessionDate = parseInputDateString(firstSessionDate);
                         const newStage: Stage = {
                             id: `stage-${Date.now()}`,
                             court: court || 'غير محدد',
                             caseNumber: caseNumber || '',
-                            firstSessionDate: firstSessionDate ? new Date(firstSessionDate) : undefined,
+                            firstSessionDate: parsedFirstSessionDate || undefined,
                             sessions: [],
                             updated_at: new Date(),
                         };
         
-                        if (firstSessionDate) {
+                        if (parsedFirstSessionDate) {
                             const newSession: Session = {
                                 id: `session-${Date.now()}-first`,
                                 court: newStage.court,
                                 caseNumber: newStage.caseNumber,
-                                date: new Date(firstSessionDate),
+                                date: parsedFirstSessionDate,
                                 clientName: clientForCase.name,
                                 opponentName: newCase.opponentName,
                                 isPostponed: false,
@@ -251,9 +252,9 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
             }
         } else if (type === 'stage') {
             if (isEditing) {
-                const stageData = { ...formData, updated_at: new Date() };
-                stageData.firstSessionDate = stageData.firstSessionDate ? new Date(stageData.firstSessionDate) : undefined;
-                stageData.decisionDate = stageData.decisionDate ? new Date(stageData.decisionDate) : undefined;
+                const stageData = { ...formData };
+                stageData.firstSessionDate = parseInputDateString(stageData.firstSessionDate) || undefined;
+                stageData.decisionDate = parseInputDateString(stageData.decisionDate) || undefined;
                 
                 setClients(prev => prev.map(c => c.id === context.client.id ? {
                     ...c,
@@ -261,16 +262,17 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                     cases: c.cases.map(cs => cs.id === context.case.id ? {
                         ...cs,
                         updated_at: new Date(),
-                        stages: cs.stages.map(st => st.id === context.item.id ? { ...st, ...stageData } : st)
+                        stages: cs.stages.map(st => st.id === context.item.id ? { ...st, ...stageData, updated_at: new Date() } : st)
                     } : cs)
                 } : c));
             } else {
                 const stageData = { ...formData };
+                const parsedFirstSessionDate = parseInputDateString(stageData.firstSessionDate);
                 const newStage: Stage = {
                     id: `stage-${Date.now()}`,
                     court: stageData.court || 'غير محدد',
                     caseNumber: stageData.caseNumber || '',
-                    firstSessionDate: stageData.firstSessionDate ? new Date(stageData.firstSessionDate) : undefined,
+                    firstSessionDate: parsedFirstSessionDate || undefined,
                     sessions: [],
                     updated_at: new Date(),
                 };
@@ -300,9 +302,14 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
             }
         } else if (type === 'session') {
             if (isEditing) {
-                 const sessionData = { ...formData, updated_at: new Date() };
-                 sessionData.date = new Date(sessionData.date);
-                 sessionData.nextSessionDate = sessionData.nextSessionDate ? new Date(sessionData.nextSessionDate) : undefined;
+                 const sessionData = { ...formData };
+                 const parsedDate = parseInputDateString(sessionData.date);
+                 if (!parsedDate) {
+                     alert("تاريخ الجلسة غير صالح.");
+                     return;
+                 }
+                 sessionData.date = parsedDate;
+                 sessionData.nextSessionDate = parseInputDateString(sessionData.nextSessionDate) || undefined;
 
                  setClients(prev => prev.map(c => c.id === context.client.id ? {
                     ...c,
@@ -313,14 +320,19 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                         stages: cs.stages.map(st => st.id === context.stage.id ? {
                             ...st,
                             updated_at: new Date(),
-                            sessions: st.sessions.map(s => s.id === context.item.id ? { ...s, ...sessionData } : s)
+                            sessions: st.sessions.map(s => s.id === context.item.id ? { ...s, ...sessionData, updated_at: new Date() } : s)
                         } : st)
                     } : cs)
                 } : c));
             } else {
+                const parsedDate = parseInputDateString(formData.date);
+                if (!parsedDate) {
+                    alert("تاريخ الجلسة غير صالح.");
+                    return;
+                }
                 const newSession: Session = {
                     id: `session-${Date.now()}`,
-                    date: new Date(formData.date),
+                    date: parsedDate,
                     court: formData.court,
                     caseNumber: formData.caseNumber,
                     clientName: formData.clientName,

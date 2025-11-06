@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AccountingEntry, Client, Invoice, InvoiceItem, Case, Stage, Session } from '../types';
-import { formatDate, toInputDateString } from '../utils/dateUtils';
+import { formatDate, toInputDateString, parseInputDateString } from '../utils/dateUtils';
 import { PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, PrintIcon } from '../components/icons';
 import { useData } from '../App';
 import PrintableInvoice from '../components/PrintableInvoice';
@@ -46,8 +46,13 @@ const EntriesTab: React.FC = () => {
     };
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        const parsedDate = parseInputDateString(formData.date as string);
+        if (!parsedDate) {
+            alert("التاريخ غير صالح.");
+            return;
+        }
         const selectedClient = clients.flatMap(c => c.cases.map(cs => ({ ...cs, clientId: c.id, clientName: c.name }))).find(c => c.id === formData.caseId);
-        const entryData = { ...formData, date: new Date(formData.date!), clientName: selectedClient?.clientName || 'مصاريف عامة', clientId: selectedClient?.clientId || '', updated_at: new Date() } as Omit<AccountingEntry, 'id'>;
+        const entryData = { ...formData, date: parsedDate, clientName: selectedClient?.clientName || 'مصاريف عامة', clientId: selectedClient?.clientId || '', updated_at: new Date() } as Omit<AccountingEntry, 'id'>;
         if (modal.data) {
             setAccountingEntries(prev => prev.map(item => item.id === modal.data!.id ? { ...item, ...entryData } as AccountingEntry : item));
         } else {
@@ -131,7 +136,15 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ initialInvoiceData, clearInit
         e.preventDefault();
         const client = clients.find(c => c.id === formData.clientId); if (!client) return;
         const caseItem = client.cases.find(c => c.id === formData.caseId);
-        const finalInvoice: Invoice = { id: formData.id!, clientId: client.id, clientName: client.name, caseId: caseItem?.id, caseSubject: caseItem?.subject, issueDate: new Date(formData.issueDate!), dueDate: new Date(formData.dueDate!), items: formData.items.filter(item => item.description.trim() !== '' && item.amount > 0), taxRate: formData.taxRate || 0, discount: formData.discount || 0, status: formData.status!, notes: formData.notes, updated_at: new Date() };
+
+        const parsedIssueDate = parseInputDateString(formData.issueDate as string);
+        const parsedDueDate = parseInputDateString(formData.dueDate as string);
+        if (!parsedIssueDate || !parsedDueDate) {
+            alert("التواريخ المحددة غير صالحة.");
+            return;
+        }
+
+        const finalInvoice: Invoice = { id: formData.id!, clientId: client.id, clientName: client.name, caseId: caseItem?.id, caseSubject: caseItem?.subject, issueDate: parsedIssueDate, dueDate: parsedDueDate, items: formData.items.filter(item => item.description.trim() !== '' && item.amount > 0), taxRate: formData.taxRate || 0, discount: formData.discount || 0, status: formData.status!, notes: formData.notes, updated_at: new Date() };
         if (modal.data) { setInvoices(prev => prev.map(inv => inv.id === modal.data!.id ? finalInvoice : inv)); } else { setInvoices(prev => [...prev, finalInvoice]); }
         handleCloseModal();
     };

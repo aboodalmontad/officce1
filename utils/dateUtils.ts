@@ -55,6 +55,24 @@ export const toInputDateString = (date: Date | string | null | undefined): strin
     return d.toISOString().split('T')[0];
 };
 
+/**
+ * A robust helper function to parse a 'YYYY-MM-DD' string from an input field into a Date object.
+ * It correctly handles timezones by creating the date at midnight in the user's local timezone.
+ * @param dateString The date string to parse.
+ * @returns A Date object or null if the string is invalid.
+ */
+export const parseInputDateString = (dateString: string | null | undefined): Date | null => {
+    if (!dateString) return null;
+    // The 'T00:00:00' part ensures the date is parsed in the local timezone, not UTC.
+    const d = new Date(`${dateString}T00:00:00`);
+    if (isNaN(d.getTime())) {
+        console.warn(`Invalid date string provided to parseInputDateString: ${dateString}`);
+        return null;
+    }
+    return d;
+};
+
+
 // --- Holiday and Weekend Logic ---
 
 // List of fixed Syrian public holidays (Month is 0-indexed)
