@@ -408,7 +408,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         const localDocMap = new Map(
             (currentLocalDocuments || [])
                 // FIX: Replaced a simple filter with a TypeScript type guard to correctly narrow the type of `doc` to `CaseDocument`, resolving an error where an empty object `{}` was being incorrectly typed and causing a compile-time failure. This ensures that only valid document objects are processed.
-                // Fix: Explicitly cast `doc` to `any` to force TypeScript to re-evaluate the type after the type guard, resolving a subtle type inference issue.
                 .filter((doc: any): doc is CaseDocument => !!(doc && doc.id))
                 .map(doc => [doc.id, doc])
         );
@@ -426,7 +425,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                             return null;
                         }
 // FIX: The type `CaseDocument` could not be correctly inferred because `localDoc` was potentially a partial object. By explicitly casting `localDoc` to `any`, we bypass the strict type checking that was causing the error, allowing the merge logic to proceed with the available data. This is a pragmatic fix for a complex type inference issue.
-                        const mergedDoc: CaseDocument = ({
+                        const mergedDoc: CaseDocument = {
                             id: remoteDoc.id,
                             caseId: String((remoteDoc.caseId ?? (localDoc as any).caseId) || ''),
                             userId: String((remoteDoc.userId ?? (localDoc as any).userId) || ''),
@@ -434,10 +433,13 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                             type: String((remoteDoc.type ?? (localDoc as any).type) || 'application/octet-stream'),
                             size: typeof remoteDoc.size === 'number' ? remoteDoc.size : ((localDoc as any).size || 0),
                             storagePath: String((remoteDoc.storagePath ?? (localDoc as any).storagePath) || ''),
-                            localState: (localDoc as any).localState, // Always preserve local state
+                            // FIX: Corrected a TypeScript error by providing a fallback value for 'localState'.
+                            // The object was failing type validation because 'localDoc' could be a partial object
+                            // without a 'localState' property, which is required by the CaseDocument type.
+                            localState: (localDoc as any).localState || 'error',
                             addedAt: addedAtDate,
                             updated_at: sanitizeOptionalDate(remoteDoc.updated_at ?? (localDoc as any).updated_at),
-                        } as CaseDocument);
+                        };
                         return mergedDoc;
                     } else {
                         // This is a new document from another client. Mark for download if it has a path.
@@ -1274,20 +1276,44 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         setFullData: (fullData) => {
             handleDataSynced(fullData as AppData);
         },
-        allSessions: React.useMemo(() => data.clients.flatMap(c => c.cases.flatMap(cs => cs.stages.flatMap(st => st.sessions.map(s => ({...s, stageId: st.id, stageDecisionDate: st.decisionDate})) ))), [data.clients]),
-        // Fix: Corrected corrupted code and completed the function logic.
-        // FIX: Replaced potentially problematic flatMap chain with a more robust and defensive implementation to avoid errors with malformed data structures before full hydration.
-        unpostponedSessions: React.useMemo(() =>
-            (data.clients || []).flatMap(c =>
-                (c.cases || []).flatMap(cs =>
-                    (cs.stages || []).flatMap(st =>
-                        (st.sessions || [])
-                            .filter(s => s && s.date && !s.isPostponed && isBeforeToday(new Date(s.date)) && !st.decisionDate)
-                            .map(s => ({...s, stageId: st.id, stageDecisionDate: st.decisionDate}))
-                    )
-                )
-            ),
-        [data.clients]),
+        allSessions: React.useMemo(() => {
+            const sessions: (Session & { stageId?: string, stageDecisionDate?: Date })[] = [];
+            if (!Array.isArray(data.clients)) return sessions;
+            for (const client of data.clients) {
+                if (!client || !Array.isArray(client.cases)) continue;
+                for (const caseItem of client.cases) {
+                    if (!caseItem || !Array.isArray(caseItem.stages)) continue;
+                    for (const stage of caseItem.stages) {
+                        if (!stage || !Array.isArray(stage.sessions)) continue;
+                        for (const session of stage.sessions) {
+                            if (session && session.id) { // Basic check for a valid session object
+                                sessions.push({ ...session, stageId: stage.id, stageDecisionDate: stage.decisionDate });
+                            }
+                        }
+                    }
+                }
+            }
+            return sessions;
+        }, [data.clients]),
+        unpostponedSessions: React.useMemo(() => {
+            const sessions: (Session & { stageId?: string, stageDecisionDate?: Date })[] = [];
+            if (!Array.isArray(data.clients)) return sessions;
+            for (const client of data.clients) {
+                if (!client || !Array.isArray(client.cases)) continue;
+                for (const caseItem of client.cases) {
+                    if (!caseItem || !Array.isArray(caseItem.stages)) continue;
+                    for (const stage of caseItem.stages) {
+                        if (!stage || !Array.isArray(stage.sessions)) continue;
+                        for (const session of stage.sessions) {
+                            if (session && session.date && !session.isPostponed && isBeforeToday(new Date(session.date)) && !stage.decisionDate) {
+                                sessions.push({ ...session, stageId: stage.id, stageDecisionDate: stage.decisionDate });
+                            }
+                        }
+                    }
+                }
+            }
+            return sessions;
+        }, [data.clients]),
         syncStatus,
         manualSync,
         lastSyncError,

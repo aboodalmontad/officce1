@@ -215,21 +215,24 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     
     const results: Partial<Record<keyof FlatData, any[]>> = {};
 
-    results.assistants = await upsertTable('assistants', dataToUpsert.assistants, { onConflict: 'user_id,name' });
+    // STEP 1: Upsert profiles first to ensure RLS checks for is_admin() will pass for subsequent upserts.
+    results.profiles = await upsertTable('profiles', dataToUpsert.profiles);
 
-    const [adminTasks, appointments, accountingEntries, profiles, site_finances] = await Promise.all([
+    // STEP 2: Upsert tables that don't have dependencies on other user data.
+    results.assistants = await upsertTable('assistants', dataToUpsert.assistants, { onConflict: 'user_id,name' });
+    
+    const [adminTasks, appointments, accountingEntries, site_finances] = await Promise.all([
         upsertTable('admin_tasks', dataToUpsert.admin_tasks),
         upsertTable('appointments', dataToUpsert.appointments),
         upsertTable('accounting_entries', dataToUpsert.accounting_entries),
-        upsertTable('profiles', dataToUpsert.profiles),
         upsertTable('site_finances', dataToUpsert.site_finances),
     ]);
     results.admin_tasks = adminTasks;
     results.appointments = appointments;
     results.accounting_entries = accountingEntries;
-    results.profiles = profiles;
     results.site_finances = site_finances;
 
+    // STEP 3: Upsert tables with dependencies.
     results.clients = await upsertTable('clients', dataToUpsert.clients);
     results.cases = await upsertTable('cases', dataToUpsert.cases);
     results.stages = await upsertTable('stages', dataToUpsert.stages);

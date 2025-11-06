@@ -3,7 +3,7 @@ import { ClipboardDocumentCheckIcon, ClipboardDocumentIcon, ExclamationTriangleI
 
 const unifiedScript = `
 -- =================================================================
--- السكربت الشامل والنهائي (الإصدار 31.2)
+-- السكربت الشامل والنهائي (الإصدار 31.4)
 -- =================================================================
 -- هذا السكربت يقوم بإعداد قاعدة البيانات بالكامل، تفعيل المزامنة الفورية، وإنشاء حساب مدير تلقائياً.
 -- انسخ هذا السكربت بالكامل وشغّله مرة واحدة فقط في Supabase SQL Editor.
@@ -141,14 +141,24 @@ ALTER TABLE public.invoice_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.site_finances ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.case_documents ENABLE ROW LEVEL SECURITY;
 
--- RLS Policies for the 'profiles' table.
-CREATE POLICY "Users can view their own profile." ON public.profiles FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Users can update their own profile." ON public.profiles FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
-CREATE POLICY "Admins have full access to all profiles." ON public.profiles FOR ALL USING (public.is_admin());
+-- RLS Policies for the 'profiles' table (NEW ROBUST VERSION).
+DROP POLICY IF EXISTS "Users can view their own profile." ON public.profiles;
+DROP POLICY IF EXISTS "Users can update their own profile." ON public.profiles;
+DROP POLICY IF EXISTS "Users can create their own profile." ON public.profiles;
+DROP POLICY IF EXISTS "Admins have full access to all profiles." ON public.profiles;
+DROP POLICY IF EXISTS "Users can manage their own profile." ON public.profiles;
+DROP POLICY IF EXISTS "Admins can manage all profiles." ON public.profiles;
 
--- RLS Policies for the 'site_finances' table.
-CREATE POLICY "Enable ALL for admin" ON public.site_finances FOR ALL USING (is_admin()) WITH CHECK (is_admin());
-CREATE POLICY "Users can select their own site finances" ON public.site_finances FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can manage their own profile." ON public.profiles FOR ALL
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
+
+-- Admins can perform any action on any profile row.
+-- This version embeds the role check to avoid potential circular dependency issues with is_admin() on this specific table.
+CREATE POLICY "Admins can manage all profiles." ON public.profiles FOR ALL
+  USING ((SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin')
+  WITH CHECK ((SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin');
+
 
 -- RLS policies for all other user-specific tables. (Split for robustness)
 DO $$
@@ -159,7 +169,7 @@ BEGIN
     FOREACH table_name IN ARRAY ARRAY[
         'assistants', 'clients', 'cases', 'stages', 'sessions', 
         'admin_tasks', 'appointments', 'accounting_entries', 
-        'invoices', 'invoice_items', 'case_documents'
+        'invoices', 'invoice_items', 'case_documents', 'site_finances'
     ]
     LOOP
         EXECUTE format('DROP POLICY IF EXISTS "Enable ALL for own data" ON public.%I;', table_name);
@@ -167,6 +177,7 @@ BEGIN
         EXECUTE format('DROP POLICY IF EXISTS "Enable ALL for user or admin" ON public.%I;', table_name);
         EXECUTE format('DROP POLICY IF EXISTS "Users can manage their own data" ON public.%I;', table_name);
         EXECUTE format('DROP POLICY IF EXISTS "Admins can manage all data" ON public.%I;', table_name);
+        EXECUTE format('DROP POLICY IF EXISTS "Users can select their own site finances" ON public.%I;', table_name);
 
         -- Create a policy for regular users to access their own data.
         EXECUTE format('
@@ -175,11 +186,11 @@ BEGIN
             WITH CHECK (auth.uid() = user_id);
         ', table_name);
 
-        -- Create a separate permissive policy for admin users.
+        -- Create a separate permissive policy for admin users, embedding the role check to avoid function call recursion.
         EXECUTE format('
             CREATE POLICY "Admins can manage all data" ON public.%I FOR ALL
-            USING (public.is_admin())
-            WITH CHECK (public.is_admin());
+            USING ((SELECT role FROM public.profiles WHERE id = auth.uid()) = ''admin'')
+            WITH CHECK ((SELECT role FROM public.profiles WHERE id = auth.uid()) = ''admin'');
         ', table_name);
     END LOOP;
 END$$;
