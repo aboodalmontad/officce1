@@ -84,1251 +84,679 @@ const validateAssistantsList = (list: any): string[] => {
     return Array.from(uniqueAssistants);
 };
 
-const safeArray = <T, U>(arr: any, mapFn: (item: T, index: number) => U): U[] => {
+const safeArray = <T, U>(arr: any, mapFn: (doc: any, index: number) => U | undefined): U[] => {
     if (!Array.isArray(arr)) return [];
-    return arr.filter(item => item && typeof item === 'object').map(mapFn);
+    return arr.reduce((acc: U[], doc: any, index: number) => {
+        if (!doc) return acc;
+        try {
+            const result = mapFn(doc, index);
+            if (result !== undefined) {
+                acc.push(result);
+            }
+        } catch (e) {
+            console.error('Error processing item in safeArray:', e, 'Item:', doc);
+        }
+        return acc;
+    }, []);
 };
 
-const sanitizeOptionalDate = (date: any): Date | undefined => {
-    if (date === null || date === undefined || date === '') return undefined;
+const reviveDate = (date: any): Date => {
+    if (!date) return new Date(); // Return current date for null/undefined
     const d = new Date(date);
-    return !isNaN(d.getTime()) ? d : undefined;
+    if (isNaN(d.getTime())) {
+        console.warn('Revived an invalid date. Original value:', date);
+        return new Date();
+    }
+    return d;
 };
 
-const validateDocuments = (docs: any): CaseDocument[] => {
-    return safeArray(docs, (doc: any, index: number): CaseDocument | null => {
-        const addedAt = sanitizeOptionalDate(doc.addedAt);
-        if (!addedAt) {
-            console.warn('Filtering out document with invalid addedAt date:', doc);
-            return null;
-        }
-        return {
-            id: doc.id || `doc-${Date.now()}-${index}`,
-            caseId: String(doc.caseId || ''),
-            userId: String(doc.userId || ''),
-            name: String(doc.name || 'document.bin'),
-            type: String(doc.type || 'application/octet-stream'),
-            size: typeof doc.size === 'number' ? doc.size : 0,
-            addedAt: addedAt,
-            storagePath: String(doc.storagePath || ''),
-            localState: ['synced', 'pending_upload', 'pending_download', 'error'].includes(doc.localState) ? doc.localState : 'error',
-            updated_at: sanitizeOptionalDate(doc.updated_at),
-        };
-    }).filter((d): d is CaseDocument => d !== null);
-};
+const validateDocuments = (doc: any, userId: string): CaseDocument | undefined => {
+    // FIX: Add stricter validation. An empty object `doc` was passing `!doc` but failing later.
+    // Now we ensure critical properties `id` and `name` exist.
+    if (!doc || typeof doc !== 'object' || !doc.id || !doc.name) {
+        console.warn('Skipping invalid document during validation:', doc);
+        return undefined;
+    }
 
-
-const validateAndHydrate = (data: any): AppData => {
-    const defaults = getInitialData();
-    if (!data || typeof data !== 'object') return defaults;
-
-    const validatedAssistants = validateAssistantsList(data.assistants);
-    const isValidAssistant = (assignee: any): assignee is string => typeof assignee === 'string' && validatedAssistants.includes(assignee);
-    const defaultAssignee = 'بدون تخصيص';
-    const sanitizeString = (str: any): string => (str === null || str === undefined) ? '' : String(str);
-
-    const validatedClients: Client[] = safeArray(data.clients, (client: any, index: number): Client => ({
-        id: client.id || `client-${Date.now()}-${index}`,
-        name: String(client.name || 'موكل غير مسمى'),
-        contactInfo: String((client.contact_info ?? client.contactInfo) || ''),
-        updated_at: sanitizeOptionalDate(client.updated_at),
-        cases: safeArray(client.cases, (caseItem: any, caseIndex: number): Case => ({
-            id: caseItem.id || `case-${Date.now()}-${caseIndex}`,
-            subject: String(caseItem.subject || 'قضية بدون موضوع'),
-            clientName: String((caseItem.client_name ?? caseItem.clientName) || client.name || 'موكل غير مسمى'),
-            opponentName: sanitizeString(caseItem.opponent_name ?? caseItem.opponentName),
-            feeAgreement: String((caseItem.fee_agreement ?? caseItem.feeAgreement) || ''),
-            status: ['active', 'closed', 'on_hold'].includes(caseItem.status) ? caseItem.status : 'active',
-            updated_at: sanitizeOptionalDate(caseItem.updated_at),
-            stages: safeArray(caseItem.stages, (stage: any, stageIndex: number): Stage => ({
-                id: stage.id || `stage-${Date.now()}-${stageIndex}`,
-                court: String(stage.court || 'محكمة غير محددة'),
-                caseNumber: sanitizeString(stage.case_number ?? stage.caseNumber),
-                firstSessionDate: sanitizeOptionalDate(stage.first_session_date ?? stage.firstSessionDate),
-                updated_at: sanitizeOptionalDate(stage.updated_at),
-                sessions: safeArray(stage.sessions, (session: any, sessionIndex: number): Session | null => {
-                    const sessionDate = session.date ? new Date(session.date) : null;
-                    if (!sessionDate || isNaN(sessionDate.getTime())) {
-                        console.warn('Filtering out session with invalid date:', session);
-                        return null;
-                    }
-                    return {
-                        id: session.id || `session-${Date.now()}-${sessionIndex}`,
-                        court: String(session.court || stage.court || 'محكمة غير محددة'),
-                        caseNumber: ('case_number' in session || 'caseNumber' in session) ? sanitizeString(session.case_number ?? session.caseNumber) : sanitizeString(stage.case_number ?? stage.caseNumber),
-                        date: sessionDate,
-                        clientName: String((session.client_name ?? session.clientName) || (caseItem.client_name ?? caseItem.clientName) || client.name || 'موكل غير مسمى'),
-                        opponentName: ('opponent_name' in session || 'opponentName' in session) ? sanitizeString(session.opponent_name ?? session.opponentName) : sanitizeString(caseItem.opponent_name ?? caseItem.opponentName),
-                        isPostponed: typeof (session.is_postponed ?? session.isPostponed) === 'boolean' ? (session.is_postponed ?? session.isPostponed) : false,
-                        postponementReason: sanitizeString(session.postponement_reason ?? session.postponementReason),
-                        nextPostponementReason: sanitizeString(session.next_postponement_reason ?? session.nextPostponementReason),
-                        nextSessionDate: sanitizeOptionalDate(session.next_session_date ?? session.nextSessionDate),
-                        assignee: isValidAssistant(session.assignee) ? session.assignee : defaultAssignee,
-                        updated_at: sanitizeOptionalDate(session.updated_at),
-                    };
-                }).filter((s): s is Session => s !== null),
-                decisionDate: sanitizeOptionalDate(stage.decision_date ?? stage.decisionDate),
-                decisionNumber: sanitizeString(stage.decision_number ?? stage.decisionNumber),
-                decisionSummary: sanitizeString(stage.decision_summary ?? stage.decisionSummary),
-                decisionNotes: sanitizeString(stage.decision_notes ?? stage.decisionNotes),
-            })),
-        })),
-    }));
-
-    const validatedAdminTasks: AdminTask[] = safeArray(data.adminTasks, (task: any, index: number): AdminTask | null => {
-        const dueDate = (task.due_date ?? task.dueDate) ? new Date(task.due_date ?? task.dueDate) : null;
-        if (!dueDate || isNaN(dueDate.getTime())) {
-            console.warn('Filtering out admin task with invalid due date:', task);
-            return null;
-        }
-        return {
-            id: task.id || `task-${Date.now()}-${index}`,
-            task: String(task.task || 'مهمة بدون عنوان'),
-            dueDate: dueDate,
-            completed: typeof task.completed === 'boolean' ? task.completed : false,
-            importance: ['normal', 'important', 'urgent'].includes(task.importance) ? task.importance : 'normal',
-            assignee: isValidAssistant(task.assignee) ? task.assignee : defaultAssignee,
-            location: sanitizeString(task.location),
-            updated_at: sanitizeOptionalDate(task.updated_at),
-        };
-    }).filter((t): t is AdminTask => t !== null);
-
-    const validatedAppointments: Appointment[] = safeArray(data.appointments, (apt: any, index: number): Appointment | null => {
-        const aptDate = apt.date ? new Date(apt.date) : null;
-        if (!aptDate || isNaN(aptDate.getTime())) {
-            console.warn('Filtering out appointment with invalid date:', apt);
-            return null;
-        }
-        return {
-            id: apt.id || `apt-${Date.now()}-${index}`,
-            title: String(apt.title || 'موعد بدون عنوان'),
-            time: typeof apt.time === 'string' && /^\d{2}:\d{2}$/.test(apt.time) ? apt.time : '00:00',
-            date: aptDate,
-            importance: ['normal', 'important', 'urgent'].includes(apt.importance) ? apt.importance : 'normal',
-            completed: 'completed' in apt ? !!apt.completed : false,
-            notified: typeof apt.notified === 'boolean' ? apt.notified : false,
-            reminderTimeInMinutes: typeof (apt.reminder_time_in_minutes ?? apt.reminderTimeInMinutes) === 'number' ? (apt.reminder_time_in_minutes ?? apt.reminderTimeInMinutes) : undefined,
-            assignee: isValidAssistant(apt.assignee) ? apt.assignee : defaultAssignee,
-            updated_at: sanitizeOptionalDate(apt.updated_at),
-        };
-    }).filter((a): a is Appointment => a !== null);
-    
-    const validatedAccountingEntries: AccountingEntry[] = safeArray(data.accountingEntries, (entry: any, index: number): AccountingEntry | null => {
-        const entryDate = sanitizeOptionalDate(entry.date);
-        if (!entryDate) {
-            console.warn('Filtering out accounting entry with invalid date:', entry);
-            return null;
-        }
-        return {
-            id: entry.id || `acc-${Date.now()}-${index}`,
-            type: ['income', 'expense'].includes(entry.type) ? entry.type : 'income',
-            amount: typeof entry.amount === 'number' ? entry.amount : 0,
-            date: entryDate,
-            description: String(entry.description || ''),
-            clientId: String((entry.client_id ?? entry.clientId) || ''),
-            caseId: String((entry.case_id ?? entry.caseId) || ''),
-            clientName: String((entry.client_name ?? entry.clientName) || ''),
-            updated_at: sanitizeOptionalDate(entry.updated_at),
-        };
-    }).filter((e): e is AccountingEntry => e !== null);
-
-    const validatedInvoices: Invoice[] = safeArray(data.invoices, (invoice: any, index: number): Invoice | null => {
-        const issueDate = sanitizeOptionalDate(invoice.issue_date ?? invoice.issueDate);
-        const dueDate = sanitizeOptionalDate(invoice.due_date ?? invoice.dueDate);
-
-        if (!issueDate || !dueDate) {
-            console.warn('Filtering out invoice with invalid date(s):', invoice);
-            return null;
-        }
-
-        return {
-            id: invoice.id || `inv-${Date.now()}-${index}`,
-            clientId: String((invoice.client_id ?? invoice.clientId) || ''),
-            clientName: String((invoice.client_name ?? invoice.clientName) || ''),
-            caseId: sanitizeString(invoice.case_id ?? invoice.caseId),
-            caseSubject: sanitizeString(invoice.case_subject ?? invoice.caseSubject),
-            issueDate: issueDate,
-            dueDate: dueDate,
-            updated_at: sanitizeOptionalDate(invoice.updated_at),
-            items: safeArray(invoice.invoice_items ?? invoice.items, (item: any, itemIndex: number): InvoiceItem => ({
-                id: item.id || `item-${Date.now()}-${itemIndex}`,
-                description: String(item.description || ''),
-                amount: typeof item.amount === 'number' ? item.amount : 0,
-                updated_at: sanitizeOptionalDate(item.updated_at),
-            })),
-            taxRate: typeof (invoice.tax_rate ?? invoice.taxRate) === 'number' ? (invoice.tax_rate ?? invoice.taxRate) : 0,
-            discount: typeof invoice.discount === 'number' ? invoice.discount : 0,
-            status: ['draft', 'sent', 'paid', 'overdue'].includes(invoice.status) ? invoice.status : 'draft',
-            notes: sanitizeString(invoice.notes),
-        };
-    }).filter((i): i is Invoice => i !== null);
-
-    const validatedProfiles: Profile[] = safeArray(data.profiles, (p: any, index: number): Profile | null => {
-        if (!p.id) return null;
-        return {
-            id: p.id,
-            full_name: String(p.full_name || 'مستخدم غير معروف'),
-            mobile_number: String(p.mobile_number || ''),
-            is_approved: !!p.is_approved,
-            is_active: 'is_active' in p ? !!p.is_active : true,
-            subscription_start_date: p.subscription_start_date || null,
-            subscription_end_date: p.subscription_end_date || null,
-            role: ['user', 'admin'].includes(p.role) ? p.role : 'user',
-            created_at: p.created_at,
-            updated_at: sanitizeOptionalDate(p.updated_at),
-        };
-    }).filter((p): p is Profile => p !== null);
-
-    const validatedSiteFinances: SiteFinancialEntry[] = safeArray(data.siteFinances, (e: any, index: number): SiteFinancialEntry | null => {
-        const paymentDate = sanitizeOptionalDate(e.payment_date);
-        if (!paymentDate) {
-            console.warn('Filtering out site finance entry with invalid date:', e);
-            return null;
-        }
-        return {
-            id: typeof e.id === 'number' ? e.id : -1,
-            user_id: e.user_id || null,
-            type: ['income', 'expense'].includes(e.type) ? e.type : 'income',
-            payment_date: toInputDateString(paymentDate),
-            amount: typeof e.amount === 'number' ? e.amount : 0,
-            description: e.description || null,
-            payment_method: e.payment_method || null,
-            category: e.category || null,
-            profile_full_name: e.profile_full_name || undefined,
-            updated_at: sanitizeOptionalDate(e.updated_at),
-        };
-    }).filter((e): e is SiteFinancialEntry => e !== null && e.id !== -1);
-
-
-    return { 
-        clients: validatedClients, 
-        adminTasks: validatedAdminTasks, 
-        appointments: validatedAppointments, 
-        accountingEntries: validatedAccountingEntries,
-        invoices: validatedInvoices,
-        assistants: validatedAssistants,
-        documents: validateDocuments(data.documents),
-        profiles: validatedProfiles,
-        siteFinances: validatedSiteFinances,
+    return {
+        id: String(doc.id),
+        caseId: String(doc.caseId),
+        userId: String(doc.userId || userId),
+        name: String(doc.name),
+        type: String(doc.type || 'application/octet-stream'),
+        size: Number(doc.size || 0),
+        addedAt: reviveDate(doc.addedAt),
+        storagePath: String(doc.storagePath || ''),
+        // This is a client-side only state, it will be populated from IndexedDB later
+        localState: doc.localState || 'pending_download', 
+        updated_at: reviveDate(doc.updated_at),
     };
 };
 
-function usePrevious<T>(value: T): T | undefined {
-  const ref = React.useRef<T | undefined>(undefined);
-  React.useEffect(() => {
-    ref.current = value;
-  });
-  return ref.current;
-}
 
-const getFileExtension = (filename: string): string => {
-    if (!filename) return '';
-    const lastDot = filename.lastIndexOf('.');
-    // No extension, or file starts with a dot (hidden file)
-    if (lastDot === -1 || lastDot === 0) return '';
-    return filename.substring(lastDot);
+// Fix: The entire function has been rewritten to explicitly map all required properties for each type.
+// This resolves multiple TypeScript errors where properties were considered "missing" because TypeScript
+// couldn't infer them from the 'any' type when using the spread operator (...).
+const validateAndFixData = (loadedData: any, user: User | null): AppData => {
+    const userId = user?.id || '';
+    if (!loadedData || typeof loadedData !== 'object') return getInitialData();
+    
+    // Type guard function to ensure items in arrays are valid objects
+    const isValidObject = (item: any): item is Record<string, any> => item && typeof item === 'object' && !Array.isArray(item);
+
+    const validatedData: AppData = {
+        clients: safeArray(loadedData.clients, (client) => {
+            if (!isValidObject(client) || !client.id || !client.name) return undefined;
+            return {
+                id: String(client.id),
+                name: String(client.name),
+                contactInfo: String(client.contactInfo || ''),
+                updated_at: reviveDate(client.updated_at),
+                cases: safeArray(client.cases, (caseItem) => {
+                    if (!isValidObject(caseItem) || !caseItem.id) return undefined;
+                    return {
+                        id: String(caseItem.id),
+                        subject: String(caseItem.subject || ''),
+                        clientName: String(caseItem.clientName || client.name),
+                        opponentName: String(caseItem.opponentName || ''),
+                        feeAgreement: String(caseItem.feeAgreement || ''),
+                        status: ['active', 'closed', 'on_hold'].includes(caseItem.status) ? caseItem.status : 'active',
+                        updated_at: reviveDate(caseItem.updated_at),
+                        stages: safeArray(caseItem.stages, (stage) => {
+                            if (!isValidObject(stage) || !stage.id) return undefined;
+                            return {
+                                id: String(stage.id),
+                                court: String(stage.court || ''),
+                                caseNumber: String(stage.caseNumber || ''),
+                                firstSessionDate: stage.firstSessionDate ? reviveDate(stage.firstSessionDate) : undefined,
+                                decisionDate: stage.decisionDate ? reviveDate(stage.decisionDate) : undefined,
+                                decisionNumber: String(stage.decisionNumber || ''),
+                                decisionSummary: String(stage.decisionSummary || ''),
+                                decisionNotes: String(stage.decisionNotes || ''),
+                                updated_at: reviveDate(stage.updated_at),
+                                sessions: safeArray(stage.sessions, (session) => {
+                                    if (!isValidObject(session) || !session.id) return undefined;
+                                    return {
+                                        id: String(session.id),
+                                        court: String(session.court || stage.court),
+                                        caseNumber: String(session.caseNumber || stage.caseNumber),
+                                        date: reviveDate(session.date),
+                                        clientName: String(session.clientName || caseItem.clientName),
+                                        opponentName: String(session.opponentName || caseItem.opponentName),
+                                        postponementReason: session.postponementReason,
+                                        nextPostponementReason: session.nextPostponementReason,
+                                        isPostponed: !!session.isPostponed,
+                                        nextSessionDate: session.nextSessionDate ? reviveDate(session.nextSessionDate) : undefined,
+                                        assignee: session.assignee,
+                                        stageId: session.stageId,
+                                        stageDecisionDate: session.stageDecisionDate,
+                                        updated_at: reviveDate(session.updated_at),
+                                    };
+                                }),
+                            };
+                        }),
+                    };
+                }),
+            };
+        }),
+        adminTasks: safeArray(loadedData.adminTasks, (task) => {
+            if (!isValidObject(task) || !task.id) return undefined;
+            return {
+                id: String(task.id),
+                task: String(task.task || ''),
+                dueDate: reviveDate(task.dueDate),
+                completed: !!task.completed,
+                importance: ['normal', 'important', 'urgent'].includes(task.importance) ? task.importance : 'normal',
+                assignee: task.assignee,
+                location: task.location,
+                updated_at: reviveDate(task.updated_at),
+            };
+        }),
+        appointments: safeArray(loadedData.appointments, (apt) => {
+            if (!isValidObject(apt) || !apt.id) return undefined;
+            return {
+                id: String(apt.id),
+                title: String(apt.title || ''),
+                time: String(apt.time || '00:00'),
+                date: reviveDate(apt.date),
+                importance: ['normal', 'important', 'urgent'].includes(apt.importance) ? apt.importance : 'normal',
+                completed: !!apt.completed,
+                notified: !!apt.notified,
+                reminderTimeInMinutes: Number(apt.reminderTimeInMinutes || 15),
+                assignee: apt.assignee,
+                updated_at: reviveDate(apt.updated_at),
+            };
+        }),
+        accountingEntries: safeArray(loadedData.accountingEntries, (entry) => {
+            if (!isValidObject(entry) || !entry.id) return undefined;
+            return {
+                id: String(entry.id),
+                type: ['income', 'expense'].includes(entry.type) ? entry.type : 'income',
+                amount: Number(entry.amount || 0),
+                date: reviveDate(entry.date),
+                description: String(entry.description || ''),
+                clientId: String(entry.clientId || ''),
+                caseId: String(entry.caseId || ''),
+                clientName: String(entry.clientName || ''),
+                updated_at: reviveDate(entry.updated_at),
+            };
+        }),
+        invoices: safeArray(loadedData.invoices, (invoice) => {
+            if (!isValidObject(invoice) || !invoice.id) return undefined;
+            return {
+                id: String(invoice.id),
+                clientId: String(invoice.clientId || ''),
+                clientName: String(invoice.clientName || ''),
+                caseId: invoice.caseId,
+                caseSubject: invoice.caseSubject,
+                issueDate: reviveDate(invoice.issueDate),
+                dueDate: reviveDate(invoice.dueDate),
+                items: safeArray(invoice.items, (item) => {
+                    if (!isValidObject(item) || !item.id) return undefined;
+                    return {
+                        id: String(item.id),
+                        description: String(item.description || ''),
+                        amount: Number(item.amount || 0),
+                        updated_at: reviveDate(item.updated_at),
+                    };
+                }),
+                taxRate: Number(invoice.taxRate || 0),
+                discount: Number(invoice.discount || 0),
+                status: ['draft', 'sent', 'paid', 'overdue'].includes(invoice.status) ? invoice.status : 'draft',
+                notes: invoice.notes,
+                updated_at: reviveDate(invoice.updated_at),
+            };
+        }),
+        assistants: validateAssistantsList(loadedData.assistants),
+        documents: safeArray(loadedData.documents, (doc) => validateDocuments(doc, userId)),
+        profiles: safeArray(loadedData.profiles, (p) => {
+            if (!isValidObject(p) || !p.id) return undefined;
+            return {
+                id: String(p.id),
+                full_name: String(p.full_name || ''),
+                mobile_number: String(p.mobile_number || ''),
+                is_approved: !!p.is_approved,
+                is_active: p.is_active !== false,
+                subscription_start_date: p.subscription_start_date || null,
+                subscription_end_date: p.subscription_end_date || null,
+                role: ['user', 'admin'].includes(p.role) ? p.role : 'user',
+                created_at: p.created_at,
+                updated_at: reviveDate(p.updated_at),
+            };
+        }),
+        siteFinances: safeArray(loadedData.siteFinances, (sf) => {
+            if (!isValidObject(sf) || !sf.id) return undefined;
+            return {
+                id: Number(sf.id),
+                user_id: sf.user_id || null,
+                type: ['income', 'expense'].includes(sf.type) ? sf.type : 'income',
+                payment_date: String(sf.payment_date || ''),
+                amount: Number(sf.amount || 0),
+                description: sf.description || null,
+                payment_method: sf.payment_method || null,
+                category: sf.category,
+                profile_full_name: sf.profile_full_name,
+                updated_at: reviveDate(sf.updated_at),
+            };
+        }),
+    };
+    return validatedData;
 };
 
 export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
-    const getLocalStorageKey = React.useCallback(() => user ? `${APP_DATA_KEY}_${user.id}` : APP_DATA_KEY, [user]);
-    const userId = user?.id;
-
-    const [data, setData] = React.useState<AppData>(getInitialData());
-    const dataRef = React.useRef(data);
-    dataRef.current = data;
-    
-    const [deletedIds, setDeletedIds] = React.useState<DeletedIds>(getInitialDeletedIds());
-    const [isDataLoading, setIsDataLoading] = React.useState(true);
+    const [data, setData] = React.useState<AppData>(getInitialData);
+    const [deletedIds, setDeletedIds] = React.useState<DeletedIds>(getInitialDeletedIds);
+    const [isDirty, setDirty] = React.useState(false);
     const [syncStatus, setSyncStatus] = React.useState<SyncStatus>('loading');
-    const syncStatusRef = React.useRef(syncStatus);
-    syncStatusRef.current = syncStatus;
     const [lastSyncError, setLastSyncError] = React.useState<string | null>(null);
-    const [isDirty, setIsDirty] = React.useState(false);
-    const [settings, setSettings] = React.useState<UserSettings>(defaultSettings);
+    const [isDataLoading, setIsDataLoading] = React.useState(true);
     const [triggeredAlerts, setTriggeredAlerts] = React.useState<Appointment[]>([]);
     const [showUnpostponedSessionsModal, setShowUnpostponedSessionsModal] = React.useState(false);
     const [realtimeAlerts, setRealtimeAlerts] = React.useState<RealtimeAlert[]>([]);
-
-    const addRealtimeAlert = React.useCallback((message: string) => {
-        const newAlert = { id: Date.now(), message };
-        setRealtimeAlerts(prev => [newAlert, ...prev.slice(0, 2)]); // Show max 3 alerts
-    }, []);
-
-    const dismissRealtimeAlert = React.useCallback((alertId: number) => {
-        setRealtimeAlerts(prev => prev.filter(a => a.id !== alertId));
-    }, []);
-    
-    const hadCacheOnLoad = React.useRef(false);
-    const isInitialLoadAfterHydrate = React.useRef(true);
-    
     const isOnline = useOnlineStatus();
-    const prevIsOnline = usePrevious(isOnline);
-    const prevIsAuthLoading = usePrevious(isAuthLoading);
 
-    const isDirtyRef = React.useRef(isDirty);
-    isDirtyRef.current = isDirty;
-    const isAutoSyncEnabledRef = React.useRef(settings.isAutoSyncEnabled);
-    isAutoSyncEnabledRef.current = settings.isAutoSyncEnabled;
-    const isAutoBackupEnabledRef = React.useRef(settings.isAutoBackupEnabled);
-    isAutoBackupEnabledRef.current = settings.isAutoBackupEnabled;
-    const isOnlineRef = React.useRef(isOnline);
-    isOnlineRef.current = isOnline;
-    const userIdRef = React.useRef(userId);
-    userIdRef.current = userId;
-    
-    const isFileSyncingRef = React.useRef(false);
+    // --- User Settings State ---
+    const [userSettings, setUserSettings] = React.useState<UserSettings>(defaultSettings);
+    const isAutoSyncEnabled = userSettings.isAutoSyncEnabled;
+    const isAutoBackupEnabled = userSettings.isAutoBackupEnabled;
+    const adminTasksLayout = userSettings.adminTasksLayout;
 
-    const onDeletionsSynced = React.useCallback((syncedDeletions: Partial<DeletedIds>) => {
-        setDeletedIds(prev => {
-            const newDeleted = { ...prev };
-            for (const key of Object.keys(syncedDeletions) as (keyof DeletedIds)[]) {
-                // Fix: Explicitly type the Set to handle both string and number arrays from DeletedIds.
-                const syncedIdSet = new Set<string | number>(syncedDeletions[key] || []);
-                if (syncedIdSet.size > 0) {
-                    (newDeleted[key] as (string|number)[]) = (prev[key] || []).filter(id => !syncedIdSet.has(id));
-                }
-            }
-            return newDeleted;
-        });
-    }, []);
-    
-    const getDocumentFile = React.useCallback(async (docId: string): Promise<File | null> => {
+    const userRef = React.useRef(user);
+    userRef.current = user;
+
+    const setFullData = React.useCallback(async (newData: any) => {
+        const validated = validateAndFixData(newData, userRef.current);
+        setData(validated);
+        setDirty(true);
         const db = await getDb();
-        const file = await db.get(DOCS_FILES_STORE_NAME, docId);
-        if (file instanceof File || file instanceof Blob) {
-            return file as File;
-        }
-        return null;
+        await db.put(DATA_STORE_NAME, validated, userRef.current!.id);
+        setDirty(true);
     }, []);
-    
-    const handleDataSynced = React.useCallback(async (syncedData: AppData) => {
-        const currentLocalDocuments = dataRef.current.documents;
-        // Fix: Ensure that all items in currentLocalDocuments are valid objects with an 'id' before creating the map.
-        // This prevents crashes if corrupted or incomplete data (like '{}') is present in the local state.
-        const localDocMap = new Map(
-            (currentLocalDocuments || [])
-                // FIX: Replaced a simple filter with a TypeScript type guard to correctly narrow the type of `doc` to `CaseDocument`, resolving an error where an empty object `{}` was being incorrectly typed and causing a compile-time failure. This ensures that only valid document objects are processed.
-                .filter((doc: any): doc is CaseDocument => !!(doc && doc.id))
-                .map(doc => [doc.id, doc])
-        );
-        
-        const syncedDocsWithLocalState = (syncedData.documents || [])
-            .filter(doc => doc && doc.id)
-            .map((remoteDoc: CaseDocument): CaseDocument | null => {
-                 try {
-                    const localDoc: CaseDocument | undefined = localDocMap.get(remoteDoc.id);
-                    // FIX: Use sanitizeOptionalDate for robust date handling and prevent Invalid Date objects.
-                    if (localDoc) {
-                        const addedAtDate = sanitizeOptionalDate(remoteDoc.addedAt ?? localDoc.addedAt);
-                        if (!addedAtDate) {
-                            console.warn('Merged document has an invalid date and will be skipped:', remoteDoc, localDoc);
-                            return null;
-                        }
-// FIX: The type `CaseDocument` could not be correctly inferred because `localDoc` was potentially a partial object. By explicitly casting `localDoc` to `any`, we bypass the strict type checking that was causing the error, allowing the merge logic to proceed with the available data. This is a pragmatic fix for a complex type inference issue.
-                        const mergedDoc: CaseDocument = {
-                            id: remoteDoc.id,
-                            caseId: String((remoteDoc.caseId ?? (localDoc as any).caseId) || ''),
-                            userId: String((remoteDoc.userId ?? (localDoc as any).userId) || ''),
-                            name: String((remoteDoc.name ?? (localDoc as any).name) || 'document.bin'),
-                            type: String((remoteDoc.type ?? (localDoc as any).type) || 'application/octet-stream'),
-                            size: typeof remoteDoc.size === 'number' ? remoteDoc.size : ((localDoc as any).size || 0),
-                            storagePath: String((remoteDoc.storagePath ?? (localDoc as any).storagePath) || ''),
-                            // FIX: Corrected a TypeScript error by providing a fallback value for 'localState'.
-                            // The object was failing type validation because 'localDoc' could be a partial object
-                            // without a 'localState' property, which is required by the CaseDocument type.
-                            localState: (localDoc as any).localState || 'error',
-                            addedAt: addedAtDate,
-                            updated_at: sanitizeOptionalDate(remoteDoc.updated_at ?? (localDoc as any).updated_at),
-                        };
-                        return mergedDoc;
-                    } else {
-                        // This is a new document from another client. Mark for download if it has a path.
-                        // FIX: Added robust date validation for 'addedAt' and used sanitizeOptionalDate for 'updated_at'
-                        // to prevent type errors and handle potentially invalid date strings from the server.
-                        const addedAtDate = sanitizeOptionalDate(remoteDoc.addedAt);
-                        if (!addedAtDate) {
-                            console.warn('New synced document has an invalid date and will be skipped:', remoteDoc);
-                            return null;
-                        }
 
-                        const newDoc: CaseDocument = {
-                            id: remoteDoc.id,
-                            caseId: String(remoteDoc.caseId || ''),
-                            userId: String(remoteDoc.userId || ''),
-                            name: String(remoteDoc.name || 'document.bin'),
-                            type: String(remoteDoc.type || 'application/octet-stream'),
-                            size: typeof remoteDoc.size === 'number' ? remoteDoc.size : 0,
-                            storagePath: String(remoteDoc.storagePath || ''),
-                            localState: 'error' as const, // Default to error
-                            addedAt: addedAtDate,
-                            updated_at: sanitizeOptionalDate(remoteDoc.updated_at),
-                        };
-
-                        if (newDoc.storagePath && String(newDoc.storagePath).trim() !== '') {
-                            newDoc.localState = 'pending_download' as const;
-                        } else {
-                            console.warn(`Synced document ${newDoc.id} is missing a storagePath. Marking as error.`);
-                        }
-                        return newDoc;
-                    }
-                } catch (e) {
-                    console.error('Error processing a document during sync, skipping it:', remoteDoc, e);
-                    return null;
-                }
-            }).filter((d): d is CaseDocument => d !== null);
-
-        // Add any purely local documents (e.g., pending upload) that weren't in the synced data.
-        // Fix for type error: Filter out invalid documents from local data before iterating.
-        // FIX: Replaced a simple filter with a TypeScript type guard to correctly narrow the type of `localDoc` to `CaseDocument`, resolving an error where an empty object `{}` was being incorrectly typed and causing a compile-time failure. This ensures that only valid document objects are processed in the loop.
-        for (const localDoc of (currentLocalDocuments || []).filter((doc): doc is CaseDocument => !!(doc && doc.id))) {
-            if (!syncedDocsWithLocalState.some(d => d.id === localDoc.id)) {
-                syncedDocsWithLocalState.push(localDoc);
+    React.useEffect(() => {
+        const settingsKey = `userSettings_${user?.id}`;
+        try {
+            const storedSettings = localStorage.getItem(settingsKey);
+            if (storedSettings) {
+                setUserSettings(JSON.parse(storedSettings));
             }
+        } catch (e) {
+            console.error("Failed to load user settings from localStorage", e);
         }
+    }, [user?.id]);
 
-        const validatedData = validateAndHydrate({ ...syncedData, documents: syncedDocsWithLocalState });
-        
-        isInitialLoadAfterHydrate.current = true;
-        setData(validatedData);
-        
-        if (userId) {
-            try {
-                const db = await getDb();
-                const { documents: docsToSave, ...restOfData } = validatedData;
-                await db.put(DATA_STORE_NAME, restOfData, `${APP_DATA_KEY}_${userId}`);
-                await db.put(DOCS_METADATA_STORE_NAME, docsToSave, `documents_${userId}`);
-                setIsDirty(false);
-            } catch (e) {
-                console.error('Failed to save synced data to IndexedDB', e);
-            }
-        }
-    }, [userId]);
-    
+    const updateSettings = (updater: (prev: UserSettings) => UserSettings) => {
+        const newSettings = updater(userSettings);
+        setUserSettings(newSettings);
+        const settingsKey = `userSettings_${user?.id}`;
+        localStorage.setItem(settingsKey, JSON.stringify(newSettings));
+    };
+
+    const setAutoSyncEnabled = (enabled: boolean) => updateSettings(p => ({ ...p, isAutoSyncEnabled: enabled }));
+    const setAutoBackupEnabled = (enabled: boolean) => updateSettings(p => ({ ...p, isAutoBackupEnabled: enabled }));
+    const setAdminTasksLayout = (layout: 'horizontal' | 'vertical') => updateSettings(p => ({ ...p, adminTasksLayout: layout }));
+
     const handleSyncStatusChange = React.useCallback((status: SyncStatus, error: string | null) => {
         setSyncStatus(status);
         setLastSyncError(error);
     }, []);
 
-    const { manualSync, fetchAndRefresh } = useSync({
-        user,
-        localData: data,
-        deletedIds,
-        onDataSynced: handleDataSynced,
-        onDeletionsSynced,
-        onSyncStatusChange: handleSyncStatusChange,
-        isOnline,
-        isAuthLoading,
-        syncStatus,
-    });
-    
-    const manualSyncRef = React.useRef(manualSync);
-    const fetchAndRefreshRef = React.useRef(fetchAndRefresh);
-
-    React.useEffect(() => {
-        manualSyncRef.current = manualSync;
-        fetchAndRefreshRef.current = fetchAndRefresh;
-    }, [manualSync, fetchAndRefresh]);
-    
-    const fileSyncController = React.useCallback(async () => {
-        if (isFileSyncingRef.current || !isOnlineRef.current || !userIdRef.current) return;
-
-        isFileSyncingRef.current = true;
-        console.log("File sync controller running...");
-        const supabase = getSupabaseClient();
-        if (!supabase) {
-            isFileSyncingRef.current = false;
-            return;
-        }
-
+    const handleDataSynced = React.useCallback(async (mergedData: AppData) => {
+        // FIX: Replaced the previous error-prone merging logic with a safer, more defensive approach.
+        // It now uses safeArray and re-validates documents after merging local state to prevent crashes
+        // from malformed objects.
         try {
-            const docsToProcess = dataRef.current.documents.filter(doc => doc.localState === 'pending_upload' || doc.localState === 'pending_download');
-            if (docsToProcess.length === 0) {
-                console.log("No documents to process.");
-                return;
-            }
+            const validatedMergedData = validateAndFixData(mergedData, userRef.current);
+            const db = await getDb();
+            const localDocsMetadata = await db.getAll(DOCS_METADATA_STORE_NAME);
             
-            console.log(`Found ${docsToProcess.length} documents to process.`);
+            const finalDocs = safeArray(validatedMergedData.documents, (doc: any) => {
+                if (!doc || typeof doc !== 'object' || !doc.id) return undefined;
+                const localMeta = localDocsMetadata.find(meta => meta.id === doc.id);
+                
+                const mergedDoc = {
+                    ...doc,
+                    localState: localMeta?.localState || doc.localState || 'pending_download'
+                };
+                
+                return validateDocuments(mergedDoc, userRef.current?.id || '');
+            });
 
-            for (const doc of docsToProcess) {
-                if (doc.localState === 'pending_upload') {
-                    try {
-                        const file = await getDocumentFile(doc.id);
-                        if (!file) throw new Error(`File blob not found in IndexedDB for doc ${doc.id}`);
+            const finalData = { ...validatedMergedData, documents: finalDocs };
 
-                        const storagePath = `${userIdRef.current}/${doc.caseId}/${doc.id}${getFileExtension(doc.name)}`;
-                        
-                        const { error: uploadError } = await supabase.storage
-                            .from('documents')
-                            .upload(storagePath, file, { upsert: true });
-
-                        if (uploadError) throw uploadError;
-
-                        setData(prev => {
-                            const newDocs = prev.documents.map(d =>
-                                d.id === doc.id ? { ...d, localState: 'synced' as const, storagePath: storagePath, updated_at: new Date() } : d
-                            );
-                            return { ...prev, documents: newDocs };
-                        });
-                        console.log(`Successfully uploaded ${doc.name}`);
-
-                    } catch (error) {
-                        console.error(`Failed to upload document ${doc.id}:`, error);
-                        setData(prev => {
-                            const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'error' as const } : d);
-                            return { ...prev, documents: newDocs };
-                        });
-                    }
-                } else if (doc.localState === 'pending_download') {
-                    try {
-                        if (!doc.storagePath) throw new Error(`Cannot download doc ${doc.id}, storagePath is missing.`);
-                        
-                        const { data: blob, error: downloadError } = await supabase.storage
-                            .from('documents')
-                            .download(doc.storagePath);
-
-                        if (downloadError) throw downloadError;
-                        if (!blob) throw new Error("Downloaded blob is null.");
-
-                        const db = await getDb();
-                        await db.put(DOCS_FILES_STORE_NAME, blob, doc.id);
-
-                        setData(prev => {
-                            const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'synced' as const } : d
-                            );
-                            return { ...prev, documents: newDocs };
-                        });
-                         console.log(`Successfully downloaded ${doc.name}`);
-
-                    } catch (error) {
-                        const err = error as any;
-                        
-                        const isNotFound = (e: any): boolean => {
-                            if (!e) return false;
-                            if (typeof e.statusCode === 'number' && e.statusCode === 404) return true;
-                            if (typeof e.message === 'string' && e.message.toLowerCase().includes('not found')) return true;
-                            // The check for an empty object `{}` is brittle. Safest to assume it's a transient error.
-                            return false;
-                        };
-
-
-                        if (isNotFound(err)) {
-                            // PERMANENT "Not Found" ERROR
-                            const detailedMessage = `The file was not found or access was denied. It may not exist in cloud storage or permissions may be incorrect. Path: ${doc.storagePath}`;
-                            console.error(`Failed to download document ${doc.id}. Reason: ${detailedMessage}. Original error object:`, error);
-                            setData(prev => {
-                                const newDocs = prev.documents.map(d => d.id === doc.id ? { ...d, localState: 'error' as const } : d);
-                                return { ...prev, documents: newDocs };
-                            });
-                        } else {
-                            // TRANSIENT ERROR (e.g., network failure, server 5xx)
-                            console.warn(`Transient error downloading doc ${doc.id}, will retry later.`, error);
-                            continue;
-                        }
-                    }
-                }
-            }
+            await db.put(DATA_STORE_NAME, finalData, userRef.current!.id);
+            setData(finalData);
+            setDirty(false);
         } catch (e) {
-            console.error("Critical error in file sync controller:", e);
-        } finally {
-            isFileSyncingRef.current = false;
+            console.error("Critical error in handleDataSynced:", e);
+            handleSyncStatusChange('error', 'فشل تحديث البيانات المحلية بعد المزامنة.');
         }
-    }, [getDocumentFile]);
-
-    // This is the primary trigger for the file sync controller. It runs whenever the document list changes.
-    React.useEffect(() => {
-        if (isDataLoading) return;
-
-        const hasPendingFiles = data.documents.some(
-            doc => doc.localState === 'pending_upload' || doc.localState === 'pending_download'
-        );
-
-        if (hasPendingFiles) {
-            // No longer uses a timer, but we keep the async nature
-            console.log("Pending documents detected. Triggering file sync controller immediately.");
-            fileSyncController();
+    }, [userRef]);
+    
+    const handleDeletionsSynced = React.useCallback(async (syncedDeletions: Partial<DeletedIds>) => {
+        const newDeletedIds = { ...deletedIds };
+        let changed = false;
+        for (const key of Object.keys(syncedDeletions) as Array<keyof DeletedIds>) {
+            // Fix: Cast array to `any[]` to satisfy `new Set` which expects a single iterable type,
+            // but `syncedDeletions[key]` can be `string[]` or `number[]`.
+            const synced = new Set((syncedDeletions[key] || []) as any[]);
+            if (synced.size > 0) {
+                newDeletedIds[key] = newDeletedIds[key].filter(id => !synced.has(id as any));
+                changed = true;
+            }
         }
-    }, [data.documents, isDataLoading, fileSyncController]);
+        if (changed) {
+            setDeletedIds(newDeletedIds);
+            const db = await getDb();
+            await db.put(DATA_STORE_NAME, newDeletedIds, `deletedIds_${userRef.current!.id}`);
+        }
+    }, [deletedIds]);
 
+    const { manualSync, fetchAndRefresh } = useSync({
+        user, localData: data, deletedIds,
+        onDataSynced: handleDataSynced,
+        onDeletionsSynced: handleDeletionsSynced,
+        onSyncStatusChange: handleSyncStatusChange,
+        isOnline, isAuthLoading, syncStatus
+    });
 
-    // Effect to automatically sync data when changes are made while online.
     React.useEffect(() => {
-        if (isDataLoading || isAuthLoading || !userId) {
+        if (!user || isAuthLoading) {
+            if (!isAuthLoading) setIsDataLoading(false);
             return;
         }
-
-        if (isDirty && isOnline && settings.isAutoSyncEnabled && syncStatus !== 'syncing') {
-            const handler = setTimeout(() => {
-                console.log("Auto-syncing dirty data...");
-                manualSyncRef.current();
-            }, 5000); // 5-second delay to bundle changes
-            return () => clearTimeout(handler);
-        }
-    }, [isDirty, isOnline, settings.isAutoSyncEnabled, syncStatus, isDataLoading, isAuthLoading, userId]);
-
-    React.useEffect(() => {
-        if (!userId) {
-            setData(getInitialData());
-            setDeletedIds(getInitialDeletedIds());
-            setIsDirty(false);
-            setSyncStatus('loading');
-            setIsDataLoading(false);
-            setSettings(defaultSettings);
-            hadCacheOnLoad.current = false;
-            return;
-        }
-
         setIsDataLoading(true);
-        setSyncStatus('loading');
-        
-        const loadLocalData = async () => {
+        let cancelled = false;
+
+        const loadData = async () => {
             try {
                 const db = await getDb();
-                const rawData = await db.get(DATA_STORE_NAME, getLocalStorageKey());
-                const rawDocuments = await db.get(DOCS_METADATA_STORE_NAME, `documents_${userId}`);
-
-
-                const rawDeleted = localStorage.getItem(`lawyerAppDeletedIds_${userId}`);
-                setDeletedIds(rawDeleted ? JSON.parse(rawDeleted) : getInitialDeletedIds());
+                const [storedData, storedDeletedIds] = await Promise.all([
+                    db.get(DATA_STORE_NAME, user.id),
+                    db.get(DATA_STORE_NAME, `deletedIds_${user.id}`)
+                ]);
                 
-                // --- Refactored User Settings Loading & Migration ---
-                const settingsKey = `lawyerAppSettings_${userId}`;
-                let userSettings: UserSettings;
+                if (cancelled) return;
 
-                const savedSettingsRaw = localStorage.getItem(settingsKey);
-                if (savedSettingsRaw) {
-                    try {
-                        const savedSettings = JSON.parse(savedSettingsRaw);
-                        // Ensure all properties exist, falling back to defaults for any missing ones.
-                        userSettings = { ...defaultSettings, ...savedSettings };
-                    } catch (e) {
-                        console.error("Failed to parse user settings, falling back to defaults.", e);
-                        userSettings = defaultSettings;
-                    }
+                const validatedData = validateAndFixData(storedData, user);
+                
+                // Merge local document metadata with main data
+                const localDocsMetadata = await db.getAll(DOCS_METADATA_STORE_NAME);
+                const finalDocs = validatedData.documents.map(doc => {
+                    const localMeta = localDocsMetadata.find(meta => meta.id === doc.id);
+                    return { ...doc, localState: localMeta?.localState || doc.localState || 'pending_download' };
+                }).filter(doc => !!doc) as CaseDocument[];
+                
+                const finalData = { ...validatedData, documents: finalDocs };
+                
+                setData(finalData);
+                setDeletedIds(storedDeletedIds || getInitialDeletedIds());
+                
+                if (isOnline) {
+                    await manualSync(true);
                 } else {
-                    // No unified settings object found, attempt migration from old individual keys.
-                    const autoSyncKey = `lawyerAppAutoSyncEnabled_${userId}`;
-                    const autoBackupKey = `lawyerAppAutoBackupEnabled_${userId}`;
-                    const layoutKey = `lawyerAppAdminTasksLayout_${userId}`;
-
-                    const oldAutoSync = localStorage.getItem(autoSyncKey);
-                    const oldAutoBackup = localStorage.getItem(autoBackupKey);
-                    const oldLayout = localStorage.getItem(layoutKey);
-
-                    const needsMigration = oldAutoSync !== null || oldAutoBackup !== null || oldLayout !== null;
-
-                    if (needsMigration) {
-                        console.log("Migrating old user settings to new unified format.");
-                        const migratedSettings: UserSettings = {
-                            isAutoSyncEnabled: oldAutoSync === null ? defaultSettings.isAutoSyncEnabled : oldAutoSync === 'true',
-                            isAutoBackupEnabled: oldAutoBackup === null ? defaultSettings.isAutoBackupEnabled : oldAutoBackup === 'true',
-                            adminTasksLayout: (oldLayout === 'vertical' ? 'vertical' : 'horizontal'),
-                        };
-                        
-                        // Immediately save the migrated settings under the new key before removing old keys.
-                        try {
-                            localStorage.setItem(settingsKey, JSON.stringify(migratedSettings));
-                            localStorage.removeItem(autoSyncKey);
-                            localStorage.removeItem(autoBackupKey);
-                            localStorage.removeItem(layoutKey);
-                        } catch(e) {
-                             console.error("Failed to persist migrated settings.", e);
-                        }
-                        userSettings = migratedSettings;
-
-                    } else {
-                        // No old or new settings found, use defaults and save them for next time.
-                        userSettings = defaultSettings;
-                        try {
-                            localStorage.setItem(settingsKey, JSON.stringify(defaultSettings));
-                        } catch (e) {
-                            console.error("Failed to save default settings.", e);
-                        }
-                    }
-                }
-                setSettings(userSettings);
-
-
-                const combinedData = { ...(rawData || {}), documents: rawDocuments || [] };
-
-                if (combinedData) {
-                    const parsedData = combinedData; 
-                    const isEffectivelyEmpty =
-                        !parsedData ||
-                        (Array.isArray(parsedData.clients) && parsedData.clients.length === 0 &&
-                        Array.isArray(parsedData.adminTasks) && parsedData.adminTasks.length === 0 &&
-                        Array.isArray(parsedData.appointments) && parsedData.appointments.length === 0 &&
-                        Array.isArray(parsedData.accountingEntries) && parsedData.accountingEntries.length === 0 &&
-                        Array.isArray(parsedData.invoices) && parsedData.invoices.length === 0 &&
-                        Array.isArray(parsedData.documents) && parsedData.documents.length === 0);
-        
-                    if (isEffectivelyEmpty) {
-                        hadCacheOnLoad.current = false;
-                        setData(getInitialData());
-                    } else {
-                        isInitialLoadAfterHydrate.current = true; // Prevent marking as dirty on initial load
-                        setData(validateAndHydrate(parsedData));
-                        setIsDirty(localStorage.getItem(`lawyerAppIsDirty_${userId}`) === 'true');
-                        setSyncStatus('synced'); 
-                        hadCacheOnLoad.current = true;
-                    }
-                } else {
-                    hadCacheOnLoad.current = false;
+                    setSyncStatus('synced'); // Offline but data loaded
                 }
             } catch (error) {
-                console.error("Error loading cached data from IndexedDB:", error);
-                setSyncStatus('error');
-                setLastSyncError('خطأ في تحميل البيانات المحلية.');
-                hadCacheOnLoad.current = false;
+                console.error('Failed to load data from IndexedDB:', error);
+                setSyncStatus('error', 'فشل تحميل البيانات المحلية.');
             } finally {
-                setIsDataLoading(false);
+                if (!cancelled) setIsDataLoading(false);
             }
         };
-
-        loadLocalData();
-    }, [userId, getLocalStorageKey]);
+        loadData();
+        return () => { cancelled = true; };
+    }, [user, isAuthLoading]);
 
     React.useEffect(() => {
-        if (isAuthLoading || isDataLoading || !userId) return;
-
-        const authJustFinished = prevIsAuthLoading === true && isAuthLoading === false;
-
-        if (authJustFinished && isOnline) {
-            manualSyncRef.current(!hadCacheOnLoad.current);
-        } else if (!isOnline && !hadCacheOnLoad.current) {
-            setSyncStatus('error');
-            setLastSyncError('أنت غير متصل ولا توجد بيانات محلية. يرجى الاتصال بالإنترنت للمزامنة الأولية.');
+        if (isOnline && isDirty && isAutoSyncEnabled && syncStatus !== 'syncing') {
+            const handler = setTimeout(() => {
+                manualSync();
+            }, 3000);
+            return () => clearTimeout(handler);
         }
-    }, [isAuthLoading, prevIsAuthLoading, isOnline, isDataLoading, userId]);
-
-    React.useEffect(() => {
-        const justCameOnline = prevIsOnline === false && isOnline === true;
-        let syncOnReconnectTimeout: number | null = null;
-
-        if (justCameOnline && userId && !isAuthLoading && !isDataLoading) {
-            syncOnReconnectTimeout = window.setTimeout(() => {
-                if (isAutoSyncEnabledRef.current) {
-                    if (isDirtyRef.current) {
-                        manualSyncRef.current();
-                    } else {
-                        fetchAndRefreshRef.current();
-                    }
-                }
-            }, 1500);
-        }
-
-        return () => { if (syncOnReconnectTimeout) clearTimeout(syncOnReconnectTimeout); };
-    }, [isOnline, prevIsOnline, userId, isAuthLoading, isDataLoading]);
-
-    // Effect to mark data as "dirty" (changed) when it's modified after initial load.
-    React.useEffect(() => {
-        if (isDataLoading) return;
-
-        if (isInitialLoadAfterHydrate.current) {
-            isInitialLoadAfterHydrate.current = false;
-        } else {
-            setIsDirty(true);
-        }
-    }, [data, deletedIds, isDataLoading]);
-
-    // Debounced save to IndexedDB and localStorage for flags
-    React.useEffect(() => {
-        if (isDataLoading || !userId) return;
-
-        const handler = setTimeout(async () => {
-            console.log('Debounced save: Persisting data to local storage...');
-            try {
-                const db = await getDb();
-                const { documents: docsToSave, ...restOfData } = dataRef.current;
-                await db.put(DATA_STORE_NAME, restOfData, getLocalStorageKey());
-                await db.put(DOCS_METADATA_STORE_NAME, docsToSave, `documents_${userId}`);
-                localStorage.setItem(`lawyerAppDeletedIds_${userId}`, JSON.stringify(deletedIds));
-                localStorage.setItem(`lawyerAppIsDirty_${userId}`, String(isDirtyRef.current));
-            } catch (e) {
-                console.error('Debounced save to local storage failed:', e);
-            }
-        }, 1500); // 1.5 seconds debounce delay
-
-        return () => clearTimeout(handler);
-    }, [data, deletedIds, isDataLoading, userId, getLocalStorageKey]);
-
-    // This effect persists simple settings flags to localStorage. It's lightweight and runs on every change.
-    React.useEffect(() => {
-        if (userId) {
-            localStorage.setItem(`lawyerAppSettings_${userId}`, JSON.stringify(settings));
-        }
-    }, [userId, settings]);
+    }, [isOnline, isDirty, isAutoSyncEnabled, syncStatus, manualSync]);
     
-    // Effect for real-time data synchronization
-    const channelRef = React.useRef<RealtimeChannel | null>(null);
-    const userRefForRealtime = React.useRef(user);
-    userRefForRealtime.current = user;
-    const debounceTimerRef = React.useRef<number | null>(null);
+    // Auto backup effect
+    React.useEffect(() => {
+        if (isAutoBackupEnabled && !isDataLoading) {
+            const todayStr = toInputDateString(new Date());
+            const lastBackupKey = `lastBackupDate_${user?.id}`;
+            const lastBackupDate = localStorage.getItem(lastBackupKey);
 
-    const tableNameMap: Record<string, string> = {
-        clients: 'موكل', cases: 'قضية', stages: 'مرحلة', sessions: 'جلسة',
-        admin_tasks: 'مهمة إدارية', appointments: 'موعد', accounting_entries: 'قيد محاسبي',
-        invoices: 'فاتورة', case_documents: 'وثيقة', assistants: 'مساعد',
-        profiles: 'ملف شخصي', site_finances: 'قيد مالي عام'
-    };
+            if (todayStr !== lastBackupDate) {
+                 if (exportData()) {
+                    localStorage.setItem(lastBackupKey, todayStr);
+                    console.log(`Automatic daily backup created for ${todayStr}.`);
+                 }
+            }
+        }
+    }, [isAutoBackupEnabled, isDataLoading, user?.id]);
 
     React.useEffect(() => {
+        const checkAppointments = () => {
+            const now = new Date();
+            const upcomingAppointments = data.appointments.filter(apt => {
+                if (apt.completed || apt.notified || !apt.reminderTimeInMinutes) return false;
+                const aptDate = new Date(apt.date);
+                const [hours, minutes] = apt.time.split(':').map(Number);
+                aptDate.setHours(hours, minutes, 0, 0);
+                const reminderTime = new Date(aptDate.getTime() - apt.reminderTimeInMinutes * 60000);
+                return now >= reminderTime && now < aptDate;
+            });
+
+            if (upcomingAppointments.length > 0) {
+                setTriggeredAlerts(prev => {
+                    const newAlerts = upcomingAppointments.filter(apt => !prev.find(p => p.id === apt.id));
+                    return [...prev, ...newAlerts];
+                });
+
+                setData(currentData => ({
+                    ...currentData,
+                    appointments: currentData.appointments.map(apt =>
+                        upcomingAppointments.find(upcoming => upcoming.id === apt.id) ? { ...apt, notified: true, updated_at: new Date() } : apt
+                    ),
+                }));
+                setDirty(true);
+            }
+        };
+        const interval = setInterval(checkAppointments, 30000);
+        return () => clearInterval(interval);
+    }, [data.appointments]);
+    
+     // Realtime Subscription
+    React.useEffect(() => {
+        if (!isOnline || !user) return;
+
         const supabase = getSupabaseClient();
         if (!supabase) return;
 
-        if (user && !channelRef.current) {
-            console.log(`User detected, creating real-time channel object: lawyer-app-changes-${user.id}`);
-            const newChannel = supabase.channel('lawyer-app-changes-' + user.id);
-            newChannel.on('postgres_changes', { event: '*', schema: 'public' }, payload => {
-                const currentUser = userRefForRealtime.current;
-                if (!currentUser) return;
+        const handleRealtimeUpdate = (payload: any) => {
+            console.log('Realtime change received:', payload);
+            setRealtimeAlerts(prev => [...prev, { id: Date.now(), message: `تم تحديث البيانات من قبل مستخدم آخر.` }]);
+            fetchAndRefresh();
+        };
 
-                if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-                debounceTimerRef.current = window.setTimeout(() => {
-                    if (syncStatusRef.current !== 'syncing') {
-                        fetchAndRefreshRef.current();
-                    }
-                }, 1000);
-                
-                const { table, eventType, new: newRecord, old: oldRecord } = payload as any;
-                let message: string | null = null;
+        const channel = supabase.channel('public:all_tables')
+            .on('postgres_changes', { event: '*', schema: 'public' }, handleRealtimeUpdate)
+            .subscribe((status, err) => {
+                if (status === 'SUBSCRIBED') console.log('Real-time subscription active.');
+                if (err) console.error('Real-time subscription error.', err);
+            });
+
+        return () => {
+            channel.unsubscribe();
+        };
+    }, [isOnline, user, fetchAndRefresh]);
+
+    const dismissAlert = (appointmentId: string) => {
+        setTriggeredAlerts(prev => prev.filter(a => a.id !== appointmentId));
+    };
     
-                // 1. Handle UPDATE events for specific state changes
-                if (eventType === 'UPDATE') {
-                    // Session postponed
-                    if (table === 'sessions' && oldRecord.is_postponed === false && newRecord.is_postponed === true) {
-                        message = `تم ترحيل جلسة قضية (${newRecord.client_name || ''})`;
+    const dismissRealtimeAlert = (alertId: number) => {
+        setRealtimeAlerts(prev => prev.filter(a => a.id !== alertId));
+    };
+
+    const updateNestedState = (clientId: string, caseId: string, stageId: string, sessionId: string | null, updater: (session: Session) => Session) => {
+         setData(prev => ({ ...prev, clients: prev.clients.map(c => {
+            if (c.id !== clientId) return c;
+            return { ...c, updated_at: new Date(), cases: c.cases.map(cs => {
+                if (cs.id !== caseId) return cs;
+                return { ...cs, updated_at: new Date(), stages: cs.stages.map(st => {
+                    if (st.id !== stageId) return st;
+                    const sessionIndex = sessionId ? st.sessions.findIndex(s => s.id === sessionId) : -1;
+                    if (sessionIndex === -1 && sessionId) return st; // session not found
+                    return {
+                        ...st,
+                        updated_at: new Date(),
+                        sessions: sessionId ? st.sessions.map((s, idx) => idx === sessionIndex ? updater(s) : s) : st.sessions,
+                    };
+                })};
+            })};
+        })}));
+        setDirty(true);
+    };
+
+    const postponeSession = (sessionId: string, newDate: Date, newReason: string) => {
+        let found = false;
+        for (const client of data.clients) {
+            for (const caseItem of client.cases) {
+                for (const stage of caseItem.stages) {
+                    const session = stage.sessions.find(s => s.id === sessionId);
+                    if (session) {
+                        updateNestedState(client.id, caseItem.id, stage.id, sessionId, s => ({
+                            ...s,
+                            isPostponed: true,
+                            nextSessionDate: newDate,
+                            nextPostponementReason: newReason,
+                            updated_at: new Date(),
+                        }));
+                        found = true; break;
                     }
-                    // Admin task completed/reopened
-                    else if (table === 'admin_tasks') {
-                        if (oldRecord.completed === false && newRecord.completed === true) {
-                            message = `تم إتمام المهمة: "${newRecord.task || ''}"`;
-                        } else if (oldRecord.completed === true && newRecord.completed === false) {
-                            message = `أُعيد فتح المهمة: "${newRecord.task || ''}"`;
+                }
+                if (found) break;
+            }
+            if (found) break;
+        }
+    };
+    
+    // --- Memos for derived data ---
+    const allSessions = React.useMemo<(Session & { stageId?: string, stageDecisionDate?: Date })[]>(() => {
+        const sessions: (Session & { stageId?: string, stageDecisionDate?: Date })[] = [];
+        if (data.clients) {
+            for (const client of data.clients) {
+                if (client && client.cases) {
+                    for (const caseItem of client.cases) {
+                        if (caseItem && caseItem.stages) {
+                            for (const stage of caseItem.stages) {
+                                if (stage && stage.sessions) {
+                                    for (const session of stage.sessions) {
+                                        if (session) {
+                                            sessions.push({ ...session, stageId: stage.id, stageDecisionDate: stage.decisionDate });
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
-                    // Appointment completed/reopened
-                    else if (table === 'appointments') {
-                        if (oldRecord.completed === false && newRecord.completed === true) {
-                            message = `تم إتمام الموعد: "${newRecord.title || ''}"`;
-                        } else if (oldRecord.completed === true && newRecord.completed === false) {
-                            message = `أُعيد فتح الموعد: "${newRecord.title || ''}"`;
+                }
+            }
+        }
+        return sessions;
+    }, [data.clients]);
+
+    const unpostponedSessions = React.useMemo(() => {
+        const sessions: (Session & { stageId?: string, stageDecisionDate?: Date })[] = [];
+        if (data.clients) {
+            for (const client of data.clients) {
+                if (!client || !client.cases) continue;
+                for (const caseItem of client.cases) {
+                    if (!caseItem || !caseItem.stages) continue;
+                    for (const stage of caseItem.stages) {
+                        if (!stage || !stage.sessions) continue;
+                        for (const session of stage.sessions) {
+                             if (session && !session.isPostponed && isBeforeToday(session.date) && !stage.decisionDate) {
+                                sessions.push({ ...session, stageId: stage.id, stageDecisionDate: stage.decisionDate });
+                            }
                         }
                     }
-                } 
-                // 2. Handle INSERT events, but suppress noise
-                else if (eventType === 'INSERT') {
-                    // Suppress notification for the new session created by a postponement action.
-                    if (table === 'sessions' && newRecord.postponement_reason) {
-                        // Do nothing, this is handled by the UPDATE event on the old session.
-                    } 
-                    else if (table === 'clients') {
-                        message = `تمت إضافة موكل جديد: ${newRecord.name || ''}`;
-                    } else if (table === 'cases') {
-                        message = `تمت إضافة قضية جديدة: ${newRecord.subject || ''}`;
-                    }
-                } 
-                // 3. Handle DELETE events
-                else if (eventType === 'DELETE') {
-                    const tableName = tableNameMap[table] || 'بيان';
-                    const name = oldRecord.full_name || oldRecord.name || oldRecord.subject || oldRecord.task || oldRecord.title || oldRecord.description || '';
-                    message = `تم حذف ${tableName}${name ? `: "${name}"` : '.'}`;
                 }
-
-                if (message) {
-                    addRealtimeAlert(message);
-                }
-            });
-            channelRef.current = newChannel;
-        } else if (!user && channelRef.current) {
-            console.log("User logged out, removing real-time channel.");
-            supabase.removeChannel(channelRef.current).catch(err => console.error("Error removing channel on logout:", err));
-            channelRef.current = null;
+            }
         }
-        return () => { if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current); };
-    }, [user, addRealtimeAlert]);
+        return sessions;
+    }, [data.clients]);
 
-    React.useEffect(() => {
-        const channel = channelRef.current;
-        if (!channel) return;
+    // --- Deletion functions ---
+    const createDeleteFunction = <T extends keyof DeletedIds>(entity: T) => async (id: DeletedIds[T][number]) => {
+        const db = await getDb();
+        const newDeletedIds = { ...deletedIds, [entity]: [...deletedIds[entity], id] };
+        setDeletedIds(newDeletedIds);
+        await db.put(DATA_STORE_NAME, newDeletedIds, `deletedIds_${user!.id}`);
+        setDirty(true);
+    };
 
-        const isReadyToSubscribe = isOnline && !isAuthLoading && !isDataLoading;
+    const deleteClient = (clientId: string) => { setData(p => ({ ...p, clients: p.clients.filter(c => c.id !== clientId) })); createDeleteFunction('clients')(clientId); };
+    const deleteCase = (caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.filter(cs => cs.id !== caseId) } : c) })); createDeleteFunction('cases')(caseId); };
+    const deleteStage = (stageId: string, caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.filter(st => st.id !== stageId) } : cs) } : c) })); createDeleteFunction('stages')(stageId); };
+    const deleteSession = (sessionId: string, stageId: string, caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.map(st => st.id === stageId ? { ...st, sessions: st.sessions.filter(s => s.id !== sessionId) } : st) } : cs) } : c) })); createDeleteFunction('sessions')(sessionId); };
+    const deleteAdminTask = (taskId: string) => { setData(p => ({...p, adminTasks: p.adminTasks.filter(t => t.id !== taskId)})); createDeleteFunction('adminTasks')(taskId); };
+    const deleteAppointment = (appointmentId: string) => { setData(p => ({...p, appointments: p.appointments.filter(a => a.id !== appointmentId)})); createDeleteFunction('appointments')(appointmentId); };
+    const deleteAccountingEntry = (entryId: string) => { setData(p => ({...p, accountingEntries: p.accountingEntries.filter(e => e.id !== entryId)})); createDeleteFunction('accountingEntries')(entryId); };
+    const deleteInvoice = (invoiceId: string) => { setData(p => ({...p, invoices: p.invoices.filter(i => i.id !== invoiceId)})); createDeleteFunction('invoices')(invoiceId); };
+    const deleteAssistant = (name: string) => { setData(p => ({...p, assistants: p.assistants.filter(a => a !== name)})); createDeleteFunction('assistants')(name); };
+    const deleteDocument = async (doc: CaseDocument) => {
+        const db = await getDb();
+        await db.delete(DOCS_FILES_STORE_NAME, doc.id);
+        await db.delete(DOCS_METADATA_STORE_NAME, doc.id);
+        setData(p => ({ ...p, documents: p.documents.filter(d => d.id !== doc.id) }));
+        const newDeletedIds = { ...deletedIds, documents: [...deletedIds.documents, doc.id], documentPaths: [...deletedIds.documentPaths, doc.storagePath] };
+        setDeletedIds(newDeletedIds);
+        await db.put(DATA_STORE_NAME, newDeletedIds, `deletedIds_${user!.id}`);
+        setDirty(true);
+    };
 
-        if (isReadyToSubscribe && channel.state !== 'joined') {
-            console.log(`Channel state is '${channel.state}', attempting to subscribe.`);
-            channel.subscribe((status, err) => {
-                const REALTIME_ERROR_MSG = `فشل الاتصال بمزامنة الوقت الفعلي.`;
-                if (status === 'SUBSCRIBED') {
-                    if (lastSyncError === REALTIME_ERROR_MSG) handleSyncStatusChange('synced', null);
-                } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || err) {
-                    console.error(`Real-time subscription error. Status: ${status}`, err);
-                    handleSyncStatusChange('error', REALTIME_ERROR_MSG);
-                }
-            });
-        } else if (!isReadyToSubscribe && channel.state === 'joined') {
-            console.log(`Conditions not met, unsubscribing from channel.`);
-            channel.unsubscribe().catch(err => console.error("Error on unsubscribe:", err));
-        }
-
-    }, [isOnline, isAuthLoading, isDataLoading, lastSyncError, handleSyncStatusChange]);
-    
-
-    const addDocuments = React.useCallback(async (caseId: string, files: FileList) => {
-        const currentUserId = userId;
-        if (!currentUserId) throw new Error("User not authenticated");
-
+    const addDocuments = async (caseId: string, files: FileList) => {
+        const db = await getDb();
         const newDocs: CaseDocument[] = [];
-        const newDocFiles: { docId: string; file: File }[] = [];
-
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            const docId = `doc-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 9)}`;
-            const newDoc: CaseDocument = {
-                id: docId,
-                caseId: caseId,
-                userId: currentUserId,
+            const doc: CaseDocument = {
+                id: `doc-${Date.now()}-${i}`,
+                caseId,
+                userId: user!.id,
                 name: file.name,
                 type: file.type,
                 size: file.size,
                 addedAt: new Date(),
-                storagePath: '',
-                localState: 'pending_upload' as const,
+                storagePath: `${user!.id}/${caseId}/${`doc-${Date.now()}-${i}`}-${file.name}`,
+                localState: 'pending_upload',
                 updated_at: new Date(),
             };
-            newDocs.push(newDoc);
-            newDocFiles.push({ docId, file });
+            await db.put(DOCS_FILES_STORE_NAME, file, doc.id);
+            await db.put(DOCS_METADATA_STORE_NAME, { id: doc.id, localState: 'pending_upload' });
+            newDocs.push(doc);
         }
+        setData(p => ({...p, documents: [...p.documents, ...newDocs]}));
+        setDirty(true);
+    };
 
-        setData(prev => ({ ...prev, documents: [...prev.documents, ...newDocs] }));
-
+    const getDocumentFile = async (docId: string): Promise<File | null> => {
+        const db = await getDb();
+        return await db.get(DOCS_FILES_STORE_NAME, docId) || null;
+    };
+    
+    const exportData = (): boolean => {
         try {
-            const db = await getDb();
-            const tx = db.transaction(DOCS_FILES_STORE_NAME, 'readwrite');
-            await Promise.all(newDocFiles.map(({ docId, file }) => tx.store.put(file, docId)));
-            await tx.done;
-        } catch (error) {
-            console.error("Failed to save documents to IndexedDB:", error);
-            setData(prev => ({
-                ...prev,
-                documents: prev.documents.filter(doc => !newDocs.some(nd => nd.id === doc.id))
-            }));
-            throw new Error("فشل حفظ الوثيقة في قاعدة البيانات المحلية.");
-        }
-    }, [userId]);
-
-    const deleteDocument = React.useCallback(async (doc: CaseDocument) => {
-        const docToDelete = doc;
-    
-        try {
-            const db = await getDb();
-            // Try to delete the local file, but don't fail if it's not there.
-            // This allows deleting a document from a device that hasn't downloaded it yet.
-            await db.delete(DOCS_FILES_STORE_NAME, docToDelete.id).catch(err => {
-                console.warn(`Could not delete local file blob for doc ${docToDelete.id}, it might not exist. Proceeding with metadata deletion.`, err);
-            });
-            
-            // Always proceed with metadata deletion from state and add to pending deletions.
-            setData(prev => ({ ...prev, documents: prev.documents.filter(d => d.id !== docToDelete.id) }));
-    
-            setDeletedIds(prev => ({
-                ...prev,
-                documents: [...prev.documents, docToDelete.id],
-                documentPaths: docToDelete.storagePath ? [...prev.documentPaths, docToDelete.storagePath] : prev.documentPaths
-            }));
-    
-        } catch (error) {
-            console.error("An unexpected error occurred during document deletion:", error);
-            throw new Error("فشل حذف الوثيقة.");
-        }
-    }, []);
-    
-    const exportData = React.useCallback(() => {
-        try {
-            const dataToExport = dataRef.current;
-            const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
+            const dataToExport = {
+                ...data,
+                // We don't export profiles or site finances in user backups
+                profiles: undefined,
+                siteFinances: undefined,
+            };
+            const jsonString = JSON.stringify(dataToExport, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            const date = new Date().toISOString().split('T')[0];
-            a.download = `lawyer_app_backup_${date}.json`;
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            a.download = `lawyer_app_backup_${timestamp}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
             return true;
         } catch (error) {
-            console.error("Failed to export data:", error);
+            console.error('Failed to export data:', error);
             return false;
         }
-    }, []);
-
-    // Automatic daily backup effect
-    React.useEffect(() => {
-        if (isDataLoading || !userId) return;
-
-        const performAutoBackup = () => {
-            if (!isAutoBackupEnabledRef.current) return;
-            
-            const LAST_BACKUP_KEY = `lawyerAppLastBackup_${userId}`;
-            const lastBackupDate = localStorage.getItem(LAST_BACKUP_KEY);
-            const todayStr = new Date().toISOString().split('T')[0];
-
-            if (lastBackupDate !== todayStr) {
-                console.log("Performing automatic daily backup...");
-                if (exportData()) {
-                    localStorage.setItem(LAST_BACKUP_KEY, todayStr);
-                } else {
-                    console.error("Automatic daily backup failed.");
-                }
-            }
-        };
-        
-        // Run once, shortly after the app is loaded and idle.
-        const timer = setTimeout(performAutoBackup, 10000); // Wait 10s after load
-        return () => clearTimeout(timer);
-    }, [isDataLoading, userId, exportData]);
-
-    // Fix: Add implementations for delete and postpone functions
-    const deleteClient = React.useCallback((clientId: string) => {
-        const client = dataRef.current.clients.find(c => c.id === clientId);
-        if (!client) return;
-        const caseIds = client.cases.map(c => c.id);
-        const stageIds = client.cases.flatMap(c => c.stages.map(s => s.id));
-        const sessionIds = client.cases.flatMap(c => c.stages.flatMap(s => s.sessions.map(sess => sess.id)));
-        const invoiceIds = dataRef.current.invoices.filter(i => i.clientId === clientId).map(i => i.id);
-        const invoiceItemIds = dataRef.current.invoices.filter(i => i.clientId === clientId).flatMap(i => i.items.map(item => item.id));
-        const docIdsToDelete = dataRef.current.documents.filter(d => caseIds.includes(d.caseId)).map(d => d.id);
-        const docPathsToDelete = dataRef.current.documents.filter(d => caseIds.includes(d.caseId) && d.storagePath).map(d => d.storagePath);
-
-        setData(prev => ({
-            ...prev,
-            clients: prev.clients.filter(c => c.id !== clientId),
-            accountingEntries: prev.accountingEntries.filter(e => e.clientId !== clientId),
-            invoices: prev.invoices.filter(i => i.clientId !== clientId),
-            documents: prev.documents.filter(d => !caseIds.includes(d.caseId)),
-        }));
-        
-        setDeletedIds(prev => ({
-            ...prev,
-            clients: [...new Set([...prev.clients, clientId])],
-            cases: [...new Set([...prev.cases, ...caseIds])],
-            stages: [...new Set([...prev.stages, ...stageIds])],
-            sessions: [...new Set([...prev.sessions, ...sessionIds])],
-            invoices: [...new Set([...prev.invoices, ...invoiceIds])],
-            invoiceItems: [...new Set([...prev.invoiceItems, ...invoiceItemIds])],
-            documents: [...new Set([...prev.documents, ...docIdsToDelete])],
-            documentPaths: [...new Set([...prev.documentPaths, ...docPathsToDelete])],
-        }));
-    }, []);
-
-    const deleteCase = React.useCallback((caseId: string, clientId: string) => {
-        const client = dataRef.current.clients.find(c => c.id === clientId);
-        const caseToDelete = client?.cases.find(c => c.id === caseId);
-        if (!caseToDelete) return;
-
-        const stageIds = caseToDelete.stages.map(s => s.id);
-        const sessionIds = caseToDelete.stages.flatMap(s => s.sessions.map(sess => sess.id));
-        const invoiceIds = dataRef.current.invoices.filter(i => i.caseId === caseId).map(i => i.id);
-        const invoiceItemIds = dataRef.current.invoices.filter(i => i.caseId === caseId).flatMap(i => i.items.map(item => item.id));
-        const docIdsToDelete = dataRef.current.documents.filter(d => d.caseId === caseId).map(d => d.id);
-        const docPathsToDelete = dataRef.current.documents.filter(d => d.caseId === caseId && d.storagePath).map(d => d.storagePath);
-
-        setData(prev => ({
-            ...prev,
-            clients: prev.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.filter(cs => cs.id !== caseId), updated_at: new Date() } : c),
-            accountingEntries: prev.accountingEntries.filter(e => e.caseId !== caseId),
-            invoices: prev.invoices.filter(i => i.caseId !== caseId),
-            documents: prev.documents.filter(d => d.caseId !== caseId),
-        }));
-        setDeletedIds(prev => ({
-            ...prev,
-            cases: [...new Set([...prev.cases, caseId])],
-            stages: [...new Set([...prev.stages, ...stageIds])],
-            sessions: [...new Set([...prev.sessions, ...sessionIds])],
-            invoices: [...new Set([...prev.invoices, ...invoiceIds])],
-            invoiceItems: [...new Set([...prev.invoiceItems, ...invoiceItemIds])],
-            documents: [...new Set([...prev.documents, ...docIdsToDelete])],
-            documentPaths: [...new Set([...prev.documentPaths, ...docPathsToDelete])],
-        }));
-    }, []);
-
-    const deleteStage = React.useCallback((stageId: string, caseId: string, clientId: string) => {
-        const client = dataRef.current.clients.find(c => c.id === clientId);
-        const caseItem = client?.cases.find(c => c.id === caseId);
-        const stageToDelete = caseItem?.stages.find(s => s.id === stageId);
-        if (!stageToDelete) return;
-
-        const sessionIds = stageToDelete.sessions.map(s => s.id);
-
-        setData(prev => ({
-            ...prev,
-            clients: prev.clients.map(c => c.id === clientId ? { ...c, updated_at: new Date(), cases: c.cases.map(cs => cs.id === caseId ? { ...cs, updated_at: new Date(), stages: cs.stages.filter(st => st.id !== stageId)} : cs) } : c)
-        }));
-        setDeletedIds(prev => ({
-            ...prev,
-            stages: [...new Set([...prev.stages, stageId])],
-            sessions: [...new Set([...prev.sessions, ...sessionIds])]
-        }));
-    }, []);
-
-    const deleteSession = React.useCallback((sessionId: string, stageId: string, caseId: string, clientId: string) => {
-        setData(prev => ({
-            ...prev,
-            clients: prev.clients.map(c => c.id === clientId ? { ...c, updated_at: new Date(), cases: c.cases.map(cs => cs.id === caseId ? { ...cs, updated_at: new Date(), stages: cs.stages.map(st => st.id === stageId ? { ...st, updated_at: new Date(), sessions: st.sessions.filter(s => s.id !== sessionId)} : st)} : cs) } : c)
-        }));
-        setDeletedIds(prev => ({ ...prev, sessions: [...new Set([...prev.sessions, sessionId])] }));
-    }, []);
-
-    const deleteAdminTask = React.useCallback((taskId: string) => {
-        setData(prev => ({ ...prev, adminTasks: prev.adminTasks.filter(t => t.id !== taskId) }));
-        setDeletedIds(prev => ({ ...prev, adminTasks: [...new Set([...prev.adminTasks, taskId])] }));
-    }, []);
-
-    const deleteAppointment = React.useCallback((appointmentId: string) => {
-        setData(prev => ({ ...prev, appointments: prev.appointments.filter(a => a.id !== appointmentId) }));
-        setDeletedIds(prev => ({ ...prev, appointments: [...new Set([...prev.appointments, appointmentId])] }));
-    }, []);
-
-    const deleteAccountingEntry = React.useCallback((entryId: string) => {
-        setData(prev => ({ ...prev, accountingEntries: prev.accountingEntries.filter(e => e.id !== entryId) }));
-        setDeletedIds(prev => ({ ...prev, accountingEntries: [...new Set([...prev.accountingEntries, entryId])] }));
-    }, []);
-
-    const deleteInvoice = React.useCallback((invoiceId: string) => {
-        const invoice = dataRef.current.invoices.find(i => i.id === invoiceId);
-        if (!invoice) return;
-
-        const itemIds = invoice.items.map(item => item.id);
-        setData(prev => ({ ...prev, invoices: prev.invoices.filter(i => i.id !== invoiceId) }));
-        setDeletedIds(prev => ({
-            ...prev,
-            invoices: [...new Set([...prev.invoices, invoiceId])],
-            invoiceItems: [...new Set([...prev.invoiceItems, ...itemIds])]
-        }));
-    }, []);
-    
-    const deleteAssistant = React.useCallback((name: string) => {
-        if (name === 'بدون تخصيص') return;
-        setData(prev => ({...prev, assistants: prev.assistants.filter(a => a !== name)}));
-        setDeletedIds(prev => ({...prev, assistants: [...new Set([...prev.assistants, name])]}));
-    }, []);
-
-    const postponeSession = React.useCallback((sessionId: string, newDate: Date, newReason: string) => {
-        setData(prev => {
-            const newClients = prev.clients.map(client => ({
-                ...client,
-                updated_at: new Date(),
-                cases: client.cases.map(caseItem => ({
-                    ...caseItem,
-                    updated_at: new Date(),
-                    stages: caseItem.stages.map(stage => {
-                        const sessionIndex = stage.sessions.findIndex(s => s.id === sessionId);
-                        if (sessionIndex === -1) {
-                            return stage;
-                        }
-
-                        const updatedSessions = [...stage.sessions];
-                        const oldSession = updatedSessions[sessionIndex];
-
-                        // Mark the old session as postponed
-                        updatedSessions[sessionIndex] = {
-                            ...oldSession,
-                            isPostponed: true,
-                            nextSessionDate: newDate,
-                            nextPostponementReason: newReason,
-                            updated_at: new Date(),
-                        };
-
-                        // Create the new session for the future date
-                        const newSession: Session = {
-                            id: `session-${Date.now()}`,
-                            court: oldSession.court,
-                            caseNumber: oldSession.caseNumber,
-                            date: newDate,
-                            clientName: oldSession.clientName,
-                            opponentName: oldSession.opponentName,
-                            isPostponed: false,
-                            postponementReason: newReason, // The reason for this new session is the postponement of the old one
-                            assignee: oldSession.assignee, // Carry over the assignee
-                            updated_at: new Date(),
-                        };
-                        
-                        updatedSessions.push(newSession);
-
-                        return { ...stage, sessions: updatedSessions, updated_at: new Date() };
-                    })
-                }))
-            }));
-            return { ...prev, clients: newClients };
-        });
-    }, []);
+    };
 
     return {
         ...data,
-        setClients: (updater) => setData(prev => ({...prev, clients: typeof updater === 'function' ? updater(prev.clients) : updater})),
-        setAdminTasks: (updater) => setData(prev => ({...prev, adminTasks: typeof updater === 'function' ? updater(prev.adminTasks) : updater})),
-        setAppointments: (updater) => setData(prev => ({...prev, appointments: typeof updater === 'function' ? updater(prev.appointments) : updater})),
-        setAccountingEntries: (updater) => setData(prev => ({...prev, accountingEntries: typeof updater === 'function' ? updater(prev.accountingEntries) : updater})),
-        setInvoices: (updater) => setData(prev => ({...prev, invoices: typeof updater === 'function' ? updater(prev.invoices) : updater})),
-        setAssistants: (updater) => setData(prev => ({...prev, assistants: typeof updater === 'function' ? updater(prev.assistants) : updater})),
-        setDocuments: (updater) => setData(prev => ({ ...prev, documents: typeof updater === 'function' ? updater(prev.documents) : updater })),
-        setProfiles: (updater) => setData(prev => ({...prev, profiles: typeof updater === 'function' ? updater(prev.profiles) : updater})),
-        setSiteFinances: (updater) => setData(prev => ({...prev, siteFinances: typeof updater === 'function' ? updater(prev.siteFinances) : updater})),
-        setFullData: (fullData) => {
-            handleDataSynced(fullData as AppData);
-        },
-        allSessions: React.useMemo(() => {
-            const sessions: (Session & { stageId?: string, stageDecisionDate?: Date })[] = [];
-            if (!Array.isArray(data.clients)) return sessions;
-            for (const client of data.clients) {
-                if (!client || !Array.isArray(client.cases)) continue;
-                for (const caseItem of client.cases) {
-                    if (!caseItem || !Array.isArray(caseItem.stages)) continue;
-                    for (const stage of caseItem.stages) {
-                        if (!stage || !Array.isArray(stage.sessions)) continue;
-                        for (const session of stage.sessions) {
-                            if (session && session.id) { // Basic check for a valid session object
-                                sessions.push({ ...session, stageId: stage.id, stageDecisionDate: stage.decisionDate });
-                            }
-                        }
-                    }
-                }
-            }
-            return sessions;
-        }, [data.clients]),
-        unpostponedSessions: React.useMemo(() => {
-            const sessions: (Session & { stageId?: string, stageDecisionDate?: Date })[] = [];
-            if (!Array.isArray(data.clients)) return sessions;
-            for (const client of data.clients) {
-                if (!client || !Array.isArray(client.cases)) continue;
-                for (const caseItem of client.cases) {
-                    if (!caseItem || !Array.isArray(caseItem.stages)) continue;
-                    for (const stage of caseItem.stages) {
-                        if (!stage || !Array.isArray(stage.sessions)) continue;
-                        for (const session of stage.sessions) {
-                            if (session && session.date && !session.isPostponed && isBeforeToday(new Date(session.date)) && !stage.decisionDate) {
-                                sessions.push({ ...session, stageId: stage.id, stageDecisionDate: stage.decisionDate });
-                            }
-                        }
-                    }
-                }
-            }
-            return sessions;
-        }, [data.clients]),
+        setClients: (updater) => { setData(prev => ({...prev, clients: updater(prev.clients)})); setDirty(true); },
+        setAdminTasks: (updater) => { setData(prev => ({...prev, adminTasks: updater(prev.adminTasks)})); setDirty(true); },
+        setAppointments: (updater) => { setData(prev => ({...prev, appointments: updater(prev.appointments)})); setDirty(true); },
+        setAccountingEntries: (updater) => { setData(prev => ({...prev, accountingEntries: updater(prev.accountingEntries)})); setDirty(true); },
+        setInvoices: (updater) => { setData(prev => ({...prev, invoices: updater(prev.invoices)})); setDirty(true); },
+        setAssistants: (updater) => { setData(prev => ({...prev, assistants: updater(prev.assistants)})); setDirty(true); },
+        setDocuments: (updater) => { setData(prev => ({...prev, documents: updater(prev.documents)})); setDirty(true); },
+        setProfiles: (updater) => { setData(prev => ({...prev, profiles: updater(prev.profiles)})); setDirty(true); },
+        setSiteFinances: (updater) => { setData(prev => ({...prev, siteFinances: updater(prev.siteFinances)})); setDirty(true); },
+        allSessions,
+        unpostponedSessions,
+        setFullData,
         syncStatus,
         manualSync,
         lastSyncError,
         isDirty,
-        userId,
+        userId: user?.id,
         isDataLoading,
-        isAutoSyncEnabled: settings.isAutoSyncEnabled,
-        setAutoSyncEnabled: (enabled) => setSettings(s => ({ ...s, isAutoSyncEnabled: enabled })),
-        isAutoBackupEnabled: settings.isAutoBackupEnabled,
-        setAutoBackupEnabled: (enabled) => setSettings(s => ({ ...s, isAutoBackupEnabled: enabled })),
-        adminTasksLayout: settings.adminTasksLayout,
-        setAdminTasksLayout: (layout) => setSettings(s => ({ ...s, adminTasksLayout: layout })),
+        isAutoSyncEnabled, setAutoSyncEnabled,
+        isAutoBackupEnabled, setAutoBackupEnabled,
+        adminTasksLayout, setAdminTasksLayout,
         exportData,
         triggeredAlerts,
-        dismissAlert: (appointmentId: string) => setTriggeredAlerts(prev => prev.filter(a => a.id !== appointmentId)),
+        dismissAlert,
         realtimeAlerts,
         dismissRealtimeAlert,
         deleteClient,
@@ -1345,6 +773,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         getDocumentFile,
         postponeSession,
         showUnpostponedSessionsModal,
-        setShowUnpostponedSessionsModal,
+        setShowUnpostponedSessionsModal
     };
 };
