@@ -328,8 +328,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const syncStatusRef = React.useRef(syncStatus);
     syncStatusRef.current = syncStatus;
     const [lastSyncError, setLastSyncError] = React.useState<string | null>(null);
-    const lastSyncErrorRef = React.useRef(lastSyncError);
-    lastSyncErrorRef.current = lastSyncError;
     const [isDirty, setIsDirty] = React.useState(false);
     const [isAutoSyncEnabled, setIsAutoSyncEnabled] = React.useState(true);
     const [isAutoBackupEnabled, setIsAutoBackupEnabled] = React.useState(true);
@@ -403,9 +401,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             .filter(doc => doc && doc.id)
             .map((remoteDoc: CaseDocument): CaseDocument | null => {
                  try {
-                    // FIX: The type of localDoc was incorrectly assumed to be a full CaseDocument. 
-                    // By casting to 'any', we prevent TypeScript errors and allow the defensive null-coalescing logic to correctly handle potentially incomplete local data.
-                    const localDoc: any = localDocMap.get(remoteDoc.id);
+                    const localDoc: CaseDocument | undefined = localDocMap.get(remoteDoc.id);
                     // FIX: Use sanitizeOptionalDate for robust date handling and prevent Invalid Date objects.
                     if (localDoc) {
                         const addedAtDate = sanitizeOptionalDate(remoteDoc.addedAt ?? localDoc.addedAt);
@@ -421,9 +417,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                             type: String((remoteDoc.type ?? localDoc.type) || 'application/octet-stream'),
                             size: typeof remoteDoc.size === 'number' ? remoteDoc.size : (localDoc.size || 0),
                             storagePath: String((remoteDoc.storagePath ?? localDoc.storagePath) || ''),
-                            // FIX: If localDoc is an incomplete object, localDoc.localState could be undefined,
-                            // which violates the CaseDocument type. Provide a fallback to 'error'.
-                            localState: localDoc.localState || 'error', // Always preserve local state
+                            localState: localDoc.localState, // Always preserve local state
                             addedAt: addedAtDate,
                             updated_at: sanitizeOptionalDate(remoteDoc.updated_at ?? localDoc.updated_at),
                         };
@@ -466,11 +460,14 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
         // Add any purely local documents (e.g., pending upload) that weren't in the synced data.
         // Fix for type error: Filter out invalid documents from local data before iterating.
-        (currentLocalDocuments || []).filter(doc => doc && doc.id).forEach(localDoc => {
-            if (!syncedDocsWithLocalState.some(d => d.id === localDoc.id)) {
-                syncedDocsWithLocalState.push(localDoc);
+        for (const localDoc of (currentLocalDocuments || [])) {
+            // Defensively check if localDoc is a valid object with an ID before processing.
+            if (localDoc && localDoc.id) {
+                if (!syncedDocsWithLocalState.some(d => d.id === localDoc.id)) {
+                    syncedDocsWithLocalState.push(localDoc);
+                }
             }
-        });
+        }
 
         const validatedData = validateAndHydrate({ ...syncedData, documents: syncedDocsWithLocalState });
         
@@ -798,14 +795,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     userRefForRealtime.current = user;
     const debounceTimerRef = React.useRef<number | null>(null);
 
-    // Create refs for callbacks to remove them from the useEffect dependency array.
-    // This prevents the effect from re-running due to state updates triggered by the callbacks themselves,
-    // breaking potential re-subscription loops.
-    const handleSyncStatusChangeRef = React.useRef(handleSyncStatusChange);
-    handleSyncStatusChangeRef.current = handleSyncStatusChange;
-    const addRealtimeAlertRef = React.useRef(addRealtimeAlert);
-    addRealtimeAlertRef.current = addRealtimeAlert;
-
     const tableNameMap: Record<string, string> = {
         clients: 'موكل', cases: 'قضية', stages: 'مرحلة', sessions: 'جلسة',
         admin_tasks: 'مهمة إدارية', appointments: 'موعد', accounting_entries: 'قيد محاسبي',
@@ -819,79 +808,75 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         const supabase = getSupabaseClient();
         if (!supabase) return;
 
-        // Centralized cleanup function
-        const cleanup = () => {
-            if (debounceTimerRef.current) {
-                clearTimeout(debounceTimerRef.current);
-            }
-            if (channelRef.current) {
-                console.log("Cleaning up and removing real-time channel.");
-                // Use removeChannel for a full cleanup.
-                supabase.removeChannel(channelRef.current).catch(err => {
-                    console.error("Error removing real-time channel during cleanup:", err);
-                });
-                channelRef.current = null;
-            }
-        };
+        if (user && !channelRef.current) {
+            console.log('User detected, creating real-time channel object.');
+            const newChannel = supabase.channel('db-changes');
+            newChannel.on('postgres_changes', { event: '*', schema: 'public' }, payload => {
+                const currentUser = userRefForRealtime.current;
+                if (!currentUser) return;
 
-        const conditionsMet = user && isOnline && !isAuthLoading && !isDataLoading;
+                if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+                debounceTimerRef.current = window.setTimeout(() => {
+                    if (syncStatusRef.current !== 'syncing') {
+                        fetchAndRefreshRef.current();
+                    }
+                }, 1000);
+                
+                const record = payload.new || payload.old;
+                if (record) {
+                    const tableName = tableNameMap[payload.table] || 'بيان';
+                    const eventType = eventTypeMap[payload.eventType] || 'تغيير';
+                    
+                    let name = '';
+                    let recordForName: any = null;
 
-        if (!conditionsMet) {
-            cleanup();
-            return;
+                    if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                        recordForName = payload.new;
+                    } else if (payload.eventType === 'DELETE') {
+                        recordForName = payload.old;
+                    }
+
+                    if (recordForName) {
+                        name = recordForName.full_name || recordForName.name || recordForName.subject || recordForName.task || recordForName.title || recordForName.description || '';
+                    }
+                    
+                    const message = `${eventType} ${tableName}${name ? `: ${name}` : '.'}`;
+                    addRealtimeAlert(message);
+                }
+            });
+            channelRef.current = newChannel;
+        } else if (!user && channelRef.current) {
+            console.log("User logged out, removing real-time channel.");
+            supabase.removeChannel(channelRef.current).catch(err => console.error("Error removing channel on logout:", err));
+            channelRef.current = null;
+        }
+        return () => { if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current); };
+    }, [user, addRealtimeAlert]);
+
+    React.useEffect(() => {
+        const channel = channelRef.current;
+        if (!channel) return;
+
+        const isReadyToSubscribe = isOnline && !isAuthLoading && !isDataLoading;
+
+        if (isReadyToSubscribe && channel.state !== 'joined') {
+            console.log(`Channel state is '${channel.state}', attempting to subscribe.`);
+            channel.subscribe((status, err) => {
+                const REALTIME_ERROR_MSG = `فشل الاتصال بمزامنة الوقت الفعلي.`;
+                if (status === 'SUBSCRIBED') {
+                    if (lastSyncError === REALTIME_ERROR_MSG) handleSyncStatusChange('synced', null);
+                } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || err) {
+                    console.error(`Real-time subscription error. Status: ${status}`, err);
+                    handleSyncStatusChange('error', REALTIME_ERROR_MSG);
+                }
+            });
+        } else if (!isReadyToSubscribe && channel.state === 'joined') {
+            console.log(`Conditions not met, unsubscribing from channel.`);
+            channel.unsubscribe().catch(err => console.error("Error on unsubscribe:", err));
         }
 
-        // If we reach here, conditions are met. Set up a new channel.
-        // The cleanup from the effect's previous run will have removed any old channel.
-        console.log("Setting up new real-time channel.");
-        const newChannel = supabase.channel('db-changes');
-        
-        newChannel.on('postgres_changes', { event: '*', schema: 'public' }, payload => {
-            const currentUser = userRefForRealtime.current;
-            if (!currentUser) return;
-
-            // Debounce the refresh to avoid flooding with updates
-            if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-            debounceTimerRef.current = window.setTimeout(() => {
-                if (syncStatusRef.current !== 'syncing') {
-                    console.log("Real-time change detected, triggering data refresh.");
-                    fetchAndRefreshRef.current();
-                }
-            }, 1000); // 1-second debounce
-            
-            // Generate user-facing alert
-            const record = (payload.eventType === 'DELETE') ? payload.old : payload.new;
-            if (record) {
-                const tableName = tableNameMap[payload.table] || 'بيان';
-                const eventType = eventTypeMap[payload.eventType] || 'تغيير';
-                const name = record.full_name || record.name || record.subject || record.task || record.title || record.description || '';
-                const message = `${eventType} ${tableName}${name ? `: ${name}` : '.'}`;
-                addRealtimeAlertRef.current(message);
-            }
-        });
-
-        newChannel.subscribe((status, err) => {
-            const REALTIME_ERROR_MSG = `فشل الاتصال بمزامنة الوقت الفعلي.`;
-            if (status === 'SUBSCRIBED') {
-                console.log('Real-time subscription successful.');
-                // Use ref to get latest value without causing re-subscription
-                if (lastSyncErrorRef.current === REALTIME_ERROR_MSG) {
-                    handleSyncStatusChangeRef.current('synced', null);
-                }
-            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || err) {
-                console.error(`Real-time subscription error. Status: ${status}`, err);
-                handleSyncStatusChangeRef.current('error', REALTIME_ERROR_MSG);
-            }
-        });
-
-        channelRef.current = newChannel;
-
-        // The main cleanup function for the effect, called on unmount or dependency change.
-        return () => {
-            cleanup();
-        };
-
-    }, [user, isOnline, isAuthLoading, isDataLoading]);
+    }, [isOnline, isAuthLoading, isDataLoading, lastSyncError, handleSyncStatusChange]);
+    
 
     const addDocuments = React.useCallback(async (caseId: string, files: FileList) => {
         const currentUserId = userId;

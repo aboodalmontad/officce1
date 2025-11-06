@@ -20,9 +20,8 @@ import AdminTaskModal from './components/AdminTaskModal';
 import { AdminTask, Profile, Session, Client, Appointment, AccountingEntry, Invoice, CaseDocument, AppData, SiteFinancialEntry } from './types';
 import { getSupabaseClient } from './supabaseClient';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
-import AppointmentNotifier from './components/AppointmentNotifier';
 import UnpostponedSessionsModal from './components/UnpostponedSessionsModal';
-import RealtimeNotifier, { RealtimeAlert } from './components/RealtimeNotifier';
+import NotificationCenter, { RealtimeAlert } from './components/RealtimeNotifier';
 
 
 // --- Data Context for avoiding prop drilling ---
@@ -190,7 +189,7 @@ const Navbar: React.FC<{
                 <button onClick={() => onNavigate('home')} className="flex items-center" aria-label="العودة إلى الصفحة الرئيسية">
                     <div className="flex items-baseline gap-2">
                         <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
-                        <span className="text-xs font-mono text-gray-500">الإصدار 8</span>
+                        <span className="text-xs font-mono text-gray-500">الإصدار 7</span>
                     </div>
                 </button>
                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
@@ -591,10 +590,6 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                         menuItems={contextMenu.menuItems}
                         onClose={() => setContextMenu(p => ({...p, isOpen: false}))}
                     />
-                    <AppointmentNotifier
-                        triggeredAlerts={supabaseData.triggeredAlerts}
-                        dismissAlert={supabaseData.dismissAlert}
-                    />
                      {supabaseData.showUnpostponedSessionsModal && (
                         <UnpostponedSessionsModal
                             isOpen={supabaseData.showUnpostponedSessionsModal}
@@ -607,9 +602,11 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                             assistants={supabaseData.assistants}
                         />
                     )}
-                    <RealtimeNotifier
-                        alerts={supabaseData.realtimeAlerts}
-                        dismissAlert={supabaseData.dismissRealtimeAlert}
+                    <NotificationCenter
+                        appointmentAlerts={supabaseData.triggeredAlerts}
+                        dismissAppointmentAlert={supabaseData.dismissAlert}
+                        realtimeAlerts={supabaseData.realtimeAlerts}
+                        dismissRealtimeAlert={supabaseData.dismissRealtimeAlert}
                     />
                 </>
             )}

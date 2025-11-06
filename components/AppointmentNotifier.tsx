@@ -1,68 +1,10 @@
 import * as React from 'react';
-import { XMarkIcon, ClockIcon } from './icons';
-import { Appointment } from '../types';
 
-const soundBase64 = 'data:audio/mpeg;base64,SUQzBAAAAAAAI9pEAnABpALFAAAAAAD/8BwATGF2ZjU2LjQwLjEwMQAAAAAAAAAAAABDcmVhdGVkIHdpdGggRmZkcCUyMEdhcGJhbmQgZm9yIFdpbmRvd3MAQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU....BwATGF2ZjYwLjE0LjEwMAAAAAAAAAAAAAAARXZDAAAAAHwECAQAAAAAAAAAD/8CEAADDYhUa/7M5sDC/8k//8AAG5pbnRoZXJlem8AAAAAAAAAAEBsZWRpdGVkIHdpdGggVmlkZW9TaG9wIDIuMC4yLjU2NgAAAAAAAAAAAAAAAP/E0IABYIAANIAAAAABkAAANoAAAcSAAAA//wAAAAB+gAACgAAAAAAAAAAAP/E0P/////////8E0QMP//////8E0QcP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QQMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP//////8E0QMP......';
-
-interface AppointmentNotifierProps {
-    triggeredAlerts: Appointment[];
-    dismissAlert: (appointmentId: string) => void;
-}
-
-const AppointmentNotifier: React.FC<AppointmentNotifierProps> = ({ triggeredAlerts, dismissAlert }) => {
-    const audioRef = React.useRef<HTMLAudioElement | null>(null);
-
-    React.useEffect(() => {
-        if (triggeredAlerts.length > 0) {
-            audioRef.current?.play().catch(e => console.error("Audio playback failed:", e));
-        }
-    }, [triggeredAlerts]);
-
-    const formatTime = (time: string) => {
-        if (!time) return '';
-        let [hours, minutes] = time.split(':');
-        let hh = parseInt(hours, 10);
-        const ampm = hh >= 12 ? 'مساءً' : 'صباحًا';
-        hh = hh % 12;
-        hh = hh ? hh : 12; 
-        const finalHours = hh.toString().padStart(2, '0');
-        return `${finalHours}:${minutes} ${ampm}`;
-    };
-
-    if (triggeredAlerts.length === 0) {
-        return null;
-    }
-
-    return (
-        <div className="fixed top-4 right-4 z-[100] w-full max-w-md space-y-3">
-            <audio ref={audioRef} src={soundBase64} preload="auto" />
-            {triggeredAlerts.map(alert => (
-                <div key={alert.id} className="w-full bg-white shadow-xl rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden animate-slide-in-down-fade">
-                    <div className="p-4">
-                        <div className="flex items-start">
-                            <div className="flex-shrink-0 pt-0.5">
-                                <ClockIcon className="w-6 h-6 text-blue-500" />
-                            </div>
-                            <div className="ms-3 w-0 flex-1">
-                                <p className="text-sm font-medium text-gray-900">تذكير بالموعد</p>
-                                <p className="mt-1 text-sm text-gray-700">{alert.title}</p>
-                                <p className="mt-1 text-sm text-gray-500">الوقت: {formatTime(alert.time)}</p>
-                            </div>
-                            <div className="ms-4 flex-shrink-0 flex">
-                                <button
-                                    onClick={() => dismissAlert(alert.id)}
-                                    className="inline-flex text-gray-400 bg-white rounded-md hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                                >
-                                    <span className="sr-only">Close</span>
-                                    <XMarkIcon className="w-5 h-5" />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            ))}
-        </div>
-    );
+// This component's functionality has been merged into a unified NotificationCenter
+// (currently located in RealtimeNotifier.tsx) to provide a better, more consistent UX.
+// This file is now deprecated and returns null.
+const AppointmentNotifier: React.FC = () => {
+    return null;
 };
 
 export default AppointmentNotifier;
