@@ -150,12 +150,12 @@ CREATE POLICY "Admins have full access to all profiles." ON public.profiles FOR 
 CREATE POLICY "Enable ALL for admin" ON public.site_finances FOR ALL USING (is_admin()) WITH CHECK (is_admin());
 CREATE POLICY "Users can select their own site finances" ON public.site_finances FOR SELECT USING (auth.uid() = user_id);
 
--- RLS policies for all other user-specific tables. (Combined for robustness)
+-- RLS policies for all other user-specific tables. (Split for robustness)
 DO $$
 DECLARE
     table_name TEXT;
 BEGIN
-    -- First, drop old policies to prevent conflicts if this script is re-run.
+    -- Drop all possible old policy names to ensure a clean slate
     FOREACH table_name IN ARRAY ARRAY[
         'assistants', 'clients', 'cases', 'stages', 'sessions', 
         'admin_tasks', 'appointments', 'accounting_entries', 
@@ -165,11 +165,21 @@ BEGIN
         EXECUTE format('DROP POLICY IF EXISTS "Enable ALL for own data" ON public.%I;', table_name);
         EXECUTE format('DROP POLICY IF EXISTS "Enable ALL for admin" ON public.%I;', table_name);
         EXECUTE format('DROP POLICY IF EXISTS "Enable ALL for user or admin" ON public.%I;', table_name);
-        -- Create a single, combined policy for simplicity and correctness.
+        EXECUTE format('DROP POLICY IF EXISTS "Users can manage their own data" ON public.%I;', table_name);
+        EXECUTE format('DROP POLICY IF EXISTS "Admins can manage all data" ON public.%I;', table_name);
+
+        -- Create a policy for regular users to access their own data.
         EXECUTE format('
-            CREATE POLICY "Enable ALL for user or admin" ON public.%I FOR ALL 
-            USING (auth.uid() = user_id OR public.is_admin()) 
-            WITH CHECK (auth.uid() = user_id OR public.is_admin());
+            CREATE POLICY "Users can manage their own data" ON public.%I FOR ALL
+            USING (auth.uid() = user_id)
+            WITH CHECK (auth.uid() = user_id);
+        ', table_name);
+
+        -- Create a separate permissive policy for admin users.
+        EXECUTE format('
+            CREATE POLICY "Admins can manage all data" ON public.%I FOR ALL
+            USING (public.is_admin())
+            WITH CHECK (public.is_admin());
         ', table_name);
     END LOOP;
 END$$;

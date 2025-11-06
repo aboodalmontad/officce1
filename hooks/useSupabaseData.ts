@@ -408,7 +408,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         const localDocMap = new Map(
             (currentLocalDocuments || [])
                 // FIX: Replaced a simple filter with a TypeScript type guard to correctly narrow the type of `doc` to `CaseDocument`, resolving an error where an empty object `{}` was being incorrectly typed and causing a compile-time failure. This ensures that only valid document objects are processed.
-                .filter((doc): doc is CaseDocument => !!(doc && doc.id))
+                // Fix: Explicitly cast `doc` to `any` to force TypeScript to re-evaluate the type after the type guard, resolving a subtle type inference issue.
+                .filter((doc: any): doc is CaseDocument => !!(doc && doc.id))
                 .map(doc => [doc.id, doc])
         );
         
