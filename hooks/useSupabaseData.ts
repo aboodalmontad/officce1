@@ -15,6 +15,20 @@ export type SyncStatus = SyncStatusType;
 
 const defaultAssistants = ['أحمد', 'فاطمة', 'سارة', 'بدون تخصيص'];
 
+// --- User Settings Management ---
+interface UserSettings {
+    isAutoSyncEnabled: boolean;
+    isAutoBackupEnabled: boolean;
+    adminTasksLayout: 'horizontal' | 'vertical';
+}
+
+const defaultSettings: UserSettings = {
+    isAutoSyncEnabled: true,
+    isAutoBackupEnabled: true,
+    adminTasksLayout: 'horizontal',
+};
+
+
 const getInitialData = (): AppData => ({
     clients: [] as Client[],
     adminTasks: [] as AdminTask[],
@@ -330,9 +344,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     syncStatusRef.current = syncStatus;
     const [lastSyncError, setLastSyncError] = React.useState<string | null>(null);
     const [isDirty, setIsDirty] = React.useState(false);
-    const [isAutoSyncEnabled, setIsAutoSyncEnabled] = React.useState(true);
-    const [isAutoBackupEnabled, setIsAutoBackupEnabled] = React.useState(true);
-    const [adminTasksLayout, setAdminTasksLayout] = React.useState<'horizontal' | 'vertical'>('horizontal');
+    const [settings, setSettings] = React.useState<UserSettings>(defaultSettings);
     const [triggeredAlerts, setTriggeredAlerts] = React.useState<Appointment[]>([]);
     const [showUnpostponedSessionsModal, setShowUnpostponedSessionsModal] = React.useState(false);
     const [realtimeAlerts, setRealtimeAlerts] = React.useState<RealtimeAlert[]>([]);
@@ -355,10 +367,10 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
     const isDirtyRef = React.useRef(isDirty);
     isDirtyRef.current = isDirty;
-    const isAutoSyncEnabledRef = React.useRef(isAutoSyncEnabled);
-    isAutoSyncEnabledRef.current = isAutoSyncEnabled;
-    const isAutoBackupEnabledRef = React.useRef(isAutoBackupEnabled);
-    isAutoBackupEnabledRef.current = isAutoBackupEnabled;
+    const isAutoSyncEnabledRef = React.useRef(settings.isAutoSyncEnabled);
+    isAutoSyncEnabledRef.current = settings.isAutoSyncEnabled;
+    const isAutoBackupEnabledRef = React.useRef(settings.isAutoBackupEnabled);
+    isAutoBackupEnabledRef.current = settings.isAutoBackupEnabled;
     const isOnlineRef = React.useRef(isOnline);
     isOnlineRef.current = isOnline;
     const userIdRef = React.useRef(userId);
@@ -642,14 +654,14 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             return;
         }
 
-        if (isDirty && isOnline && isAutoSyncEnabled && syncStatus !== 'syncing') {
+        if (isDirty && isOnline && settings.isAutoSyncEnabled && syncStatus !== 'syncing') {
             const handler = setTimeout(() => {
                 console.log("Auto-syncing dirty data...");
                 manualSyncRef.current();
             }, 5000); // 5-second delay to bundle changes
             return () => clearTimeout(handler);
         }
-    }, [isDirty, isOnline, isAutoSyncEnabled, syncStatus, isDataLoading, isAuthLoading, userId]);
+    }, [isDirty, isOnline, settings.isAutoSyncEnabled, syncStatus, isDataLoading, isAuthLoading, userId]);
 
     React.useEffect(() => {
         if (!userId) {
@@ -658,9 +670,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             setIsDirty(false);
             setSyncStatus('loading');
             setIsDataLoading(false);
-            setIsAutoSyncEnabled(true);
-            setIsAutoBackupEnabled(true);
-            setAdminTasksLayout('horizontal');
+            setSettings(defaultSettings);
             hadCacheOnLoad.current = false;
             return;
         }
@@ -677,12 +687,34 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
                 const rawDeleted = localStorage.getItem(`lawyerAppDeletedIds_${userId}`);
                 setDeletedIds(rawDeleted ? JSON.parse(rawDeleted) : getInitialDeletedIds());
-                const autoSyncEnabled = localStorage.getItem(`lawyerAppAutoSyncEnabled_${userId}`);
-                setIsAutoSyncEnabled(autoSyncEnabled === null ? true : autoSyncEnabled === 'true');
-                const autoBackupEnabled = localStorage.getItem(`lawyerAppAutoBackupEnabled_${userId}`);
-                setIsAutoBackupEnabled(autoBackupEnabled === null ? true : autoBackupEnabled === 'true');
-                const tasksLayout = localStorage.getItem(`lawyerAppAdminTasksLayout_${userId}`);
-                setAdminTasksLayout(tasksLayout === 'vertical' ? 'vertical' : 'horizontal');
+                
+                const savedSettingsRaw = localStorage.getItem(`lawyerAppSettings_${userId}`);
+                if (savedSettingsRaw) {
+                    try {
+                        const savedSettings = JSON.parse(savedSettingsRaw);
+                        setSettings({ ...defaultSettings, ...savedSettings });
+                    } catch {
+                        setSettings(defaultSettings);
+                    }
+                } else {
+                    // Migration from old keys
+                    const autoSyncEnabled = localStorage.getItem(`lawyerAppAutoSyncEnabled_${userId}`);
+                    const autoBackupEnabled = localStorage.getItem(`lawyerAppAutoBackupEnabled_${userId}`);
+                    const tasksLayout = localStorage.getItem(`lawyerAppAdminTasksLayout_${userId}`);
+                    
+                    const migratedSettings = {
+                        isAutoSyncEnabled: autoSyncEnabled === null ? true : autoSyncEnabled === 'true',
+                        isAutoBackupEnabled: autoBackupEnabled === null ? true : autoBackupEnabled === 'true',
+                        adminTasksLayout: tasksLayout === 'vertical' ? 'vertical' : 'horizontal' as 'horizontal' | 'vertical',
+                    };
+                    setSettings(migratedSettings);
+
+                    // Clean up old keys if they existed
+                    if (autoSyncEnabled !== null) localStorage.removeItem(`lawyerAppAutoSyncEnabled_${userId}`);
+                    if (autoBackupEnabled !== null) localStorage.removeItem(`lawyerAppAutoBackupEnabled_${userId}`);
+                    if (tasksLayout !== null) localStorage.removeItem(`lawyerAppAdminTasksLayout_${userId}`);
+                }
+
 
                 const combinedData = { ...(rawData || {}), documents: rawDocuments || [] };
 
@@ -790,11 +822,9 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     // This effect persists simple settings flags to localStorage. It's lightweight and runs on every change.
     React.useEffect(() => {
         if (userId) {
-            localStorage.setItem(`lawyerAppAutoSyncEnabled_${userId}`, String(isAutoSyncEnabled));
-            localStorage.setItem(`lawyerAppAutoBackupEnabled_${userId}`, String(isAutoBackupEnabled));
-            localStorage.setItem(`lawyerAppAdminTasksLayout_${userId}`, adminTasksLayout);
+            localStorage.setItem(`lawyerAppSettings_${userId}`, JSON.stringify(settings));
         }
-    }, [userId, isAutoSyncEnabled, isAutoBackupEnabled, adminTasksLayout]);
+    }, [userId, settings]);
     
     // Effect for real-time data synchronization
     const channelRef = React.useRef<RealtimeChannel | null>(null);
@@ -1188,12 +1218,12 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         isDirty,
         userId,
         isDataLoading,
-        isAutoSyncEnabled,
-        setAutoSyncEnabled: setIsAutoSyncEnabled,
-        isAutoBackupEnabled,
-        setAutoBackupEnabled: setIsAutoBackupEnabled,
-        adminTasksLayout,
-        setAdminTasksLayout,
+        isAutoSyncEnabled: settings.isAutoSyncEnabled,
+        setAutoSyncEnabled: (enabled) => setSettings(s => ({ ...s, isAutoSyncEnabled: enabled })),
+        isAutoBackupEnabled: settings.isAutoBackupEnabled,
+        setAutoBackupEnabled: (enabled) => setSettings(s => ({ ...s, isAutoBackupEnabled: enabled })),
+        adminTasksLayout: settings.adminTasksLayout,
+        setAdminTasksLayout: (layout) => setSettings(s => ({ ...s, adminTasksLayout: layout })),
         exportData,
         triggeredAlerts,
         dismissAlert: (appointmentId: string) => setTriggeredAlerts(prev => prev.filter(a => a.id !== appointmentId)),
