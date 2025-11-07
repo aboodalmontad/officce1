@@ -44,7 +44,7 @@ const getInitialData = (): AppData => ({
 
 // --- IndexedDB Setup ---
 const DB_NAME = 'LawyerAppData';
-const DB_VERSION = 6; // Bump version to force schema correction for all users.
+const DB_VERSION = 7; // Bump version to force a more robust schema correction.
 const DATA_STORE_NAME = 'appData';
 const DOCS_FILES_STORE_NAME = 'caseDocumentFiles';
 const DOCS_METADATA_STORE_NAME = 'caseDocumentMetadata';
@@ -53,30 +53,29 @@ const DOCS_METADATA_STORE_NAME = 'caseDocumentMetadata';
 async function getDb(): Promise<IDBPDatabase> {
   return openDB(DB_NAME, DB_VERSION, {
     upgrade(db, oldVersion, newVersion, tx) {
-      console.log(`Upgrading DB from version ${oldVersion} to ${DB_VERSION}`);
+      console.log(`Upgrading DB from version ${oldVersion} to ${newVersion}.`);
+
+      if (oldVersion < 7) {
+        // This version introduces a definite fix for the document metadata store.
+        // To ensure all users have the correct schema, we will recreate it.
+        // This is safe because metadata is synced from the server and local file state can be re-evaluated.
+        console.log(`Forcing recreation of '${DOCS_METADATA_STORE_NAME}' for version 7 upgrade to fix persistent schema issues.`);
+        if (db.objectStoreNames.contains(DOCS_METADATA_STORE_NAME)) {
+          db.deleteObjectStore(DOCS_METADATA_STORE_NAME);
+        }
+      }
       
-      // Ensure standard stores exist
+      // Ensure all stores exist, creating them if they don't.
       if (!db.objectStoreNames.contains(DATA_STORE_NAME)) {
         db.createObjectStore(DATA_STORE_NAME);
       }
       if (!db.objectStoreNames.contains(DOCS_FILES_STORE_NAME)) {
         db.createObjectStore(DOCS_FILES_STORE_NAME);
       }
-
-      // Robustly handle the metadata store migration
-      if (db.objectStoreNames.contains(DOCS_METADATA_STORE_NAME)) {
-        const store = tx.objectStore(DOCS_METADATA_STORE_NAME);
-        // The old, incorrect schema had a keyPath. The new one does not.
-        // If we find a keyPath, it's the wrong schema and must be recreated.
-        if (store.keyPath) { 
-          console.log(`Recreating '${DOCS_METADATA_STORE_NAME}' to fix keyPath issue.`);
-          db.deleteObjectStore(DOCS_METADATA_STORE_NAME);
-          db.createObjectStore(DOCS_METADATA_STORE_NAME);
-        }
-      } else {
-        // If the store doesn't exist at all (new install or broken state from a faulty v5 upgrade), create it.
-        console.log(`Creating '${DOCS_METADATA_STORE_NAME}'.`);
+      if (!db.objectStoreNames.contains(DOCS_METADATA_STORE_NAME)) {
+        // Create it correctly: with out-of-line keys (no keyPath).
         db.createObjectStore(DOCS_METADATA_STORE_NAME);
+        console.log(`Successfully created '${DOCS_METADATA_STORE_NAME}'.`);
       }
     },
   });
@@ -373,11 +372,12 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         try {
             const validatedMergedData = validateAndFixData(mergedData, userRef.current);
             const db = await getDb();
-            const localDocsMetadata = await db.getAll(DOCS_METADATA_STORE_NAME);
+            // FIX: Cast `localDocsMetadata` to `any[]` because `getAll` from IndexedDB returns `unknown[]`,
+            // which would cause property access errors below.
+            const localDocsMetadata: any[] = await db.getAll(DOCS_METADATA_STORE_NAME);
             
             const finalDocs = safeArray(validatedMergedData.documents, (doc: any) => {
                 if (!doc || typeof doc !== 'object' || !doc.id) return undefined;
-                // Fix: Explicitly type `meta` as `any` to resolve TypeScript error on property access.
                 const localMeta = localDocsMetadata.find((meta: any) => meta.id === doc.id);
                 
                 const mergedDoc = {
@@ -447,7 +447,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
                 const validatedData = validateAndFixData(storedData, user);
                 
-                const localDocsMetadataMap = new Map(localDocsMetadata.map(meta => [meta.id, meta]));
+                // FIX: Cast `localDocsMetadata` to `any[]` to allow property access on `meta` inside the map.
+                const localDocsMetadataMap = new Map((localDocsMetadata as any[]).map(meta => [meta.id, meta]));
 
                 const finalDocs = validatedData.documents.map(doc => {
                     const localMeta = localDocsMetadataMap.get(doc.id);
