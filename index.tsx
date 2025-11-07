@@ -18,6 +18,8 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js')
       .then(registration => {
         console.log('ServiceWorker registration successful with scope: ', registration.scope);
+        // Proactively check for an updated service worker on every page load.
+        registration.update();
       })
       .catch(error => {
         console.log('ServiceWorker registration failed: ', error);
