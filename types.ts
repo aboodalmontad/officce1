@@ -9,6 +9,7 @@ export interface Profile {
   role: 'user' | 'admin';
   created_at?: string; // ISO string
   updated_at?: Date;
+  admin_tasks_layout?: 'horizontal' | 'vertical';
 }
 
 
