@@ -44,7 +44,7 @@ const getInitialData = (): AppData => ({
 
 // --- IndexedDB Setup ---
 const DB_NAME = 'LawyerAppData';
-const DB_VERSION = 3; // Bump version to force upgrade for users with corrupted v2 DB
+const DB_VERSION = 4; // Bump version to force schema correction for all users.
 const DATA_STORE_NAME = 'appData';
 const DOCS_FILES_STORE_NAME = 'caseDocumentFiles';
 const DOCS_METADATA_STORE_NAME = 'caseDocumentMetadata';
@@ -52,20 +52,24 @@ const DOCS_METADATA_STORE_NAME = 'caseDocumentMetadata';
 
 async function getDb(): Promise<IDBPDatabase> {
   return openDB(DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion) {
+    upgrade(db, oldVersion, newVersion, tx) {
       console.log(`Upgrading DB from version ${oldVersion} to ${DB_VERSION}`);
       
-      if (oldVersion < 3) {
-        // Versions before 3 may have a misconfigured 'caseDocumentMetadata' store.
-        // To fix this, we delete and recreate it.
+      if (oldVersion < 4) {
+        // This block robustly fixes a recurring schema issue where 'caseDocumentMetadata'
+        // might exist without the required 'keyPath'.
         if (db.objectStoreNames.contains(DOCS_METADATA_STORE_NAME)) {
-          console.log(`Recreating '${DOCS_METADATA_STORE_NAME}' store to ensure correct configuration.`);
-          db.deleteObjectStore(DOCS_METADATA_STORE_NAME);
+          const store = tx.objectStore(DOCS_METADATA_STORE_NAME);
+          // If the keyPath is not 'id', the store is misconfigured.
+          if (store.keyPath !== 'id') {
+            console.log(`Recreating '${DOCS_METADATA_STORE_NAME}' store because its keyPath is incorrect.`);
+            db.deleteObjectStore(DOCS_METADATA_STORE_NAME);
+          }
         }
       }
       
       // Now, create stores if they don't exist. This handles both new setups
-      // and recreates the store we just deleted.
+      // and recreates the store we just deleted if it was faulty.
       if (!db.objectStoreNames.contains(DATA_STORE_NAME)) {
         console.log(`Creating object store: ${DATA_STORE_NAME}`);
         db.createObjectStore(DATA_STORE_NAME);
