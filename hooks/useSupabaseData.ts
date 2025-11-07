@@ -44,7 +44,7 @@ const getInitialData = (): AppData => ({
 
 // --- IndexedDB Setup ---
 const DB_NAME = 'LawyerAppData';
-const DB_VERSION = 9; // Bump version for robust schema fix.
+const DB_VERSION = 11; // Bump version for a more forceful schema fix.
 const DATA_STORE_NAME = 'appData';
 const DOCS_FILES_STORE_NAME = 'caseDocumentFiles';
 const DOCS_METADATA_STORE_NAME = 'caseDocumentMetadata';
@@ -55,33 +55,23 @@ async function getDb(): Promise<IDBPDatabase> {
     upgrade(db, oldVersion, newVersion, tx) {
       console.log(`Upgrading DB from version ${oldVersion} to ${newVersion}.`);
 
-      if (oldVersion < 9) {
-        console.log(`Running upgrade for v9: Verifying '${DOCS_METADATA_STORE_NAME}' schema.`);
-        // This logic robustly handles the case where the store exists but has the wrong configuration.
+      // Forceful recreation of the metadata store to fix recurring schema issues.
+      // This is safe because metadata is ephemeral and repopulated on load.
+      if (oldVersion < 11) {
+        console.log(`Running upgrade for v11: Recreating '${DOCS_METADATA_STORE_NAME}' with explicit keys.`);
         if (db.objectStoreNames.contains(DOCS_METADATA_STORE_NAME)) {
-          // Access the store within the transaction to inspect its properties.
-          const store = tx.objectStore(DOCS_METADATA_STORE_NAME);
-          if (store.keyPath !== 'id') {
-            console.warn(`'${DOCS_METADATA_STORE_NAME}' has incorrect keyPath ('${store.keyPath}'). Recreating store to fix.`);
-            db.deleteObjectStore(DOCS_METADATA_STORE_NAME);
-            db.createObjectStore(DOCS_METADATA_STORE_NAME, { keyPath: 'id' });
-          } else {
-            console.log(`'${DOCS_METADATA_STORE_NAME}' schema is already correct.`);
-          }
+          db.deleteObjectStore(DOCS_METADATA_STORE_NAME);
         }
+        // Create store without a keyPath, as we'll provide the key explicitly.
+        db.createObjectStore(DOCS_METADATA_STORE_NAME);
       }
       
-      // Ensure all stores exist, creating them if they don't. This is safe to run on every upgrade.
+      // Ensure other stores exist, creating them if they don't.
       if (!db.objectStoreNames.contains(DATA_STORE_NAME)) {
         db.createObjectStore(DATA_STORE_NAME);
       }
       if (!db.objectStoreNames.contains(DOCS_FILES_STORE_NAME)) {
         db.createObjectStore(DOCS_FILES_STORE_NAME);
-      }
-      if (!db.objectStoreNames.contains(DOCS_METADATA_STORE_NAME)) {
-        // This will run for a fresh install (oldVersion is 0).
-        db.createObjectStore(DOCS_METADATA_STORE_NAME, { keyPath: 'id' });
-        console.log(`Successfully created '${DOCS_METADATA_STORE_NAME}' with keyPath: 'id'.`);
       }
     },
   });
@@ -378,13 +368,12 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         try {
             const validatedMergedData = validateAndFixData(mergedData, userRef.current);
             const db = await getDb();
-            // FIX: Cast `localDocsMetadata` to `any[]` because `getAll` from IndexedDB returns `unknown[]`,
-            // which would cause property access errors below.
-            const localDocsMetadata: any[] = await db.getAll(DOCS_METADATA_STORE_NAME);
+            const localDocsMetadata = await db.getAll(DOCS_METADATA_STORE_NAME);
             
             const finalDocs = safeArray(validatedMergedData.documents, (doc: any) => {
                 if (!doc || typeof doc !== 'object' || !doc.id) return undefined;
-                const localMeta = localDocsMetadata.find((meta) => meta.id === doc.id);
+                // Fix: Cast meta to any to resolve TypeScript error
+                const localMeta = (localDocsMetadata as any[]).find((meta: any) => meta.id === doc.id);
                 
                 const mergedDoc = {
                     ...doc,
@@ -453,11 +442,10 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
                 const validatedData = validateAndFixData(storedData, user);
                 
-                // FIX: Cast `localDocsMetadata` to `any[]` to allow property access on `meta` inside the map.
-                const localDocsMetadataMap = new Map((localDocsMetadata as any[]).map(meta => [meta.id, meta]));
+                const localDocsMetadataMap = new Map((localDocsMetadata as any[]).map((meta: any) => [meta.id, meta]));
 
                 const finalDocs = validatedData.documents.map(doc => {
-                    const localMeta = localDocsMetadataMap.get(doc.id);
+                    const localMeta: any = localDocsMetadataMap.get(doc.id);
                     return { ...doc, localState: localMeta?.localState || doc.localState || 'pending_download' };
                 }).filter(doc => !!doc) as CaseDocument[];
                 
@@ -588,7 +576,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
                     if (uploadError && !uploadError.message.includes('Duplicate')) throw uploadError;
 
-                    await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'synced' });
+                    await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'synced' }, doc.id);
                     const docIndex = updatedDocuments.findIndex(d => d.id === doc.id);
                     if (docIndex > -1) {
                         updatedDocuments[docIndex] = { ...updatedDocuments[docIndex], localState: 'synced' };
@@ -596,7 +584,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                     }
                 } catch (error) {
                     console.error(`Failed to upload document ${doc.id}:`, error);
-                    await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'error' });
+                    await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'error' }, doc.id);
                     const docIndex = updatedDocuments.findIndex(d => d.id === doc.id);
                     if (docIndex > -1) {
                         updatedDocuments[docIndex] = { ...updatedDocuments[docIndex], localState: 'error' };
@@ -766,7 +754,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 updated_at: new Date(),
             };
             await db.put(DOCS_FILES_STORE_NAME, file, doc.id);
-            await db.put(DOCS_METADATA_STORE_NAME, doc);
+            await db.put(DOCS_METADATA_STORE_NAME, doc, doc.id);
             newDocs.push(doc);
         }
         setData(p => ({...p, documents: [...p.documents, ...newDocs]}));
@@ -799,14 +787,14 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 const downloadedFile = new File([blob], doc.name, { type: doc.type });
     
                 await db.put(DOCS_FILES_STORE_NAME, downloadedFile, doc.id);
-                await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'synced' });
+                await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'synced' }, doc.id);
     
                 setData(p => ({...p, documents: p.documents.map(d => d.id === docId ? {...d, localState: 'synced'} : d)}));
     
                 return downloadedFile;
             } catch (error: any) {
                 console.error(`Failed to download document ${docId}:`, error);
-                await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'error' });
+                await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'error' }, doc.id);
                 setData(p => ({...p, documents: p.documents.map(d => d.id === docId ? {...d, localState: 'error'} : d)}));
                 return null;
             }
