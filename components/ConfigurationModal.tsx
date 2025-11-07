@@ -3,9 +3,10 @@ import { ClipboardDocumentCheckIcon, ClipboardDocumentIcon, ExclamationTriangleI
 
 const unifiedScript = `
 -- =================================================================
--- السكربت الشامل والنهائي (الإصدار 31.5)
+-- السكربت الشامل والنهائي (الإصدار 32.0)
 -- =================================================================
 -- هذا السكربت يقوم بإعداد قاعدة البيانات بالكامل، تفعيل المزامنة الفورية، وإنشاء حساب مدير تلقائياً.
+-- يطبق هذا الإصدار صلاحيات أمان تعاونية تسمح لجميع المستخدمين بالاطلاع على البيانات ومزامنة الوثائق.
 -- انسخ هذا السكربت بالكامل وشغّله مرة واحدة فقط في Supabase SQL Editor.
 -- !! هام: عدّل رقم هاتف وكلمة مرور المدير في نهاية السكربت قبل التشغيل !!
 
@@ -126,7 +127,7 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
--- 5. SECURITY: RLS POLICIES
+-- 5. SECURITY: RLS POLICIES (COLLABORATIVE MODEL)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.assistants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
@@ -141,18 +142,21 @@ ALTER TABLE public.invoice_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.site_finances ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.case_documents ENABLE ROW LEVEL SECURITY;
 
--- RLS Policies for the 'profiles' table.
+-- RLS Policies for the 'profiles' table (special case).
 DROP POLICY IF EXISTS "Users can manage their own profile." ON public.profiles;
 DROP POLICY IF EXISTS "Admins can manage all profiles." ON public.profiles;
+DROP POLICY IF EXISTS "Authenticated users can view all profiles." ON public.profiles;
 
-CREATE POLICY "Users can manage their own profile." ON public.profiles FOR ALL
+CREATE POLICY "Authenticated users can view all profiles." ON public.profiles FOR SELECT
+  USING (auth.role() = 'authenticated');
+  
+CREATE POLICY "Users can manage their own profile." ON public.profiles FOR UPDATE
   USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
 
 CREATE POLICY "Admins can manage all profiles." ON public.profiles FOR ALL
   USING (public.is_admin())
   WITH CHECK (public.is_admin());
-
 
 -- RLS policies for all other user-specific tables.
 DO $$
@@ -165,20 +169,26 @@ BEGIN
         'invoices', 'invoice_items', 'case_documents', 'site_finances'
     ]
     LOOP
-        -- Drop all possible old policy names to ensure a clean slate
-        EXECUTE format('DROP POLICY IF EXISTS "Enable ALL for own data" ON public.%I;', table_name);
-        EXECUTE format('DROP POLICY IF EXISTS "Enable ALL for admin" ON public.%I;', table_name);
+        -- Clean up all possible old policy names.
         EXECUTE format('DROP POLICY IF EXISTS "Users can manage their own data" ON public.%I;', table_name);
         EXECUTE format('DROP POLICY IF EXISTS "Admins can manage all data" ON public.%I;', table_name);
+        EXECUTE format('DROP POLICY IF EXISTS "Authenticated users can view all data" ON public.%I;', table_name);
+        EXECUTE format('DROP POLICY IF EXISTS "Users can modify their own data" ON public.%I;', table_name);
 
-        -- Create a policy for regular users to access their own data.
+        -- 1. Any authenticated user can read any data in the table.
         EXECUTE format('
-            CREATE POLICY "Users can manage their own data" ON public.%I FOR ALL
+            CREATE POLICY "Authenticated users can view all data" ON public.%I FOR SELECT
+            USING (auth.role() = ''authenticated'');
+        ', table_name);
+
+        -- 2. Users can only insert, update, or delete their own data.
+        EXECUTE format('
+            CREATE POLICY "Users can modify their own data" ON public.%I FOR INSERT, UPDATE, DELETE
             USING (auth.uid() = user_id)
             WITH CHECK (auth.uid() = user_id);
         ', table_name);
 
-        -- Create a separate permissive policy for admin users.
+        -- 3. Admins get full unrestricted access (this combines with the above policies via OR logic).
         EXECUTE format('
             CREATE POLICY "Admins can manage all data" ON public.%I FOR ALL
             USING (public.is_admin())
@@ -458,17 +468,28 @@ const ConfigurationModal: React.FC<{ onRetry: () => void }> = ({ onRetry }) => {
                             <li>اضغط <strong className="font-semibold">Create bucket</strong>.</li>
                             <li>بعد إنشاء الحاوية، اذهب إلى <strong className="font-semibold">Policies</strong>.</li>
                             <li>اضغط <strong className="font-semibold">New Policy</strong> واختر <strong className="font-semibold">"Create a policy from scratch"</strong>.</li>
-                            <li>أنشئ 4 سياسات منفصلة (SELECT, INSERT, UPDATE, DELETE) باستخدام الإعدادات التالية لكل منها:</li>
+                            <li>أنشئ 4 سياسات منفصلة (واحدة لكل عملية) للسماح للمستخدمين بقراءة جميع الملفات وإدارة ملفاتهم فقط.</li>
                         </ol>
-                        <div className="p-4 bg-gray-50 border rounded-lg">
-                            <p className="font-semibold">إعدادات السياسات الأربع:</p>
-                            <ul className="list-disc list-inside mt-2 text-sm space-y-1">
-                                <li><strong>Policy Name:</strong> اسم وصفي (مثال: "Allow user select own files").</li>
-                                <li><strong>Allowed operation:</strong> اختر العملية (SELECT، ثم INSERT، ...إلخ).</li>
-                                <li><strong>Target roles:</strong> اختر <code className="bg-gray-200 p-1 rounded">authenticated</code>.</li>
-                                <li><strong>USING expression:</strong> الصق الشرط التالي في الصندوق:</li>
-                            </ul>
-                            <div className="mt-2">
+                        <div className="space-y-4">
+                            <div className="p-4 bg-gray-50 border rounded-lg">
+                                <p className="font-semibold">1. سياسة عرض الملفات (SELECT):</p>
+                                <ul className="list-disc list-inside mt-2 text-sm space-y-1">
+                                    <li><strong>Policy Name:</strong> <code className="bg-gray-200 p-1 rounded text-xs">Allow authenticated read access</code></li>
+                                    <li><strong>Allowed operation:</strong> <code className="bg-gray-200 p-1 rounded text-xs">SELECT</code></li>
+                                    <li><strong>Target roles:</strong> <code className="bg-gray-200 p-1 rounded text-xs">authenticated</code></li>
+                                    <li><strong>USING expression (انسخ والصق):</strong></li>
+                                </ul>
+                                <ScriptDisplay script={`(bucket_id = 'documents')`} />
+                            </div>
+                             <div className="p-4 bg-gray-50 border rounded-lg">
+                                <p className="font-semibold">2. سياسة إضافة وتعديل وحذف الملفات (INSERT, UPDATE, DELETE):</p>
+                                <p className="text-sm text-gray-600">أنشئ 3 سياسات منفصلة لهذه العمليات الثلاث، واستخدم نفس الإعدادات التالية في كل منها (غيّر فقط اسم السياسة والعملية المسموحة).</p>
+                                <ul className="list-disc list-inside mt-2 text-sm space-y-1">
+                                     <li><strong>Policy Name:</strong> اسم وصفي (مثال: <code className="bg-gray-200 p-1 rounded text-xs">Allow user insert own files</code>)</li>
+                                    <li><strong>Allowed operation:</strong> اختر العملية (<code className="bg-gray-200 p-1 rounded text-xs">INSERT</code> أو <code className="bg-gray-200 p-1 rounded text-xs">UPDATE</code> أو <code className="bg-gray-200 p-1 rounded text-xs">DELETE</code>)</li>
+                                    <li><strong>Target roles:</strong> <code className="bg-gray-200 p-1 rounded text-xs">authenticated</code></li>
+                                    <li><strong>USING expression / WITH CHECK expression (انسخ والصق):</strong></li>
+                                </ul>
                                 <ScriptDisplay script={`(bucket_id = 'documents' AND auth.uid()::text = (storage.foldername(name))[1])`} />
                             </div>
                         </div>

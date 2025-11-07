@@ -1,5 +1,5 @@
 // This version number is incremented to trigger the 'install' event and update the cache.
-const CACHE_NAME = 'lawyer-app-cache-v21';
+const CACHE_NAME = 'lawyer-app-cache-v22';
 
 // The list of URLs to cache has been expanded to include all critical,
 // external dependencies. This ensures the app is fully functional offline
@@ -26,6 +26,8 @@ const urlsToCache = [
   'https://esm.sh/recharts@^2.12.7',
   'https://esm.sh/idb@^8.0.0',
   'https://esm.sh/docx-preview@^0.1.20',
+  'https://esm.sh/pdfjs-dist@^4.4.178',
+  'https://esm.sh/pdfjs-dist@4.4.178/build/pdf.worker.mjs',
 ];
 
 self.addEventListener('install', event => {

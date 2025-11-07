@@ -33,6 +33,8 @@ async function build() {
                 'react-router-dom',
                 'react/*', // To handle react/jsx-runtime and other react sub-modules
                 'docx-preview',
+                'pdfjs-dist',
+                'pdfjs-dist/build/pdf.worker.mjs',
             ],
         });
 

@@ -52,12 +52,20 @@ const DOCS_METADATA_STORE_NAME = 'caseDocumentMetadata';
 
 async function getDb(): Promise<IDBPDatabase> {
   return openDB(DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion, newVersion, transaction) {
-      console.log(`Upgrading DB from version ${oldVersion} to ${newVersion}`);
-      // This upgrade logic is robust and idempotent. It checks for the existence
-      // of each object store before creating it, ensuring that running this on
-      // a fully or partially upgraded database won't cause errors.
-
+    upgrade(db, oldVersion) {
+      console.log(`Upgrading DB from version ${oldVersion} to ${DB_VERSION}`);
+      
+      if (oldVersion < 3) {
+        // Versions before 3 may have a misconfigured 'caseDocumentMetadata' store.
+        // To fix this, we delete and recreate it.
+        if (db.objectStoreNames.contains(DOCS_METADATA_STORE_NAME)) {
+          console.log(`Recreating '${DOCS_METADATA_STORE_NAME}' store to ensure correct configuration.`);
+          db.deleteObjectStore(DOCS_METADATA_STORE_NAME);
+        }
+      }
+      
+      // Now, create stores if they don't exist. This handles both new setups
+      // and recreates the store we just deleted.
       if (!db.objectStoreNames.contains(DATA_STORE_NAME)) {
         console.log(`Creating object store: ${DATA_STORE_NAME}`);
         db.createObjectStore(DATA_STORE_NAME);
@@ -68,7 +76,7 @@ async function getDb(): Promise<IDBPDatabase> {
       }
       if (!db.objectStoreNames.contains(DOCS_METADATA_STORE_NAME)) {
         console.log(`Creating object store: ${DOCS_METADATA_STORE_NAME}`);
-        db.createObjectStore(DOCS_METADATA_STORE_NAME);
+        db.createObjectStore(DOCS_METADATA_STORE_NAME, { keyPath: 'id' });
       }
     },
   });
@@ -549,6 +557,59 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         };
     }, [isOnline, user, fetchAndRefresh]);
 
+    // This effect handles automatic file uploads when the app is online.
+    React.useEffect(() => {
+        if (!isOnline || !user) return;
+
+        const uploadPendingFiles = async () => {
+            const db = await getDb();
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+
+            // Find documents that are marked for upload
+            const docsToUpload = data.documents.filter(d => d.localState === 'pending_upload');
+            if (docsToUpload.length === 0) return;
+
+            let documentsUpdated = false;
+            const updatedDocuments = [...data.documents];
+
+            for (const doc of docsToUpload) {
+                try {
+                    const file = await db.get(DOCS_FILES_STORE_NAME, doc.id);
+                    if (!file) throw new Error(`File for doc ${doc.id} not found in local DB for upload.`);
+                    
+                    const { error: uploadError } = await supabase.storage.from('documents').upload(doc.storagePath, file, { upsert: true });
+
+                    if (uploadError && !uploadError.message.includes('Duplicate')) throw uploadError;
+
+                    await db.put(DOCS_METADATA_STORE_NAME, { id: doc.id, localState: 'synced' });
+                    const docIndex = updatedDocuments.findIndex(d => d.id === doc.id);
+                    if (docIndex > -1) {
+                        updatedDocuments[docIndex] = { ...updatedDocuments[docIndex], localState: 'synced' };
+                        documentsUpdated = true;
+                    }
+                } catch (error) {
+                    console.error(`Failed to upload document ${doc.id}:`, error);
+                    await db.put(DOCS_METADATA_STORE_NAME, { id: doc.id, localState: 'error' });
+                    const docIndex = updatedDocuments.findIndex(d => d.id === doc.id);
+                    if (docIndex > -1) {
+                        updatedDocuments[docIndex] = { ...updatedDocuments[docIndex], localState: 'error' };
+                        documentsUpdated = true;
+                    }
+                }
+            }
+
+            if (documentsUpdated) {
+                setData(prev => ({ ...prev, documents: updatedDocuments }));
+                setDirty(true); // Mark data as dirty to sync the updated 'localState'
+            }
+        };
+
+        const handler = setTimeout(uploadPendingFiles, 2000); // Debounce to avoid rapid firing
+        return () => clearTimeout(handler);
+
+    }, [isOnline, user, data.documents]);
+
     const dismissAlert = (appointmentId: string) => {
         setTriggeredAlerts(prev => prev.filter(a => a.id !== appointmentId));
     };
@@ -657,8 +718,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
     const deleteClient = (clientId: string) => { setData(p => ({ ...p, clients: p.clients.filter(c => c.id !== clientId) })); createDeleteFunction('clients')(clientId); };
     const deleteCase = (caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.filter(cs => cs.id !== caseId) } : c) })); createDeleteFunction('cases')(caseId); };
-    const deleteStage = (stageId: string, caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.filter(st => st.id !== stageId) } : cs) } : c) })); createDeleteFunction('stages')(stageId); };
-    const deleteSession = (sessionId: string, stageId: string, caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.map(st => st.id === stageId ? { ...st, sessions: st.sessions.filter(s => s.id !== sessionId) } : st) } : cs) } : c) })); createDeleteFunction('sessions')(sessionId); };
+    const deleteStage = (stageId: string, caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: p.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.filter(st => st.id !== stageId) } : cs) } : c) })); createDeleteFunction('stages')(stageId); };
+    const deleteSession = (sessionId: string, stageId: string, caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: p.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.map(st => st.id === stageId ? { ...st, sessions: st.sessions.filter(s => s.id !== sessionId) } : st) } : cs) } : c) })); createDeleteFunction('sessions')(sessionId); };
     const deleteAdminTask = (taskId: string) => { setData(p => ({...p, adminTasks: p.adminTasks.filter(t => t.id !== taskId)})); createDeleteFunction('adminTasks')(taskId); };
     const deleteAppointment = (appointmentId: string) => { setData(p => ({...p, appointments: p.appointments.filter(a => a.id !== appointmentId)})); createDeleteFunction('appointments')(appointmentId); };
     const deleteAccountingEntry = (entryId: string) => { setData(p => ({...p, accountingEntries: p.accountingEntries.filter(e => e.id !== entryId)})); createDeleteFunction('accountingEntries')(entryId); };
@@ -680,15 +741,22 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         const newDocs: CaseDocument[] = [];
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
+            const docId = `doc-${Date.now()}-${i}`;
+            
+            // Extract file extension to create a safe storage path. e.g., '.pdf'
+            const lastDot = file.name.lastIndexOf('.');
+            const extension = lastDot !== -1 ? file.name.substring(lastDot) : '';
+            const safeStoragePath = `${user!.id}/${caseId}/${docId}${extension}`;
+
             const doc: CaseDocument = {
-                id: `doc-${Date.now()}-${i}`,
+                id: docId,
                 caseId,
                 userId: user!.id,
-                name: file.name,
-                type: file.type,
+                name: file.name, // Keep original name for display
+                type: file.type || 'application/octet-stream', // Fallback for unknown file types
                 size: file.size,
                 addedAt: new Date(),
-                storagePath: `${user!.id}/${caseId}/${`doc-${Date.now()}-${i}`}-${file.name}`,
+                storagePath: safeStoragePath, // Use the new safe path
                 localState: 'pending_upload',
                 updated_at: new Date(),
             };
@@ -702,7 +770,50 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
     const getDocumentFile = async (docId: string): Promise<File | null> => {
         const db = await getDb();
-        return await db.get(DOCS_FILES_STORE_NAME, docId) || null;
+        const supabase = getSupabaseClient();
+        const doc = data.documents.find(d => d.id === docId);
+    
+        if (!doc) {
+            console.error(`Document metadata not found for id: ${docId}`);
+            return null;
+        }
+    
+        // First, always check for a local file.
+        const localFile = await db.get(DOCS_FILES_STORE_NAME, docId);
+        if (localFile) {
+            return localFile;
+        }
+    
+        // If no local file, and it should be on the server, try downloading.
+        if (doc.localState === 'pending_download' && isOnline && supabase) {
+            try {
+                // Set transient 'downloading' state for immediate UI feedback.
+                setData(p => ({...p, documents: p.documents.map(d => d.id === docId ? {...d, localState: 'downloading' } : d)}));
+    
+                const { data: blob, error: downloadError } = await supabase.storage.from('documents').download(doc.storagePath);
+                if (downloadError) throw downloadError;
+                if (!blob) throw new Error("Download returned an empty blob.");
+    
+                const downloadedFile = new File([blob], doc.name, { type: doc.type });
+    
+                // Store the downloaded file and update metadata to 'synced'.
+                await db.put(DOCS_FILES_STORE_NAME, downloadedFile, doc.id);
+                await db.put(DOCS_METADATA_STORE_NAME, { id: doc.id, localState: 'synced' });
+    
+                // Update final app state.
+                setData(p => ({...p, documents: p.documents.map(d => d.id === docId ? {...d, localState: 'synced'} : d)}));
+    
+                return downloadedFile;
+            } catch (error: any) {
+                console.error(`Failed to download document ${docId}:`, error);
+                await db.put(DOCS_METADATA_STORE_NAME, { id: doc.id, localState: 'error' });
+                setData(p => ({...p, documents: p.documents.map(d => d.id === docId ? {...d, localState: 'error'} : d)}));
+                return null;
+            }
+        }
+        
+        // Return null if offline or file is missing without a 'pending_download' state.
+        return null;
     };
     
     const exportData = (): boolean => {

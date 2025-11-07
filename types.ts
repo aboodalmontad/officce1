@@ -143,7 +143,7 @@ export interface CaseDocument {
   size: number;
   addedAt: Date;
   storagePath: string; // e.g., 'user-uuid/case-id/doc-id-filename.pdf'
-  localState: 'synced' | 'pending_upload' | 'pending_download' | 'error'; 
+  localState: 'synced' | 'pending_upload' | 'pending_download' | 'error' | 'downloading'; 
   updated_at?: Date;
 }
 
