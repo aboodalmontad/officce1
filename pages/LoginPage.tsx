@@ -182,7 +182,11 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                 }
     
                 if (!cachedCredentialsRaw || !lastUserRaw) {
-                    throw new Error('فشل الاتصال بالخادم، ولا يوجد حساب مخزّن على هذا الجهاز. يرجى الاتصال بالإنترنت.');
+                    if (isOnline) {
+                        throw new Error('فشل الاتصال بالخادم. حاولنا تسجيل الدخول دون اتصال ولكن لم يتم العثور على بيانات اعتماد محفوظة. تأكد من اتصالك بالإنترنت ومن صحة إعدادات الخادم (CORS).');
+                    } else {
+                        throw new Error('لا يوجد اتصال بالإنترنت، ولا يوجد حساب مخزّن على هذا الجهاز لتسجيل الدخول دون اتصال.');
+                    }
                 }
     
                 const cachedCredentials = JSON.parse(cachedCredentialsRaw);

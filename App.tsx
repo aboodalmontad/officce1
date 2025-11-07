@@ -68,7 +68,7 @@ interface IDataContext extends AppData {
     deleteAssistant: (name: string) => void;
     deleteDocument: (doc: CaseDocument) => Promise<void>;
     addDocuments: (caseId: string, files: FileList) => Promise<void>;
-    getDocumentFile: (docId: string) => Promise<File | null>;
+    getDocumentFile: (doc: CaseDocument) => Promise<File | null>;
     postponeSession: (sessionId: string, newDate: Date, newReason: string) => void;
     showUnpostponedSessionsModal: boolean;
     setShowUnpostponedSessionsModal: (show: boolean) => void;
@@ -404,7 +404,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     } else if (error && status !== 406) {
                         // A real error occurred, and we have no cached data to fall back on.
                         if (!profileFromCache) {
-                            throw new Error('فشل الاتصال بالخادم لجلب ملفك الشخصي. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.');
+                            throw new Error(error.message);
                         } else {
                             // We have a cache, so we can continue. Log the error for debugging.
                             console.warn("Failed to refresh profile, using cached version. Error:", error.message);
@@ -425,7 +425,15 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
 
             } catch (e: any) {
                 console.error("Error in profile loading sequence:", e);
-                setAuthError(e.message);
+                let friendlyMessage = 'حدث خطأ غير متوقع أثناء التحقق من هويتك.';
+                const lowerMessage = String(e.message || '').toLowerCase();
+
+                if (lowerMessage.includes('failed to fetch')) {
+                    friendlyMessage = 'فشل الاتصال بالخادم لجلب ملفك الشخصي. يرجى التحقق من اتصالك بالإنترنت. إذا استمرت المشكلة، فقد تكون هناك مشكلة في إعدادات الخادم (CORS).';
+                } else if (e.message) {
+                    friendlyMessage = e.message;
+                }
+                setAuthError(friendlyMessage);
                 setProfile(null); // Clear profile on critical error
             } finally {
                 setIsAuthLoading(false); // Always stop the main "Checking identity" loader.
