@@ -16,16 +16,14 @@ export type SyncStatus = SyncStatusType;
 const defaultAssistants = ['أحمد', 'فاطمة', 'سارة', 'بدون تخصيص'];
 
 // --- User Settings Management ---
-interface UserSettings {
+interface LocalSettings {
     isAutoSyncEnabled: boolean;
     isAutoBackupEnabled: boolean;
-    adminTasksLayout: 'horizontal' | 'vertical';
 }
 
-const defaultSettings: UserSettings = {
+const defaultLocalSettings: LocalSettings = {
     isAutoSyncEnabled: true,
     isAutoBackupEnabled: true,
-    adminTasksLayout: 'vertical',
 };
 
 
@@ -283,7 +281,7 @@ const validateAndFixData = (loadedData: any, user: User | null): AppData => {
                 role: ['user', 'admin'].includes(profile.role) ? profile.role : 'user',
                 created_at: profile.created_at,
                 updated_at: reviveDate(profile.updated_at),
-                admin_tasks_layout: ['horizontal', 'vertical'].includes(profile.admin_tasks_layout) ? profile.admin_tasks_layout : 'horizontal',
+                admin_tasks_layout: ['horizontal', 'vertical'].includes(profile.admin_tasks_layout) ? profile.admin_tasks_layout : 'vertical',
             };
         }),
         siteFinances: safeArray(loadedData.siteFinances, (entry) => {
@@ -319,48 +317,63 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const supabase = getSupabaseClient();
     const userId = user?.id;
 
-    // User settings
-    const USER_SETTINGS_KEY = `lawyerAppSettings_${userId}`;
-    const [settings, setSettings] = React.useState<UserSettings>(defaultSettings);
+    // Local, per-device settings
+    const LOCAL_SETTINGS_KEY = `lawyerAppSettings_${userId}`;
+    const [localSettings, setLocalSettings] = React.useState<LocalSettings>(defaultLocalSettings);
+    
     const [triggeredAlerts, setTriggeredAlerts] = React.useState<Appointment[]>([]);
     const [realtimeAlerts, setRealtimeAlerts] = React.useState<RealtimeAlert[]>([]);
     const [showUnpostponedSessionsModal, setShowUnpostponedSessionsModal] = React.useState(false);
 
     const dbRef = React.useRef<IDBPDatabase | null>(null);
-    // Fix: Changed type of `syncTimeoutRef` from `NodeJS.Timeout` to `number` to match the browser's `setTimeout` return type.
     const syncTimeoutRef = React.useRef<number | null>(null);
     
-    // Load and save user settings
+    // Load and save local settings
     React.useEffect(() => {
         if (!userId) return;
         try {
-            const savedSettingsRaw = localStorage.getItem(USER_SETTINGS_KEY);
+            const savedSettingsRaw = localStorage.getItem(LOCAL_SETTINGS_KEY);
             if (savedSettingsRaw) {
                 const savedSettings = JSON.parse(savedSettingsRaw);
-                setSettings({ ...defaultSettings, ...savedSettings });
+                setLocalSettings({ ...defaultLocalSettings, ...savedSettings });
             }
         } catch (error) {
-            console.error('Failed to load settings from localStorage:', error);
+            console.error('Failed to load local settings from localStorage:', error);
         }
     }, [userId]);
 
-    const saveSettings = React.useCallback((newSettings: Partial<UserSettings>) => {
+    const saveLocalSettings = React.useCallback((newSettings: Partial<LocalSettings>) => {
         if (!userId) return;
         try {
-            const updatedSettings = { ...settings, ...newSettings };
-            setSettings(updatedSettings);
-            localStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(updatedSettings));
+            const updatedSettings = { ...localSettings, ...newSettings };
+            setLocalSettings(updatedSettings);
+            localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(updatedSettings));
         } catch (error) {
-            console.error('Failed to save settings to localStorage:', error);
+            console.error('Failed to save local settings to localStorage:', error);
         }
-    }, [userId, settings]);
+    }, [userId, localSettings]);
 
-    const isAutoSyncEnabled = settings.isAutoSyncEnabled;
-    const setAutoSyncEnabled = (enabled: boolean) => saveSettings({ isAutoSyncEnabled: enabled });
-    const isAutoBackupEnabled = settings.isAutoBackupEnabled;
-    const setAutoBackupEnabled = (enabled: boolean) => saveSettings({ isAutoBackupEnabled: enabled });
-    const adminTasksLayout = settings.adminTasksLayout;
-    const setAdminTasksLayout = (layout: 'horizontal' | 'vertical') => saveSettings({ adminTasksLayout: layout });
+    const isAutoSyncEnabled = localSettings.isAutoSyncEnabled;
+    const setAutoSyncEnabled = (enabled: boolean) => saveLocalSettings({ isAutoSyncEnabled: enabled });
+    const isAutoBackupEnabled = localSettings.isAutoBackupEnabled;
+    const setAutoBackupEnabled = (enabled: boolean) => saveLocalSettings({ isAutoBackupEnabled: enabled });
+    
+    // User profile settings (synced)
+    const adminTasksLayout = React.useMemo(() => 
+        data.profiles.find(p => p.id === userId)?.admin_tasks_layout || 'vertical', 
+        [data.profiles, userId]
+    );
+
+    const setAdminTasksLayout = (layout: 'horizontal' | 'vertical') => {
+        if (!userId) return;
+        setData(prevData => ({
+            ...prevData,
+            profiles: prevData.profiles.map(p => 
+                p.id === userId ? { ...p, admin_tasks_layout: layout, updated_at: new Date() } : p
+            )
+        }));
+        setIsDirty(true);
+    };
 
     // --- IndexedDB and Initial Data Load ---
     React.useEffect(() => {
@@ -379,15 +392,12 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 if (storedData) {
                     const validated = validateAndFixData(storedData, user);
                     
-                    // FIX: Correctly read document states from IndexedDB using a cursor to get both keys and values.
-                    // The original implementation was logically incorrect and caused type errors.
                     const docStateMap = new Map<string, CaseDocument['localState']>();
                     const tx = db.transaction(DOCS_METADATA_STORE_NAME, 'readonly');
                     const validStates: Set<CaseDocument['localState']> = new Set(['synced', 'pending_upload', 'pending_download', 'error', 'downloading']);
                     
                     for await (const cursor of tx.store) {
                         const stateValue = cursor.value?.localState;
-                        // Ensure the value from DB is a valid state before adding to map
                         if (typeof stateValue === 'string' && validStates.has(stateValue as any)) {
                             docStateMap.set(cursor.key as string, stateValue as CaseDocument['localState']);
                         }
@@ -440,13 +450,14 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     // --- Data Manipulation Wrappers ---
     const createSetter = <K extends keyof AppData>(key: K) => (updater: React.SetStateAction<AppData[K]>) => {
         setData(prevData => {
-            const value = prevData[key];
-            const newValue = updater instanceof Function ? updater(value) : updater;
-            if (newValue === value) {
-                return prevData;
+            const oldValue = prevData[key];
+            const newValue = typeof updater === 'function' ? (updater as (prevState: AppData[K]) => AppData[K])(oldValue) : updater;
+            
+            if (newValue !== oldValue) {
+                setIsDirty(true);
+                return { ...prevData, [key]: newValue };
             }
-            setIsDirty(true);
-            return { ...prevData, [key]: newValue };
+            return prevData;
         });
     };
 
@@ -473,8 +484,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         localData: data,
         deletedIds,
         onDataSynced: (mergedData) => {
-            // FIX: Pass merged data through validation to convert date strings to Date objects.
-            // This prevents 'getFullYear is not a function' errors after sync.
             const validatedData = validateAndFixData(mergedData, user);
             setData(validatedData);
             setIsDirty(false);
@@ -548,7 +557,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                         const sessionIndex = stage.sessions.findIndex(s => s.id === sessionId);
                         if (sessionIndex > -1 && !stage.sessions[sessionIndex].isPostponed) {
                             wasUpdated = true;
-                            sessionToClone = stage.sessions[sessionIndex];
+                            sessionToClone = { ...stage.sessions[sessionIndex] };
                             targetStageId = stage.id;
                             
                             const updatedSessions = [...stage.sessions];
@@ -593,7 +602,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                     updated_at: caseItem.stages.some(st => st.id === targetStageId) ? new Date() : caseItem.updated_at,
                     stages: caseItem.stages.map(stage => {
                         if (stage.id === targetStageId) {
-                            return { ...stage, sessions: [...stage.sessions, newSession] };
+                            return { ...stage, sessions: [...stage.sessions, newSession], updated_at: new Date() };
                         }
                         return stage;
                     })
