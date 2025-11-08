@@ -58,7 +58,7 @@ interface IDataContext extends AppData {
     realtimeAlerts: RealtimeAlert[];
     dismissRealtimeAlert: (alertId: number) => void;
     deleteClient: (clientId: string) => void;
-    deleteCase: (caseId: string, clientId: string) => Promise<void>;
+    deleteCase: (caseId: string, clientId: string) => void;
     deleteStage: (stageId: string, caseId: string, clientId: string) => void;
     deleteSession: (sessionId: string, stageId: string, caseId: string, clientId: string) => void;
     deleteAdminTask: (taskId: string) => void;
@@ -68,7 +68,7 @@ interface IDataContext extends AppData {
     deleteAssistant: (name: string) => void;
     deleteDocument: (doc: CaseDocument) => Promise<void>;
     addDocuments: (caseId: string, files: FileList) => Promise<void>;
-    getDocumentFile: (docId: string) => Promise<File | null>;
+    getDocumentFile: (doc: CaseDocument) => Promise<File | null>;
     postponeSession: (sessionId: string, newDate: Date, newReason: string) => void;
     showUnpostponedSessionsModal: boolean;
     setShowUnpostponedSessionsModal: (show: boolean) => void;
@@ -192,7 +192,7 @@ const Navbar: React.FC<{
                 <button onClick={() => onNavigate('home')} className="flex items-center" aria-label="العودة إلى الصفحة الرئيسية">
                     <div className="flex items-baseline gap-2">
                         <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
-                        <span className="text-xs font-mono text-gray-500">الإصدار 13</span>
+                        <span className="text-xs font-mono text-gray-500">الإصدار 15</span>
                     </div>
                 </button>
                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
@@ -271,32 +271,7 @@ const OfflineBanner: React.FC = () => {
 const DataProvider = DataContext.Provider;
 
 const LAST_USER_CACHE_KEY = 'lawyerAppLastUser';
-const LAST_USER_CREDENTIALS_CACHE_KEY = 'lawyerAppLastUserCredentials';
 const UNPOSTPONED_MODAL_SHOWN_KEY = 'lawyerAppUnpostponedModalShown';
-
-const normalizeMobileToE164 = (mobile: string): string | null => {
-    // Remove all non-digit characters to get a clean string of numbers
-    let digits = mobile.replace(/\D/g, '');
-    // Case 1: International format with double zero (e.g., 009639...)
-    if (digits.startsWith('009639') && digits.length === 14) {
-        return `+${digits.substring(2)}`; // Becomes +9639...
-    }
-    // Case 2: International format without plus/zeros (e.g., 9639...)
-    if (digits.startsWith('9639') && digits.length === 12) {
-        return `+${digits}`; // Becomes +9639...
-    }
-    // Case 3: Local format with leading zero (e.g., 09...)
-    if (digits.startsWith('09') && digits.length === 10) {
-        return `+963${digits.substring(1)}`; // Becomes +9639...
-    }
-    // Case 4: Local format without leading zero (e.g., 9...)
-    if (digits.startsWith('9') && digits.length === 9) {
-        return `+963${digits}`; // Becomes +9639...
-    }
-    // If none of the patterns match, the number is considered invalid for Syria.
-    return null;
-};
-
 
 const FullScreenLoader: React.FC<{ text?: string }> = ({ text = 'جاري التحميل...' }) => (
     <div className="fixed inset-0 bg-white flex flex-col items-center justify-center z-[100]">
@@ -429,7 +404,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     } else if (error && status !== 406) {
                         // A real error occurred, and we have no cached data to fall back on.
                         if (!profileFromCache) {
-                            throw new Error('فشل الاتصال بالخادم لجلب ملفك الشخصي. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.');
+                            throw new Error(error.message);
                         } else {
                             // We have a cache, so we can continue. Log the error for debugging.
                             console.warn("Failed to refresh profile, using cached version. Error:", error.message);
@@ -450,7 +425,15 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
 
             } catch (e: any) {
                 console.error("Error in profile loading sequence:", e);
-                setAuthError(e.message);
+                let friendlyMessage = 'حدث خطأ غير متوقع أثناء التحقق من هويتك.';
+                const lowerMessage = String(e.message || '').toLowerCase();
+
+                if (lowerMessage.includes('failed to fetch')) {
+                    friendlyMessage = 'فشل الاتصال بالخادم لجلب ملفك الشخصي. يرجى التحقق من اتصالك بالإنترنت. إذا استمرت المشكلة، فقد تكون هناك مشكلة في إعدادات الخادم (CORS).';
+                } else if (e.message) {
+                    friendlyMessage = e.message;
+                }
+                setAuthError(friendlyMessage);
                 setProfile(null); // Clear profile on critical error
             } finally {
                 setIsAuthLoading(false); // Always stop the main "Checking identity" loader.
@@ -460,7 +443,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         fetchAndSetProfile();
     }, [session, isOnline, supabase]);
 
-    const handleLogout = React.useCallback(async () => {
+    const handleLogout = async () => {
         setCurrentPage('home');
         if (supabase) {
             // Attempt to sign out from the server, but don't let it block the UI.
@@ -472,48 +455,8 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         // Manually clear local state for immediate feedback & reliable offline logout.
         // The onAuthStateChange listener will also catch this if online.
         setSession(null);
-    }, [supabase]);
+    };
     
-    // This effect handles re-authentication when coming online after an offline login.
-    React.useEffect(() => {
-        const reauthenticate = async () => {
-            if (isOnline && supabase && session && session.access_token === 'local-session') {
-                console.log("Online now, attempting to re-authenticate with stored credentials...");
-                try {
-                    const cachedCredentialsRaw = localStorage.getItem(LAST_USER_CREDENTIALS_CACHE_KEY);
-                    if (cachedCredentialsRaw) {
-                        const cachedCredentials = JSON.parse(cachedCredentialsRaw);
-                        const phone = normalizeMobileToE164(cachedCredentials.mobile);
-                        if (phone && cachedCredentials.password) {
-                            const email = `sy${phone.substring(1)}@email.com`;
-                            const { error: signInError } = await supabase.auth.signInWithPassword({
-                                email,
-                                password: cachedCredentials.password
-                            });
-
-                            if (signInError) {
-                                console.error("Failed to re-authenticate online:", signInError);
-                                setAuthError("فشل إعادة المصادقة عند العودة للاتصال. قد تكون كلمة المرور قد تغيرت أو أن الاتصال بالخادم غير مستقر. حاول إعادة المحاولة لاحقًا.");
-                            } else {
-                                console.log("Re-authentication successful.");
-                            }
-                        } else {
-                            console.warn("Could not re-authenticate: Invalid credentials in cache.");
-                            handleLogout();
-                        }
-                    } else {
-                        console.warn("Could not re-authenticate: No credentials cached.");
-                        handleLogout();
-                    }
-                } catch (e) {
-                    console.error("Critical error during re-authentication:", e);
-                    handleLogout();
-                }
-            }
-        };
-        reauthenticate();
-    }, [isOnline, session, supabase, handleLogout]);
-
     const handleLoginSuccess = (user: User, isOfflineLogin?: boolean) => {
         // Cache the user object to enable temporary profile creation if needed.
         localStorage.setItem(LAST_USER_CACHE_KEY, JSON.stringify(user));

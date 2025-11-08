@@ -238,18 +238,6 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                 (mergedFlatData as any)[key] = Array.from(finalMergedItems.values());
             }
             
-            // FIX: Post-merge consistency check to prevent foreign key errors. This ensures that if a parent
-            // (like a case) was deleted by another user, its children (like documents) are pruned before
-            // attempting to upsert them, which would otherwise violate database constraints.
-            const validCaseIds = new Set((mergedFlatData.cases || []).map(c => c.id));
-            if (mergedFlatData.case_documents) {
-                mergedFlatData.case_documents = mergedFlatData.case_documents.filter(doc => validCaseIds.has(doc.caseId));
-            }
-            // Also prune the list of items to be upserted to avoid sending orphaned data.
-            if (flatUpserts.case_documents) {
-                flatUpserts.case_documents = flatUpserts.case_documents.filter(doc => validCaseIds.has(doc.caseId));
-            }
-
             let successfulDeletions = getInitialDeletedIds();
 
             if (deletedIds.documentPaths && deletedIds.documentPaths.length > 0) {

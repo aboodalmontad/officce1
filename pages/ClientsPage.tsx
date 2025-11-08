@@ -375,9 +375,9 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
         setIsDeleteCaseModalOpen(true);
     };
     
-    const handleConfirmDeleteCase = async () => {
+    const handleConfirmDeleteCase = () => {
         if (caseToDelete) {
-            await deleteCase(caseToDelete.caseId, caseToDelete.clientId);
+            deleteCase(caseToDelete.caseId, caseToDelete.clientId);
         }
         setIsDeleteCaseModalOpen(false);
         setCaseToDelete(null);

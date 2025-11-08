@@ -189,22 +189,7 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         clients: data.clients?.map(({ contactInfo, ...rest }) => ({ ...rest, user_id: userId, contact_info: contactInfo })),
         cases: data.cases?.map(({ clientName, opponentName, feeAgreement, ...rest }) => ({ ...rest, user_id: userId, client_name: clientName, opponent_name: opponentName, fee_agreement: feeAgreement })),
         stages: data.stages?.map(({ caseNumber, firstSessionDate, decisionDate, decisionNumber, decisionSummary, decisionNotes, ...rest }) => ({ ...rest, user_id: userId, case_number: caseNumber, first_session_date: firstSessionDate, decision_date: decisionDate, decision_number: decisionNumber, decision_summary: decisionSummary, decision_notes: decisionNotes })),
-        sessions: data.sessions?.map((s: any) => ({
-            id: s.id,
-            user_id: userId,
-            stage_id: s.stage_id,
-            court: s.court,
-            case_number: s.caseNumber,
-            date: s.date,
-            client_name: s.clientName,
-            opponent_name: s.opponentName,
-            postponement_reason: s.postponementReason,
-            next_postponement_reason: s.nextPostponementReason,
-            is_postponed: s.isPostponed,
-            next_session_date: s.nextSessionDate,
-            assignee: s.assignee,
-            updated_at: s.updated_at
-        })),
+        sessions: data.sessions?.map(({ caseNumber, clientName, opponentName, postponementReason, nextPostponementReason, isPostponed, nextSessionDate, stageId, stageDecisionDate, ...rest }) => ({ ...rest, user_id: userId, case_number: caseNumber, client_name: clientName, opponent_name: opponentName, postponement_reason: postponementReason, next_postponement_reason: nextPostponementReason, is_postponed: isPostponed, next_session_date: nextSessionDate })),
         admin_tasks: data.admin_tasks?.map(({ dueDate, ...rest }) => ({ ...rest, user_id: userId, due_date: dueDate })),
         appointments: data.appointments?.map(({ reminderTimeInMinutes, ...rest }) => ({ ...rest, user_id: userId, reminder_time_in_minutes: reminderTimeInMinutes })),
         accounting_entries: data.accounting_entries?.map(({ clientId, caseId, clientName, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, case_id: caseId, client_name: clientName })),
@@ -212,7 +197,19 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         invoices: data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, client_name: clientName, case_id: caseId, case_subject: caseSubject, issue_date: issueDate, due_date: dueDate, tax_rate: taxRate })),
         invoice_items: data.invoice_items?.map(({ ...item }) => ({ ...item, user_id: userId })),
         case_documents: data.case_documents?.map(({ caseId, userId: localUserId, addedAt, storagePath, localState, ...rest }) => ({ ...rest, user_id: localUserId || userId, case_id: caseId, added_at: addedAt, storage_path: storagePath })),
-        profiles: data.profiles?.map(({ full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, ...rest }) => ({ ...rest, full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date })),
+        profiles: data.profiles?.map(p => ({
+            id: p.id,
+            full_name: p.full_name,
+            mobile_number: p.mobile_number,
+            is_approved: p.is_approved,
+            is_active: p.is_active,
+            subscription_start_date: p.subscription_start_date,
+            subscription_end_date: p.subscription_end_date,
+            role: p.role,
+            created_at: p.created_at,
+            updated_at: p.updated_at,
+            admin_tasks_layout: p.admin_tasks_layout || 'vertical'
+        })),
         site_finances: data.site_finances?.map(({ user_id, payment_date, ...rest }) => ({ ...rest, user_id, payment_date })),
     };
     
@@ -274,8 +271,20 @@ export const transformRemoteToLocal = (remote: any): Partial<FlatData> => {
         assistants: remote.assistants?.map((a: any) => ({ name: a.name })),
         invoices: remote.invoices?.map(({ client_id, client_name, case_id, case_subject, issue_date, due_date, tax_rate, ...r }: any) => ({ ...r, clientId: client_id, clientName: client_name, caseId: case_id, caseSubject: case_subject, issueDate: issue_date, dueDate: due_date, taxRate: tax_rate })),
         invoice_items: remote.invoice_items,
-        case_documents: remote.case_documents?.map(({ user_id, case_id, added_at, storage_path, ...r }: any) => ({...r, userId: user_id, caseId: case_id, addedAt: added_at, storagePath: storage_path })),
-        profiles: remote.profiles?.map(({ full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, ...r }: any) => ({ ...r, full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date })),
+        case_documents: remote.case_documents?.map(({ case_id, user_id, added_at, storage_path, ...r }: any) => ({ ...r, caseId: case_id, userId: user_id, addedAt: added_at, storagePath: storage_path })),
+        profiles: remote.profiles?.map((p: any) => ({
+            id: p.id,
+            full_name: p.full_name,
+            mobile_number: p.mobile_number,
+            is_approved: p.is_approved,
+            is_active: p.is_active,
+            subscription_start_date: p.subscription_start_date,
+            subscription_end_date: p.subscription_end_date,
+            role: p.role,
+            created_at: p.created_at,
+            updated_at: p.updated_at,
+            admin_tasks_layout: p.admin_tasks_layout || 'vertical'
+        })),
         site_finances: remote.site_finances,
     };
 };
