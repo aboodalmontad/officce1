@@ -58,7 +58,7 @@ interface IDataContext extends AppData {
     realtimeAlerts: RealtimeAlert[];
     dismissRealtimeAlert: (alertId: number) => void;
     deleteClient: (clientId: string) => void;
-    deleteCase: (caseId: string, clientId: string) => void;
+    deleteCase: (caseId: string, clientId: string) => Promise<void>;
     deleteStage: (stageId: string, caseId: string, clientId: string) => void;
     deleteSession: (sessionId: string, stageId: string, caseId: string, clientId: string) => void;
     deleteAdminTask: (taskId: string) => void;

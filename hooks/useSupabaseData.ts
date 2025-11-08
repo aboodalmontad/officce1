@@ -535,7 +535,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
         const handleRealtimeUpdate = (payload: any) => {
             console.log('Realtime change received:', payload);
-            setRealtimeAlerts(prev => [...prev, { id: Date.now(), message: `تم تحديث البيانات من قبل مستخدم آخر.`, type: 'sync' }]);
+            // setRealtimeAlerts(prev => [...prev, { id: Date.now(), message: `تم تحديث البيانات من قبل مستخدم آخر.`, type: 'sync' }]);
             fetchAndRefresh();
         };
 
@@ -737,7 +737,38 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     };
 
     const deleteClient = (clientId: string) => { setData(p => ({ ...p, clients: p.clients.filter(c => c.id !== clientId) })); createDeleteFunction('clients')(clientId); };
-    const deleteCase = (caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.filter(cs => cs.id !== caseId) } : c) })); createDeleteFunction('cases')(caseId); };
+    const deleteCase = async (caseId: string, clientId: string) => {
+        // Find documents to delete that are associated with the case
+        const docsToDelete = data.documents.filter(doc => doc.caseId === caseId);
+        const docIdsToDelete = docsToDelete.map(doc => doc.id);
+        const docPathsToDelete = docsToDelete.map(doc => doc.storagePath).filter(Boolean); // Ensure no null/empty paths
+
+        // Update local state by removing the case and its documents
+        setData(p => {
+            const updatedClients = p.clients.map(c => 
+                c.id === clientId 
+                ? { ...c, cases: c.cases.filter(cs => cs.id !== caseId) } 
+                : c
+            );
+            const updatedDocuments = p.documents.filter(doc => doc.caseId !== caseId);
+            return { ...p, clients: updatedClients, documents: updatedDocuments };
+        });
+
+        // Add all deleted IDs to the pending deletions list in IndexedDB
+        const db = await getDb();
+        setDeletedIds(prevDeletedIds => {
+            const newDeletedIds = { 
+                ...prevDeletedIds, 
+                cases: [...prevDeletedIds.cases, caseId],
+                documents: [...prevDeletedIds.documents, ...docIdsToDelete],
+                documentPaths: [...prevDeletedIds.documentPaths, ...docPathsToDelete],
+            };
+            db.put(DATA_STORE_NAME, newDeletedIds, `deletedIds_${userRef.current!.id}`);
+            return newDeletedIds;
+        });
+        
+        setDirty(true);
+    };
     const deleteStage = (stageId: string, caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: p.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.filter(st => st.id !== stageId) } : cs) } : c) })); createDeleteFunction('stages')(stageId); };
     const deleteSession = (sessionId: string, stageId: string, caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: p.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.map(st => st.id === stageId ? { ...st, sessions: st.sessions.filter(s => s.id !== sessionId) } : st) } : cs) } : c) })); createDeleteFunction('sessions')(sessionId); };
     const deleteAdminTask = (taskId: string) => { setData(p => ({...p, adminTasks: p.adminTasks.filter(t => t.id !== taskId)})); createDeleteFunction('adminTasks')(taskId); };
