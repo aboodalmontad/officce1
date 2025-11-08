@@ -141,13 +141,9 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
         setStatus('syncing', 'التحقق من الخادم...');
         const schemaCheck = await checkSupabaseSchema();
         if (!schemaCheck.success) {
-            if (schemaCheck.error === 'unconfigured' || schemaCheck.error === 'network') {
-                setStatus('unconfigured');
-            } else if (schemaCheck.error === 'uninitialized') {
-                setStatus('uninitialized', `قاعدة البيانات غير مهيأة: ${schemaCheck.message}`);
-            } else {
-                setStatus('error', `فشل الاتصال: ${schemaCheck.message}`);
-            }
+            if (schemaCheck.error === 'unconfigured') setStatus('unconfigured');
+            else if (schemaCheck.error === 'uninitialized') setStatus('uninitialized', `قاعدة البيانات غير مهيأة: ${schemaCheck.message}`);
+            else setStatus('error', `فشل الاتصال: ${schemaCheck.message}`);
             return;
         }
     
