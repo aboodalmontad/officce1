@@ -612,47 +612,73 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         setRealtimeAlerts(prev => prev.filter(a => a.id !== alertId));
     };
 
-    const updateNestedState = (clientId: string, caseId: string, stageId: string, sessionId: string | null, updater: (session: Session) => Session) => {
-         setData(prev => ({ ...prev, clients: prev.clients.map(c => {
-            if (c.id !== clientId) return c;
-            return { ...c, updated_at: new Date(), cases: c.cases.map(cs => {
-                if (cs.id !== caseId) return cs;
-                return { ...cs, updated_at: new Date(), stages: cs.stages.map(st => {
-                    if (st.id !== stageId) return st;
-                    const sessionIndex = sessionId ? st.sessions.findIndex(s => s.id === sessionId) : -1;
-                    if (sessionIndex === -1 && sessionId) return st; // session not found
-                    return {
-                        ...st,
-                        updated_at: new Date(),
-                        sessions: sessionId ? st.sessions.map((s, idx) => idx === sessionIndex ? updater(s) : s) : st.sessions,
-                    };
-                })};
-            })};
-        })}));
-        setDirty(true);
-    };
-
     const postponeSession = (sessionId: string, newDate: Date, newReason: string) => {
-        let found = false;
-        for (const client of data.clients) {
-            for (const caseItem of client.cases) {
-                for (const stage of caseItem.stages) {
-                    const session = stage.sessions.find(s => s.id === sessionId);
-                    if (session) {
-                        updateNestedState(client.id, caseItem.id, stage.id, sessionId, s => ({
-                            ...s,
-                            isPostponed: true,
-                            nextSessionDate: newDate,
-                            nextPostponementReason: newReason,
-                            updated_at: new Date(),
-                        }));
-                        found = true; break;
+        setData(prev => {
+            const newClients = prev.clients.map(client => {
+                let clientModified = false;
+                const newCases = client.cases.map(caseItem => {
+                    let caseModified = false;
+                    const newStages = caseItem.stages.map(stage => {
+                        const sessionIndex = stage.sessions.findIndex(s => s.id === sessionId);
+                        if (sessionIndex !== -1) {
+                            const oldSession = stage.sessions[sessionIndex];
+    
+                            // Create the new session for the future date
+                            const newSession: Session = {
+                                id: `session-${Date.now()}`,
+                                court: oldSession.court,
+                                caseNumber: oldSession.caseNumber,
+                                date: newDate,
+                                clientName: oldSession.clientName,
+                                opponentName: oldSession.opponentName,
+                                postponementReason: newReason, // The reason this session exists is the postponement of the previous one.
+                                isPostponed: false,
+                                assignee: oldSession.assignee, // Carry over the assignee
+                                updated_at: new Date(),
+                            };
+    
+                            // Update the old session to mark it as postponed
+                            const updatedOldSession: Session = {
+                                ...oldSession,
+                                isPostponed: true,
+                                nextSessionDate: newDate,
+                                nextPostponementReason: newReason,
+                                updated_at: new Date(),
+                            };
+    
+                            const newSessions = [...stage.sessions];
+                            newSessions[sessionIndex] = updatedOldSession;
+                            newSessions.push(newSession);
+                            
+                            caseModified = true;
+                            clientModified = true;
+    
+                            return {
+                                ...stage,
+                                sessions: newSessions,
+                                updated_at: new Date(),
+                            };
+                        }
+                        return stage;
+                    });
+    
+                    if (caseModified) {
+                        return { ...caseItem, stages: newStages, updated_at: new Date() };
                     }
+                    return caseItem;
+                });
+    
+                if (clientModified) {
+                    return { ...client, cases: newCases, updated_at: new Date() };
                 }
-                if (found) break;
-            }
-            if (found) break;
-        }
+                return client;
+            });
+    
+            // Only return a new object if something actually changed.
+            return newClients.some((c, i) => c !== prev.clients[i]) ? { ...prev, clients: newClients } : prev;
+        });
+    
+        setDirty(true);
     };
     
     // --- Memos for derived data ---
