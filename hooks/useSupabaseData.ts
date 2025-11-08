@@ -315,7 +315,10 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const [triggeredAlerts, setTriggeredAlerts] = React.useState<Appointment[]>([]);
     const [showUnpostponedSessionsModal, setShowUnpostponedSessionsModal] = React.useState(false);
     const isOnline = useOnlineStatus();
-    const isDownloadingRef = React.useRef(false);
+    const downloadingDocsRef = React.useRef<Set<string>>(new Set());
+    const lastDownloadAttemptRef = React.useRef(0);
+    const isUploadingRef = React.useRef(false);
+    const lastUploadAttemptRef = React.useRef(0);
 
     // --- User Settings State ---
     const [userSettings, setUserSettings] = React.useState<UserSettings>(defaultSettings);
@@ -455,6 +458,11 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             return null;
         }
     
+        // Add a lock to prevent concurrent downloads for the same document.
+        if (doc.localState === 'downloading' || downloadingDocsRef.current.has(doc.id)) {
+            return null;
+        }
+    
         const localFile = await db.get(DOCS_FILES_STORE_NAME, doc.id);
         if (localFile) {
             return localFile;
@@ -462,6 +470,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     
         if ((doc.localState === 'pending_download' || doc.localState === 'error') && isOnline && supabase) {
             try {
+                // Set state to 'downloading' to act as a lock
+                downloadingDocsRef.current.add(doc.id);
                 setData(p => ({...p, documents: p.documents.map(d => d.id === doc.id ? {...d, localState: 'downloading' } : d)}));
     
                 const { data: blob, error: downloadError } = await supabase.storage.from('documents').download(doc.storagePath);
@@ -473,14 +483,18 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 await db.put(DOCS_FILES_STORE_NAME, downloadedFile, doc.id);
                 await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'synced' }, doc.id);
     
+                // Update state to 'synced' to release lock and show correct status
                 setData(p => ({...p, documents: p.documents.map(d => d.id === doc.id ? {...d, localState: 'synced'} : d)}));
     
                 return downloadedFile;
             } catch (error: any) {
                 console.error(`Failed to download document ${doc.id}:`, error.message || error);
                 await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'error' }, doc.id);
+                // Update state to 'error' to release lock and show error status
                 setData(p => ({...p, documents: p.documents.map(d => d.id === doc.id ? {...d, localState: 'error'} : d)}));
                 return null;
+            } finally {
+                downloadingDocsRef.current.delete(doc.id);
             }
         }
         
@@ -638,77 +652,110 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         };
     }, [isOnline, user, fetchAndRefresh]);
 
-    // This effect handles automatic file uploads when the app is online.
+    // This effect handles automatic file uploads reactively, one by one, with a cooldown on failure.
     React.useEffect(() => {
-        if (!isOnline || !user) return;
+        const UPLOAD_COOLDOWN = 30000; // 30 seconds
 
-        const uploadPendingFiles = async () => {
+        if (!isOnline || !user || isDataLoading || isUploadingRef.current) return;
+
+        const now = Date.now();
+        if (now - lastUploadAttemptRef.current < UPLOAD_COOLDOWN) {
+            return; // Still in cooldown.
+        }
+
+        const uploadNextFile = async () => {
             const db = await getDb();
             const supabase = getSupabaseClient();
             if (!supabase) return;
 
-            // Find documents that are marked for upload
-            const docsToUpload = data.documents.filter(d => d.localState === 'pending_upload');
-            if (docsToUpload.length === 0) return;
+            // Prioritize new uploads, then retry failed ones.
+            const docToUpload = data.documents.find(d => d.localState === 'pending_upload' || d.localState === 'error');
 
-            let documentsUpdated = false;
-            const updatedDocuments = [...data.documents];
+            if (docToUpload) {
+                isUploadingRef.current = true; // Set lock early to prevent race conditions
 
-            for (const doc of docsToUpload) {
-                try {
-                    const file = await db.get(DOCS_FILES_STORE_NAME, doc.id);
-                    if (!file) throw new Error(`File for doc ${doc.id} not found in local DB for upload.`);
-                    
-                    const { error: uploadError } = await supabase.storage.from('documents').upload(doc.storagePath, file, { upsert: true });
-
-                    if (uploadError && !uploadError.message.includes('Duplicate')) throw uploadError;
-
-                    await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'synced' }, doc.id);
-                    const docIndex = updatedDocuments.findIndex(d => d.id === doc.id);
-                    if (docIndex > -1) {
-                        updatedDocuments[docIndex] = { ...updatedDocuments[docIndex], localState: 'synced' };
-                        documentsUpdated = true;
-                    }
-                } catch (error) {
-                    console.error(`Failed to upload document ${doc.id}:`, error);
-                    await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'error' }, doc.id);
-                    const docIndex = updatedDocuments.findIndex(d => d.id === doc.id);
-                    if (docIndex > -1) {
-                        updatedDocuments[docIndex] = { ...updatedDocuments[docIndex], localState: 'error' };
-                        documentsUpdated = true;
+                // If the state is 'error', we must verify it's an upload error by checking for the local file.
+                // If the local file doesn't exist, it's a download error, so we should skip it.
+                if (docToUpload.localState === 'error') {
+                    const fileExists = await db.get(DOCS_FILES_STORE_NAME, docToUpload.id);
+                    if (!fileExists) {
+                        isUploadingRef.current = false; // Release lock
+                        return; // Let the downloader handle this.
                     }
                 }
-            }
 
-            if (documentsUpdated) {
-                setData(prev => ({ ...prev, documents: updatedDocuments }));
-                setDirty(true); // Mark data as dirty to sync the updated 'localState'
+                try {
+                    const file = await db.get(DOCS_FILES_STORE_NAME, docToUpload.id);
+                    if (!file) throw new Error(`File for doc ${docToUpload.id} not found in local DB for upload.`);
+
+                    const { error: uploadError } = await supabase.storage.from('documents').upload(docToUpload.storagePath, file, { upsert: true });
+
+                    if (uploadError && !uploadError.message.includes('Duplicate')) {
+                        throw uploadError;
+                    }
+
+                    await db.put(DOCS_METADATA_STORE_NAME, { ...docToUpload, localState: 'synced' }, docToUpload.id);
+                    setData(prev => ({
+                        ...prev,
+                        documents: prev.documents.map(d => d.id === docToUpload.id ? { ...d, localState: 'synced' } : d)
+                    }));
+                    setDirty(true);
+
+                } catch (error) {
+                    console.error(`Failed to upload document ${docToUpload.id}:`, error);
+                    await db.put(DOCS_METADATA_STORE_NAME, { ...docToUpload, localState: 'error' }, docToUpload.id);
+                    setData(prev => ({
+                        ...prev,
+                        documents: prev.documents.map(d => d.id === docToUpload.id ? { ...d, localState: 'error' } : d)
+                    }));
+                    setDirty(true);
+                    lastUploadAttemptRef.current = Date.now();
+                } finally {
+                    isUploadingRef.current = false;
+                }
             }
         };
+        
+        uploadNextFile();
 
-        const handler = setTimeout(uploadPendingFiles, 2000); // Debounce to avoid rapid firing
-        return () => clearTimeout(handler);
-
-    }, [isOnline, user, data.documents]);
+    }, [isOnline, user, isDataLoading, data.documents]);
     
-    // This effect handles automatic file downloads reactively, one by one.
+    // This effect handles automatic file downloads reactively, one by one, with a cooldown on failure.
     React.useEffect(() => {
-        if (!isOnline || !user || isDataLoading || isDownloadingRef.current) return;
+        const DOWNLOAD_COOLDOWN = 30000; // 30 seconds
+    
+        // Don't run if offline, not logged in, data is loading, or another download is in progress globally.
+        if (!isOnline || !user || isDataLoading || downloadingDocsRef.current.size > 0) return;
+    
+        const now = Date.now();
+        if (now - lastDownloadAttemptRef.current < DOWNLOAD_COOLDOWN) {
+            return; // Still in cooldown from a previous failure.
+        }
     
         const downloadNextFile = async () => {
-            // Find the *first* document that needs downloading.
-            const docToDownload = data.documents.find(d => d.localState === 'pending_download');
+            // Find a document that needs downloading and is not already being processed.
+            const docToDownload = data.documents.find(d => 
+                (d.localState === 'pending_download' || d.localState === 'error') && 
+                !downloadingDocsRef.current.has(d.id)
+            );
     
             if (docToDownload) {
-                isDownloadingRef.current = true;
-                console.log(`Background downloader is processing document: ${docToDownload.name}`);
+                // If the state is 'error', we must verify it's a download error by ensuring no local file exists.
+                // If a local file exists, it's an upload error, so we should skip it.
+                if (docToDownload.localState === 'error') {
+                    const db = await getDb();
+                    const fileExists = await db.get(DOCS_FILES_STORE_NAME, docToDownload.id);
+                    if (fileExists) {
+                        return; // Let the uploader handle this.
+                    }
+                }
                 
-                // The getDocumentFile function will handle the download and update the document's state.
-                // When the state is updated (via setData), this effect will re-run, automatically
-                // picking up the next file after the current download completes or fails.
-                await getDocumentFile(docToDownload);
-                
-                isDownloadingRef.current = false;
+                const downloadedFile = await getDocumentFile(docToDownload);
+    
+                if (!downloadedFile) {
+                    // The download failed. Set cooldown to prevent hammering the server.
+                    lastDownloadAttemptRef.current = Date.now();
+                }
             }
         };
     
