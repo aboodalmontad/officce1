@@ -197,19 +197,7 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         invoices: data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, client_name: clientName, case_id: caseId, case_subject: caseSubject, issue_date: issueDate, due_date: dueDate, tax_rate: taxRate })),
         invoice_items: data.invoice_items?.map(({ ...item }) => ({ ...item, user_id: userId })),
         case_documents: data.case_documents?.map(({ caseId, userId: localUserId, addedAt, storagePath, localState, ...rest }) => ({ ...rest, user_id: localUserId || userId, case_id: caseId, added_at: addedAt, storage_path: storagePath })),
-        profiles: data.profiles?.map(p => ({
-            id: p.id,
-            full_name: p.full_name,
-            mobile_number: p.mobile_number,
-            is_approved: p.is_approved,
-            is_active: p.is_active,
-            subscription_start_date: p.subscription_start_date,
-            subscription_end_date: p.subscription_end_date,
-            role: p.role,
-            created_at: p.created_at,
-            updated_at: p.updated_at,
-            admin_tasks_layout: p.admin_tasks_layout || 'vertical'
-        })),
+        profiles: data.profiles?.map(({ full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, ...rest }) => ({ ...rest, full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date })),
         site_finances: data.site_finances?.map(({ user_id, payment_date, ...rest }) => ({ ...rest, user_id, payment_date })),
     };
     
@@ -271,20 +259,8 @@ export const transformRemoteToLocal = (remote: any): Partial<FlatData> => {
         assistants: remote.assistants?.map((a: any) => ({ name: a.name })),
         invoices: remote.invoices?.map(({ client_id, client_name, case_id, case_subject, issue_date, due_date, tax_rate, ...r }: any) => ({ ...r, clientId: client_id, clientName: client_name, caseId: case_id, caseSubject: case_subject, issueDate: issue_date, dueDate: due_date, taxRate: tax_rate })),
         invoice_items: remote.invoice_items,
-        case_documents: remote.case_documents?.map(({ case_id, user_id, added_at, storage_path, ...r }: any) => ({ ...r, caseId: case_id, userId: user_id, addedAt: added_at, storagePath: storage_path })),
-        profiles: remote.profiles?.map((p: any) => ({
-            id: p.id,
-            full_name: p.full_name,
-            mobile_number: p.mobile_number,
-            is_approved: p.is_approved,
-            is_active: p.is_active,
-            subscription_start_date: p.subscription_start_date,
-            subscription_end_date: p.subscription_end_date,
-            role: p.role,
-            created_at: p.created_at,
-            updated_at: p.updated_at,
-            admin_tasks_layout: p.admin_tasks_layout || 'vertical'
-        })),
+        case_documents: remote.case_documents?.map(({ user_id, case_id, added_at, storage_path, ...r }: any) => ({...r, userId: user_id, caseId: case_id, addedAt: added_at, storagePath: storage_path })),
+        profiles: remote.profiles?.map(({ full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, ...r }: any) => ({ ...r, full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date })),
         site_finances: remote.site_finances,
     };
 };

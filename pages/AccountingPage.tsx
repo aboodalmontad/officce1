@@ -172,136 +172,24 @@ const CustomTooltip = ({ active, payload, label, formatter }: any) => {
 };
 const ReportsTab: React.FC = () => {
     const { clients, accountingEntries } = useData();
-    const today = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(today.getDate() - 30);
+    const today = new Date(); const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(today.getDate() - 30);
     const [reportType, setReportType] = React.useState<'financial' | 'cases' | 'clients' | 'analytics' | ''>('');
     const [filters, setFilters] = React.useState({ startDate: toInputDateString(thirtyDaysAgo), endDate: toInputDateString(today), clientId: 'all' });
     const [reportData, setReportData] = React.useState<any>(null);
     const printReportsRef = React.useRef<HTMLDivElement>(null);
     const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setFilters({ ...filters, [e.target.name]: e.target.value });
-
     const handleGenerateReport = () => {
-        if (!reportType) {
-            alert('يرجى اختيار نوع التقرير.');
-            return;
-        }
-        const startDate = new Date(filters.startDate);
-        startDate.setHours(0, 0, 0, 0);
-        const endDate = new Date(filters.endDate);
-        endDate.setHours(23, 59, 59, 999);
-
+        if (!reportType) { alert('يرجى اختيار نوع التقرير.'); return; }
+        const startDate = new Date(filters.startDate); startDate.setHours(0, 0, 0, 0); const endDate = new Date(filters.endDate); endDate.setHours(23, 59, 59, 999);
         if (reportType === 'financial') generateFinancialReport(startDate, endDate);
         else if (reportType === 'cases') generateCaseStatusReport();
         else if (reportType === 'clients') generateClientActivityReport();
         else if (reportType === 'analytics') generateAnalyticsReport();
     };
-
-    const generateFinancialReport = (startDate: Date, endDate: Date) => {
-        const filteredEntries = accountingEntries.filter(entry => {
-            const entryDate = new Date(entry.date);
-            const inDateRange = entryDate >= startDate && entryDate <= endDate;
-            const clientMatch = filters.clientId === 'all' || entry.clientId === filters.clientId;
-            return inDateRange && clientMatch;
-        });
-        const totals = filteredEntries.reduce((acc, entry) => {
-            if (entry.type === 'income') acc.income += entry.amount;
-            else acc.expense += entry.amount;
-            return acc;
-        }, { income: 0, expense: 0 });
-        const clientName = filters.clientId !== 'all' ? `للموكل: ${clients.find(c => c.id === filters.clientId)?.name || ''}` : '';
-        const title = `ملخص مالي ${clientName} من ${formatDate(startDate)} إلى ${formatDate(endDate)}`;
-
-        setReportData({
-            type: 'financial',
-            totals: { ...totals, balance: totals.income - totals.expense },
-            entries: filteredEntries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-            title,
-        });
-    };
-
-    const generateCaseStatusReport = () => {
-        const allCases = clients.flatMap(client => client.cases.map(c => ({ ...c, clientName: client.name, clientId: client.id })));
-        const filteredCases = filters.clientId === 'all' ? allCases : allCases.filter(c => c.clientId === filters.clientId);
-        const caseCounts = filteredCases.reduce((acc, caseItem) => {
-            acc[caseItem.status] = (acc[caseItem.status] || 0) + 1;
-            return acc;
-        }, {} as Record<Case['status'], number>);
-        const statusMap: Record<Case['status'], string> = { active: 'نشطة', closed: 'مغلقة', on_hold: 'معلقة' };
-        const pieData = Object.entries(caseCounts).map(([status, value]) => ({ name: statusMap[status as Case['status']], value }));
-        const clientName = filters.clientId !== 'all' ? `للموكل: ${clients.find(c => c.id === filters.clientId)?.name || ''}` : '';
-        const title = `تقرير حالة القضايا ${clientName}`;
-
-        setReportData({ type: 'cases', cases: filteredCases, pieData, title });
-    };
-
-    const generateClientActivityReport = () => {
-        if (filters.clientId === 'all') {
-            setReportData(null);
-            alert('يرجى اختيار موكل لعرض تقرير النشاط.');
-            return;
-        }
-        const client = clients.find(c => c.id === filters.clientId);
-        if (!client) return;
-
-        const clientEntries = accountingEntries.filter(e => e.clientId === client.id);
-        const totals = clientEntries.reduce((acc, entry) => {
-            if (entry.type === 'income') acc.income += entry.amount;
-            else acc.expense += entry.amount;
-            return acc;
-        }, { income: 0, expense: 0 });
-
-        setReportData({
-            type: 'clients',
-            client,
-            cases: client.cases,
-            entries: clientEntries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-            totals: { ...totals, balance: totals.income - totals.expense },
-            title: `تقرير نشاط الموكل: ${client.name}`,
-        });
-    };
-    
-    const generateAnalyticsReport = () => {
-        const topClientsByCases = [...clients].map(c => ({ name: c.name, value: c.cases.length })).filter(c => c.value > 0).sort((a, b) => b.value - a.value).slice(0, 7);
-        const incomeByClient = accountingEntries.filter(e => e.type === 'income' && e.clientId).reduce((acc, entry) => {
-            acc[entry.clientId] = (acc[entry.clientId] || 0) + entry.amount;
-            return acc;
-        }, {} as Record<string, number>);
-        const topClientsByIncomeData = Object.entries(incomeByClient).map(([clientId, income]): { name: string; value: number } => ({ name: clients.find(c => c.id === clientId)?.name || 'غير معروف', value: income as number })).sort((a, b) => b.value - a.value);
-        const topClientsByIncome = topClientsByIncomeData.slice(0, 5);
-        if (topClientsByIncomeData.length > 5) {
-            const othersIncome = topClientsByIncomeData.slice(5).reduce((acc, curr) => acc + curr.value, 0);
-            topClientsByIncome.push({ name: 'آخرون', value: othersIncome });
-        }
-        const allCases = clients.flatMap(c => c.cases);
-        const incomeByCase = accountingEntries.filter(e => e.type === 'income' && e.caseId).reduce((acc, entry) => {
-            acc[entry.caseId] = (acc[entry.caseId] || 0) + entry.amount;
-            return acc;
-        }, {} as Record<string, number>);
-        const topCasesByIncome = Object.entries(incomeByCase).map(([caseId, income]) => {
-            const caseInfo = allCases.find(c => c.id === caseId);
-            const name = caseInfo ? `${caseInfo.clientName} - ${caseInfo.subject}` : 'قضية محذوفة';
-            return { name: name.length > 40 ? name.slice(0, 37) + '...' : name, value: income as number };
-        }).sort((a, b) => b.value - a.value).slice(0, 10);
-        const closedCasesWithDurations = allCases.filter(c => c.status === 'closed').map((c): { name: string; value: number } | null => {
-            const sessions = c.stages.flatMap((stage: Stage): Session[] => stage.sessions);
-            if (sessions.length < 2) return null;
-            const timestamps = sessions.map((session: Session) => new Date(session.date).getTime()).filter((t): t is number => !isNaN(t));
-            if (timestamps.length < 2) return null;
-            const minDate = Math.min(...timestamps);
-            const maxDate = Math.max(...timestamps);
-            const duration = Math.round((maxDate - minDate) / (1000 * 60 * 60 * 24)) + 1;
-            return { name: c.subject, value: duration };
-        }).filter((item): item is { name: string; value: number } => Boolean(item));
-        const longestCases = [...closedCasesWithDurations].sort((a, b) => b.value - a.value).slice(0, 10);
-
-        setReportData({
-            type: 'analytics',
-            data: { topClientsByCases, topClientsByIncome, topCasesByIncome, longestCases },
-            title: 'تحليلات شاملة لأداء المكتب'
-        });
-    };
-
+    const generateFinancialReport = (startDate: Date, endDate: Date) => { const filteredEntries = accountingEntries.filter(entry => { const entryDate = new Date(entry.date); const inDateRange = entryDate >= startDate && entryDate <= endDate; const clientMatch = filters.clientId === 'all' || entry.clientId === filters.clientId; return inDateRange && clientMatch; }); const totals = filteredEntries.reduce((acc, entry) => { if (entry.type === 'income') acc.income += entry.amount; else acc.expense += entry.amount; return acc; }, { income: 0, expense: 0 }); setReportData({ type: 'financial', totals: { ...totals, balance: totals.income - totals.expense }, entries: filteredEntries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()), title: `ملخص مالي ${filters.clientId !== 'all' ? `للموكل: ${clients.find(c => c.id === filters.clientId)?.name}` : ''} من ${formatDate(startDate)} إلى ${formatDate(endDate)}` }); };
+    const generateCaseStatusReport = () => { const allCases = clients.flatMap(client => client.cases.map(c => ({ ...c, clientName: client.name, clientId: client.id }))); const filteredCases = filters.clientId === 'all' ? allCases : allCases.filter(c => c.clientId === filters.clientId); const caseCounts = filteredCases.reduce((acc, caseItem) => { acc[caseItem.status] = (acc[caseItem.status] || 0) + 1; return acc; }, {} as Record<Case['status'], number>); const statusMap: Record<Case['status'], string> = { active: 'نشطة', closed: 'مغلقة', on_hold: 'معلقة' }; setReportData({ type: 'cases', cases: filteredCases, pieData: Object.entries(caseCounts).map(([status, value]) => ({ name: statusMap[status as Case['status']], value })), title: `تقرير حالة القضايا ${filters.clientId !== 'all' ? `للموكل: ${clients.find(c => c.id === filters.clientId)?.name}` : ''}` }); };
+    const generateClientActivityReport = () => { if (filters.clientId === 'all') { setReportData(null); alert('يرجى اختيار موكل لعرض تقرير النشاط.'); return; } const client = clients.find(c => c.id === filters.clientId); if (!client) return; const clientEntries = accountingEntries.filter(e => e.clientId === client.id); const totals = clientEntries.reduce((acc, entry) => { if (entry.type === 'income') acc.income += entry.amount; else acc.expense += entry.amount; return acc; }, { income: 0, expense: 0 }); setReportData({ type: 'clients', client, cases: client.cases, entries: clientEntries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()), totals: { ...totals, balance: totals.income - totals.expense }, title: `تقرير نشاط الموكل: ${client.name}` }); };
+    const generateAnalyticsReport = () => { const topClientsByCases = [...clients].map(c => ({ name: c.name, value: c.cases.length })).filter(c => c.value > 0).sort((a, b) => b.value - a.value).slice(0, 7); const incomeByClient = accountingEntries.filter(e => e.type === 'income' && e.clientId).reduce((acc, entry) => { acc[entry.clientId] = (acc[entry.clientId] || 0) + entry.amount; return acc; }, {} as Record<string, number>); const topClientsByIncomeData = Object.entries(incomeByClient).map(([clientId, income]): { name: string; value: number } => ({ name: clients.find(c => c.id === clientId)?.name || 'غير معروف', value: income as number })).sort((a, b) => b.value - a.value); const topClientsByIncome = topClientsByIncomeData.slice(0, 5); if (topClientsByIncomeData.length > 5) { const othersIncome = topClientsByIncomeData.slice(5).reduce((acc, curr) => acc + curr.value, 0); topClientsByIncome.push({ name: 'آخرون', value: othersIncome }); } const allCases = clients.flatMap(c => c.cases); const incomeByCase = accountingEntries.filter(e => e.type === 'income' && e.caseId).reduce((acc, entry) => { acc[entry.caseId] = (acc[entry.caseId] || 0) + entry.amount; return acc; }, {} as Record<string, number>); const topCasesByIncome = Object.entries(incomeByCase).map(([caseId, income]) => { const caseInfo = allCases.find(c => c.id === caseId); const name = caseInfo ? `${caseInfo.clientName} - ${caseInfo.subject}` : 'قضية محذوفة'; return { name: name.length > 40 ? name.slice(0, 37) + '...' : name, value: income as number }; }).sort((a, b) => b.value - a.value).slice(0, 10); const closedCasesWithDurations = allCases.filter(c => c.status === 'closed').map((c): { name: string; value: number } | null => { const sessions = c.stages.flatMap((stage: Stage): Session[] => stage.sessions); if (sessions.length < 2) return null; const timestamps = sessions.map((session: Session) => new Date(session.date).getTime()).filter((t): t is number => !isNaN(t)); if (timestamps.length < 2) return null; const minDate = Math.min(...timestamps); const maxDate = Math.max(...timestamps); const duration = Math.round((maxDate - minDate) / (1000 * 60 * 60 * 24)) + 1; return { name: c.subject, value: duration }; }).filter((item): item is { name: string; value: number } => Boolean(item)); const longestCases = [...closedCasesWithDurations].sort((a, b) => b.value - a.value).slice(0, 10); setReportData({ type: 'analytics', data: { topClientsByCases, topClientsByIncome, topCasesByIncome, longestCases, }, title: 'تحليلات شاملة لأداء المكتب' }); };
     const PIE_COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF'];
     const BAR_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
 

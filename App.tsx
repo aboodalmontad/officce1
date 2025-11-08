@@ -22,7 +22,7 @@ import { AdminTask, Profile, Session, Client, Appointment, AccountingEntry, Invo
 import { getSupabaseClient } from './supabaseClient';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import UnpostponedSessionsModal from './components/UnpostponedSessionsModal';
-import NotificationCenter, { RealtimeAlert } from './components/RealtimeNotifier';
+import NotificationCenter from './components/RealtimeNotifier';
 
 
 // --- Data Context for avoiding prop drilling ---
@@ -55,8 +55,6 @@ interface IDataContext extends AppData {
     exportData: () => boolean;
     triggeredAlerts: Appointment[];
     dismissAlert: (appointmentId: string) => void;
-    realtimeAlerts: RealtimeAlert[];
-    dismissRealtimeAlert: (alertId: number) => void;
     deleteClient: (clientId: string) => void;
     deleteCase: (caseId: string, clientId: string) => void;
     deleteStage: (stageId: string, caseId: string, clientId: string) => void;
@@ -68,7 +66,7 @@ interface IDataContext extends AppData {
     deleteAssistant: (name: string) => void;
     deleteDocument: (doc: CaseDocument) => Promise<void>;
     addDocuments: (caseId: string, files: FileList) => Promise<void>;
-    getDocumentFile: (doc: CaseDocument) => Promise<File | null>;
+    getDocumentFile: (docId: string) => Promise<File | null>;
     postponeSession: (sessionId: string, newDate: Date, newReason: string) => void;
     showUnpostponedSessionsModal: boolean;
     setShowUnpostponedSessionsModal: (show: boolean) => void;
@@ -192,7 +190,7 @@ const Navbar: React.FC<{
                 <button onClick={() => onNavigate('home')} className="flex items-center" aria-label="العودة إلى الصفحة الرئيسية">
                     <div className="flex items-baseline gap-2">
                         <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
-                        <span className="text-xs font-mono text-gray-500">الإصدار 15</span>
+                        <span className="text-xs font-mono text-gray-500">الإصدار 13</span>
                     </div>
                 </button>
                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
@@ -404,7 +402,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     } else if (error && status !== 406) {
                         // A real error occurred, and we have no cached data to fall back on.
                         if (!profileFromCache) {
-                            throw new Error(error.message);
+                            throw new Error('فشل الاتصال بالخادم لجلب ملفك الشخصي. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.');
                         } else {
                             // We have a cache, so we can continue. Log the error for debugging.
                             console.warn("Failed to refresh profile, using cached version. Error:", error.message);
@@ -425,15 +423,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
 
             } catch (e: any) {
                 console.error("Error in profile loading sequence:", e);
-                let friendlyMessage = 'حدث خطأ غير متوقع أثناء التحقق من هويتك.';
-                const lowerMessage = String(e.message || '').toLowerCase();
-
-                if (lowerMessage.includes('failed to fetch')) {
-                    friendlyMessage = 'فشل الاتصال بالخادم لجلب ملفك الشخصي. يرجى التحقق من اتصالك بالإنترنت. إذا استمرت المشكلة، فقد تكون هناك مشكلة في إعدادات الخادم (CORS).';
-                } else if (e.message) {
-                    friendlyMessage = e.message;
-                }
-                setAuthError(friendlyMessage);
+                setAuthError(e.message);
                 setProfile(null); // Clear profile on critical error
             } finally {
                 setIsAuthLoading(false); // Always stop the main "Checking identity" loader.
@@ -616,8 +606,6 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     <NotificationCenter
                         appointmentAlerts={supabaseData.triggeredAlerts}
                         dismissAppointmentAlert={supabaseData.dismissAlert}
-                        realtimeAlerts={supabaseData.realtimeAlerts}
-                        dismissRealtimeAlert={supabaseData.dismissRealtimeAlert}
                     />
                 </>
             )}
