@@ -626,26 +626,72 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     };
 
     const postponeSession = (sessionId: string, newDate: Date, newReason: string) => {
-        let found = false;
-        for (const client of data.clients) {
-            for (const caseItem of client.cases) {
-                for (const stage of caseItem.stages) {
-                    const session = stage.sessions.find(s => s.id === sessionId);
-                    if (session) {
-                        updateNestedState(client.id, caseItem.id, stage.id, sessionId, s => ({
-                            ...s,
-                            isPostponed: true,
-                            nextSessionDate: newDate,
-                            nextPostponementReason: newReason,
-                            updated_at: new Date(),
-                        }));
-                        found = true; break;
+        let wasPostponed = false;
+
+        setData(prevData => {
+            const updatedClients = prevData.clients.map(client => {
+                let clientNeedsUpdate = false;
+                const updatedCases = client.cases.map(caseItem => {
+                    let caseNeedsUpdate = false;
+                    const updatedStages = caseItem.stages.map(stage => {
+                        const sessionIndex = stage.sessions.findIndex(s => s.id === sessionId);
+
+                        if (sessionIndex !== -1) {
+                            wasPostponed = true;
+                            caseNeedsUpdate = true;
+                            clientNeedsUpdate = true;
+
+                            const originalSession = stage.sessions[sessionIndex];
+
+                            // 1. Mark the original session as postponed
+                            const updatedOldSession: Session = {
+                                ...originalSession,
+                                isPostponed: true,
+                                nextSessionDate: newDate,
+                                nextPostponementReason: newReason,
+                                updated_at: new Date(),
+                            };
+
+                            // 2. Create a new session for the new date
+                            const newSession: Session = {
+                                ...originalSession,
+                                id: `session-${Date.now()}`,
+                                date: newDate,
+                                isPostponed: false,
+                                postponementReason: newReason, // Reason why *this* session is happening
+                                nextSessionDate: undefined,
+                                nextPostponementReason: undefined,
+                                updated_at: new Date(),
+                            };
+                            
+                            const newSessions = [...stage.sessions];
+                            newSessions[sessionIndex] = updatedOldSession;
+                            newSessions.push(newSession);
+
+                            return { ...stage, sessions: newSessions, updated_at: new Date() };
+                        }
+                        return stage;
+                    });
+                    
+                    if (caseNeedsUpdate) {
+                        return { ...caseItem, stages: updatedStages, updated_at: new Date() };
                     }
+                    return caseItem;
+                });
+
+                if (clientNeedsUpdate) {
+                    return { ...client, cases: updatedCases, updated_at: new Date() };
                 }
-                if (found) break;
+                return client;
+            });
+
+            if (wasPostponed) {
+                setDirty(true);
+                return { ...prevData, clients: updatedClients };
             }
-            if (found) break;
-        }
+            
+            return prevData; // No changes
+        });
     };
     
     // --- Memos for derived data ---
@@ -705,8 +751,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
     const deleteClient = (clientId: string) => { setData(p => ({ ...p, clients: p.clients.filter(c => c.id !== clientId) })); createDeleteFunction('clients')(clientId); };
     const deleteCase = (caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.filter(cs => cs.id !== caseId) } : c) })); createDeleteFunction('cases')(caseId); };
-    const deleteStage = (stageId: string, caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: p.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.filter(st => st.id !== stageId) } : cs) } : c) })); createDeleteFunction('stages')(stageId); };
-    const deleteSession = (sessionId: string, stageId: string, caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: p.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.map(st => st.id === stageId ? { ...st, sessions: st.sessions.filter(s => s.id !== sessionId) } : st) } : cs) } : c) })); createDeleteFunction('sessions')(sessionId); };
+    const deleteStage = (stageId: string, caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.filter(st => st.id !== stageId) } : cs) } : c) })); createDeleteFunction('stages')(stageId); };
+    const deleteSession = (sessionId: string, stageId: string, caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.map(st => st.id === stageId ? { ...st, sessions: st.sessions.filter(s => s.id !== sessionId) } : st) } : cs) } : c) })); createDeleteFunction('sessions')(sessionId); };
     const deleteAdminTask = (taskId: string) => { setData(p => ({...p, adminTasks: p.adminTasks.filter(t => t.id !== taskId)})); createDeleteFunction('adminTasks')(taskId); };
     const deleteAppointment = (appointmentId: string) => { setData(p => ({...p, appointments: p.appointments.filter(a => a.id !== appointmentId)})); createDeleteFunction('appointments')(appointmentId); };
     const deleteAccountingEntry = (entryId: string) => { setData(p => ({...p, accountingEntries: p.accountingEntries.filter(e => e.id !== entryId)})); createDeleteFunction('accountingEntries')(entryId); };
