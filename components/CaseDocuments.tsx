@@ -25,6 +25,15 @@ const SyncStatusIcon: React.FC<{ state: CaseDocument['localState'] }> = ({ state
     }
 };
 
+const getFileIcon = (doc: CaseDocument) => {
+    const type = doc.type;
+    const name = doc.name.toLowerCase();
+    if (type.startsWith('image/')) return <PhotoIcon className="w-12 h-12 text-gray-400" />;
+    if (type === 'application/pdf' || name.endsWith('.pdf')) return <DocumentTextIcon className="w-12 h-12 text-red-500" />;
+    if (type.includes('word') || name.endsWith('.docx') || name.endsWith('.doc')) return <DocumentTextIcon className="w-12 h-12 text-blue-500" />;
+    return <DocumentTextIcon className="w-12 h-12 text-gray-400" />;
+};
+
 
 const FilePreview: React.FC<{ doc: CaseDocument, onPreview: (doc: CaseDocument) => void, onDelete: (doc: CaseDocument) => void }> = ({ doc, onPreview, onDelete }) => {
     const [thumbnailUrl, setThumbnailUrl] = React.useState<string | null>(null);
@@ -86,7 +95,7 @@ const FilePreview: React.FC<{ doc: CaseDocument, onPreview: (doc: CaseDocument) 
                     <img src={thumbnailUrl} alt={doc.name} className="object-cover w-full h-full" />
                 ) : (
                     <div className="flex-grow flex items-center justify-center bg-gray-200 w-full h-full">
-                        <DocumentTextIcon className="w-12 h-12 text-gray-400" />
+                        {getFileIcon(doc)}
                     </div>
                 )}
             </div>
@@ -121,7 +130,7 @@ const TextPreview: React.FC<{ file: File; name: string }> = ({ file, name }) => 
     );
 };
 
-const DocxPreview: React.FC<{ file: File; name: string; onClose: () => void; onDownload: () => void }> = ({ file, name, onClose, onDownload }) => {
+const DocxPreview: React.FC<{ file: File; name: string }> = ({ file, name }) => {
     const previewerRef = React.useRef<HTMLDivElement>(null);
     const [error, setError] = React.useState<string | null>(null);
     const [isLoading, setIsLoading] = React.useState(true);
@@ -145,19 +154,7 @@ const DocxPreview: React.FC<{ file: File; name: string; onClose: () => void; onD
     }, [file, isOldDocFormat]);
 
     return (
-        <div className="w-full h-full bg-gray-100 p-4 rounded-lg overflow-auto flex flex-col">
-            <div className="flex justify-between items-center border-b border-gray-300 pb-2 mb-4 flex-shrink-0">
-                <h3 className="text-lg font-semibold text-gray-800">{name}</h3>
-                <div className="flex items-center gap-4">
-                    <button onClick={onDownload} className="flex items-center gap-2 text-sm px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                        <ArrowDownTrayIcon className="w-4 h-4" />
-                        <span>تنزيل الملف</span>
-                    </button>
-                    <button onClick={onClose} className="p-2 text-gray-500 hover:bg-gray-200 rounded-full">
-                        <XMarkIcon className="w-5 h-5" />
-                    </button>
-                </div>
-            </div>
+        <div className="w-full h-full bg-gray-100 rounded-lg overflow-auto flex flex-col">
             <div className="flex-grow bg-white p-2 rounded shadow-inner overflow-auto relative">
                 {isLoading && (
                     <div className="absolute inset-0 flex items-center justify-center bg-white/70">
@@ -193,7 +190,6 @@ const PreviewModal: React.FC<{ doc: CaseDocument; onClose: () => void }> = ({ do
     const [error, setError] = React.useState<string | null>(null);
     const [isLoading, setIsLoading] = React.useState(true);
 
-    // Get the latest doc state from context, in case it was updated by a download
     const currentDoc = documents.find(d => d.id === doc.id) || doc;
 
     React.useEffect(() => {
@@ -202,9 +198,7 @@ const PreviewModal: React.FC<{ doc: CaseDocument; onClose: () => void }> = ({ do
             setIsLoading(true);
             setError(null);
             try {
-                // getDocumentFile now handles downloading and updates state internally
                 const retrievedFile = await getDocumentFile(doc);
-                
                 if (retrievedFile) {
                     setFile(retrievedFile);
                     url = URL.createObjectURL(retrievedFile);
@@ -213,7 +207,7 @@ const PreviewModal: React.FC<{ doc: CaseDocument; onClose: () => void }> = ({ do
                     const latestDocState = documents.find(d => d.id === doc.id)?.localState;
                     if (latestDocState === 'error') {
                         setError('فشل تنزيل الملف. يرجى التحقق من اتصالك بالإنترنت والتأكد من تطبيق صلاحيات التخزين (Storage Policies) بشكل صحيح في لوحة تحكم Supabase.');
-                    } else {
+                    } else if (latestDocState !== 'downloading') {
                         setError('الملف غير متوفر محلياً. حاول مرة أخرى عند توفر اتصال بالإنترنت لتنزيله.');
                     }
                 }
@@ -231,7 +225,7 @@ const PreviewModal: React.FC<{ doc: CaseDocument; onClose: () => void }> = ({ do
                 URL.revokeObjectURL(url);
             }
         };
-    }, [doc, getDocumentFile]);
+    }, [doc.id, documents]);
 
 
     const handleDownload = () => {
@@ -246,10 +240,7 @@ const PreviewModal: React.FC<{ doc: CaseDocument; onClose: () => void }> = ({ do
     };
 
     const renderPreview = () => {
-        if (!file || !objectUrl) return null;
-        
-        // Show a loading indicator if the file is currently being downloaded
-        if (currentDoc.localState === 'downloading') {
+        if (currentDoc.localState === 'downloading' || isLoading) {
             return (
                 <div className="flex flex-col items-center justify-center h-full">
                     <CloudArrowDownIcon className="w-12 h-12 text-blue-500 animate-spin mb-4" />
@@ -258,11 +249,19 @@ const PreviewModal: React.FC<{ doc: CaseDocument; onClose: () => void }> = ({ do
             );
         }
 
-        if (file.type.startsWith('image/')) return <img src={objectUrl} alt={doc.name} className="max-h-full max-w-full object-contain mx-auto" />;
-        if (file.type.startsWith('text/')) return <TextPreview file={file} name={doc.name} />;
-        if (doc.name.toLowerCase().endsWith('.docx') || doc.name.toLowerCase().endsWith('.doc')) {
-             return <DocxPreview file={file} name={doc.name} onClose={onClose} onDownload={handleDownload} />;
+        if (error) {
+             return <div className="flex flex-col items-center justify-center h-full p-4"><ExclamationTriangleIcon className="w-10 h-10 text-red-500 mb-4"/><p className="text-red-700 text-center">{error}</p></div>;
         }
+
+        if (!file || !objectUrl) {
+            return <div className="flex items-center justify-center h-full"><p className="text-gray-500">لا يمكن عرض الملف.</p></div>;
+        }
+        
+        if (file.type.startsWith('image/')) return <img src={objectUrl} alt={doc.name} className="max-h-full max-w-full object-contain mx-auto" />;
+        if (file.type === 'application/pdf') return <embed src={objectUrl} type="application/pdf" width="100%" height="100%" />;
+        if (doc.name.toLowerCase().endsWith('.docx') || doc.name.toLowerCase().endsWith('.doc')) return <DocxPreview file={file} name={doc.name} />;
+        if (file.type.startsWith('text/')) return <TextPreview file={file} name={doc.name} />;
+        
         return (
             <div className="text-center p-8 flex flex-col items-center justify-center h-full">
                 <DocumentTextIcon className="w-16 h-16 text-gray-400 mb-4" />
@@ -275,13 +274,27 @@ const PreviewModal: React.FC<{ doc: CaseDocument; onClose: () => void }> = ({ do
             </div>
         );
     };
+    
+    const isComplexPreview = file && (file.type === 'application/pdf' || doc.name.toLowerCase().endsWith('.docx') || doc.name.toLowerCase().endsWith('.doc'));
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className="bg-white rounded-lg shadow-xl w-full h-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                {isLoading && <div className="flex items-center justify-center h-full"><ArrowPathIcon className="w-8 h-8 animate-spin text-blue-500" /></div>}
-                {error && <div className="flex flex-col items-center justify-center h-full p-4"><ExclamationTriangleIcon className="w-10 h-10 text-red-500 mb-4"/><p className="text-red-700 text-center">{error}</p></div>}
-                {!isLoading && !error && renderPreview()}
+            <div className="bg-white rounded-lg shadow-xl w-full h-full max-w-6xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                <header className="flex justify-between items-center p-3 border-b bg-gray-50 flex-shrink-0">
+                    <h3 className="text-lg font-semibold text-gray-800 truncate">{doc.name}</h3>
+                    <div className="flex items-center gap-4">
+                        <button onClick={handleDownload} className="flex items-center gap-2 text-sm px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                            <ArrowDownTrayIcon className="w-4 h-4" />
+                            <span>تنزيل</span>
+                        </button>
+                        <button onClick={onClose} className="p-2 text-gray-500 hover:bg-gray-200 rounded-full">
+                            <XMarkIcon className="w-5 h-5" />
+                        </button>
+                    </div>
+                </header>
+                 <main className="flex-grow p-1 bg-gray-200 overflow-auto">
+                    {renderPreview()}
+                </main>
             </div>
         </div>
     );
@@ -334,17 +347,21 @@ const CameraModal: React.FC<{ onClose: () => void; onCapture: (file: File) => vo
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center z-50" onClick={onClose}>
-            <div className="relative w-full max-w-4xl aspect-video bg-black" onClick={e => e.stopPropagation()}>
-                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-contain"></video>
+        <div className="fixed inset-0 bg-black flex flex-col z-50" onClick={onClose}>
+            <div className="relative w-full h-full" onClick={e => e.stopPropagation()}>
+                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>
                 <canvas ref={canvasRef} className="hidden"></canvas>
                 {error && <div className="absolute inset-0 flex items-center justify-center text-white bg-black/50 p-4">{error}</div>}
-            </div>
-            <div className="flex items-center gap-8 mt-4" onClick={e => e.stopPropagation()}>
-                <button onClick={onClose} className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">إلغاء</button>
-                <button onClick={handleCapture} className="p-4 bg-white rounded-full shadow-lg" aria-label="التقاط صورة">
-                    <div className="w-12 h-12 rounded-full bg-blue-600 ring-4 ring-white"></div>
+                
+                <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-black/50 text-white rounded-full transition-opacity hover:opacity-100 opacity-80">
+                    <XMarkIcon className="w-6 h-6" />
                 </button>
+                
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-6 flex justify-center items-center">
+                    <button onClick={handleCapture} className="p-4 bg-white rounded-full shadow-lg" aria-label="التقاط صورة">
+                        <div className="w-12 h-12 rounded-full bg-blue-600 ring-4 ring-white ring-offset-2 ring-offset-transparent"></div>
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -352,7 +369,7 @@ const CameraModal: React.FC<{ onClose: () => void; onCapture: (file: File) => vo
 
 
 const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
-    const { documents, addDocuments, deleteDocument, getDocumentFile } = useData();
+    const { documents, addDocuments, deleteDocument } = useData();
     const [isDeleteModalOpen, setIsDeleteModalOpen] = React.useState(false);
     const [docToDelete, setDocToDelete] = React.useState<CaseDocument | null>(null);
     const [previewDoc, setPreviewDoc] = React.useState<CaseDocument | null>(null);
@@ -409,16 +426,8 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
         setIsCameraOpen(false);
     };
     
-    const handlePreview = async (doc: CaseDocument) => {
-        if (doc.type === 'application/pdf') {
-            const file = await getDocumentFile(doc);
-            if (file) {
-                const url = URL.createObjectURL(file);
-                window.open(url, '_blank');
-            }
-        } else {
-            setPreviewDoc(doc);
-        }
+    const handlePreview = (doc: CaseDocument) => {
+        setPreviewDoc(doc);
     };
 
     return (
