@@ -3,7 +3,7 @@ import { ClipboardDocumentCheckIcon, ClipboardDocumentIcon, ExclamationTriangleI
 
 const unifiedScript = `
 -- =================================================================
--- السكربت الشامل والنهائي (الإصدار 32.1)
+-- السكربت الشامل والنهائي (الإصدار 32.2)
 -- =================================================================
 -- هذا السكربت يقوم بإعداد قاعدة البيانات بالكامل، تفعيل المزامنة الفورية، وإنشاء حساب مدير تلقائياً.
 -- يطبق هذا الإصدار صلاحيات أمان تعاونية تسمح لجميع المستخدمين بالاطلاع على البيانات ومزامنة الوثائق.
@@ -144,13 +144,14 @@ ALTER TABLE public.case_documents ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for the 'profiles' table (special case).
 DROP POLICY IF EXISTS "Users can manage their own profile." ON public.profiles;
+DROP POLICY IF EXISTS "Users can create and manage their own profile." ON public.profiles;
 DROP POLICY IF EXISTS "Admins can manage all profiles." ON public.profiles;
 DROP POLICY IF EXISTS "Authenticated users can view all profiles." ON public.profiles;
 
 CREATE POLICY "Authenticated users can view all profiles." ON public.profiles FOR SELECT
   USING (auth.role() = 'authenticated');
   
-CREATE POLICY "Users can manage their own profile." ON public.profiles FOR UPDATE
+CREATE POLICY "Users can create and manage their own profile." ON public.profiles FOR ALL
   USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
 
@@ -365,7 +366,7 @@ CREATE POLICY "Enable ALL for admin" ON public.invoice_items FOR ALL USING (publ
 
 const repairScript = `
 -- =================================================================
--- سكربت إصلاح أخطاء (الإصدار 32.1)
+-- سكربت إصلاح الأعمدة المفقودة
 -- =================================================================
 -- هذا السكربت يقوم بإضافة الأعمدة المفقودة إلى الجداول الموجودة دون حذف البيانات.
 -- شغله إذا واجهت خطأ "Could not find the '...' column" أو ما شابه.
@@ -391,6 +392,34 @@ BEGIN
 END $$;
 
 
+-- Force the API schema cache to reload to recognize the changes immediately.
+NOTIFY pgrst, 'reload schema';
+`;
+
+const rlsRepairScript = `
+-- =================================================================
+-- سكربت إصلاح خطأ صلاحيات إنشاء الملف الشخصي (RLS)
+-- =================================================================
+-- هذا السكربت يقوم بإصلاح سياسة الأمان الخاصة بجدول profiles للسماح للمستخدمين الجدد
+-- بإنشاء ملفاتهم الشخصية، مما يحل خطأ "violates row-level security policy".
+
+-- RLS Policies for the 'profiles' table (special case).
+DROP POLICY IF EXISTS "Users can manage their own profile." ON public.profiles;
+DROP POLICY IF EXISTS "Users can create and manage their own profile." ON public.profiles;
+DROP POLICY IF EXISTS "Admins can manage all profiles." ON public.profiles;
+DROP POLICY IF EXISTS "Authenticated users can view all profiles." ON public.profiles;
+
+CREATE POLICY "Authenticated users can view all profiles." ON public.profiles FOR SELECT
+  USING (auth.role() = 'authenticated');
+  
+CREATE POLICY "Users can create and manage their own profile." ON public.profiles FOR ALL
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "Admins can manage all profiles." ON public.profiles FOR ALL
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+  
 -- Force the API schema cache to reload to recognize the changes immediately.
 NOTIFY pgrst, 'reload schema';
 `;
@@ -497,7 +526,20 @@ const ConfigurationModal: React.FC<{ onRetry: () => void }> = ({ onRetry }) => {
                     </div>
                 )}
 
-                {view === 'repair' && ( <div className="space-y-4 animate-fade-in"> <h2 className="text-xl font-semibold">إصلاح أخطاء شائعة</h2> <p className="text-sm text-gray-600"> إذا كنت تواجه خطأً مثل <code className="bg-gray-200 p-1 rounded text-sm">Could not find the '...' column</code>، فهذا يعني أن مخطط قاعدة بياناتك قديم. انسخ وشغّل السكربت التالي في <strong className="font-semibold">SQL Editor</strong> الخاص بـ Supabase لإصلاح المشكلة دون فقدان بياناتك الحالية. </p> <ScriptDisplay script={repairScript} /> </div> )}
+                {view === 'repair' && (
+                    <div className="space-y-6 animate-fade-in">
+                        <div className="space-y-4">
+                            <h2 className="text-xl font-semibold">إصلاح الأعمدة المفقودة</h2>
+                            <p className="text-sm text-gray-600">إذا كنت تواجه خطأً مثل <code className="bg-gray-200 p-1 rounded text-sm">Could not find the '...' column</code>، فهذا يعني أن مخطط قاعدة بياناتك قديم. انسخ وشغّل السكربت التالي في <strong className="font-semibold">SQL Editor</strong> الخاص بـ Supabase لإصلاح المشكلة دون فقدان بياناتك الحالية.</p>
+                            <ScriptDisplay script={repairScript} />
+                        </div>
+                         <div className="space-y-4 border-t pt-6">
+                            <h2 className="text-xl font-semibold">إصلاح خطأ صلاحيات إنشاء الملف الشخصي</h2>
+                            <p className="text-sm text-gray-600">إذا واجهت خطأ <code className="bg-gray-200 p-1 rounded text-sm">new row violates row-level security policy for table "profiles"</code>، فهذا يعني أن سياسات الأمان تمنع المستخدمين الجدد من إنشاء ملفاتهم الشخصية. انسخ وشغّل هذا السكربت لإصلاح المشكلة.</p>
+                            <ScriptDisplay script={rlsRepairScript} />
+                        </div>
+                    </div>
+                )}
                 {view === 'realtime' && ( <div className="space-y-4 animate-fade-in"> <h2 className="text-xl font-semibold">تفعيل المزامنة الفورية (Real-time)</h2> <p className="text-sm text-gray-600"> إذا لم تعمل ميزة التحديث الفوري بين المستخدمين، قد تحتاج إلى تشغيل هذا السكربت يدوياً. </p> <ScriptDisplay script={realtimeScript} /> </div> )}
 
                 <div className="text-center border-t pt-6">
