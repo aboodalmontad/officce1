@@ -41,7 +41,7 @@ const FilePreview: React.FC<{ doc: CaseDocument, onPreview: (doc: CaseDocument) 
             }
 
             setIsLoadingThumbnail(true);
-            const file = await getDocumentFile(doc.id);
+            const file = await getDocumentFile(doc);
             if (!file || !isMounted) {
                 setIsLoadingThumbnail(false);
                 return;
@@ -62,7 +62,7 @@ const FilePreview: React.FC<{ doc: CaseDocument, onPreview: (doc: CaseDocument) 
                 URL.revokeObjectURL(objectUrl);
             }
         };
-    }, [doc.id, doc.type, doc.localState, getDocumentFile]);
+    }, [doc, getDocumentFile]);
     
     return (
         <div className="relative group border rounded-lg overflow-hidden bg-gray-50 flex flex-col aspect-w-1 aspect-h-1">
@@ -203,7 +203,7 @@ const PreviewModal: React.FC<{ doc: CaseDocument; onClose: () => void }> = ({ do
             setError(null);
             try {
                 // getDocumentFile now handles downloading and updates state internally
-                const retrievedFile = await getDocumentFile(doc.id);
+                const retrievedFile = await getDocumentFile(doc);
                 
                 if (retrievedFile) {
                     setFile(retrievedFile);
@@ -231,7 +231,7 @@ const PreviewModal: React.FC<{ doc: CaseDocument; onClose: () => void }> = ({ do
                 URL.revokeObjectURL(url);
             }
         };
-    }, [doc.id, getDocumentFile]);
+    }, [doc, getDocumentFile]);
 
 
     const handleDownload = () => {
@@ -411,7 +411,7 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
     
     const handlePreview = async (doc: CaseDocument) => {
         if (doc.type === 'application/pdf') {
-            const file = await getDocumentFile(doc.id);
+            const file = await getDocumentFile(doc);
             if (file) {
                 const url = URL.createObjectURL(file);
                 window.open(url, '_blank');

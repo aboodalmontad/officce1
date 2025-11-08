@@ -315,6 +315,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const [triggeredAlerts, setTriggeredAlerts] = React.useState<Appointment[]>([]);
     const [showUnpostponedSessionsModal, setShowUnpostponedSessionsModal] = React.useState(false);
     const isOnline = useOnlineStatus();
+    const isDownloadingRef = React.useRef(false);
 
     // --- User Settings State ---
     const [userSettings, setUserSettings] = React.useState<UserSettings>(defaultSettings);
@@ -324,6 +325,26 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
     const userRef = React.useRef(user);
     userRef.current = user;
+
+    // Effect to persist data changes to IndexedDB to ensure offline changes are not lost on page reload.
+    React.useEffect(() => {
+        // Only persist if there's a logged-in user, the app isn't in an initial loading state,
+        // and there are actual changes to save (indicated by isDirty).
+        if (!isDataLoading && user && isDirty) {
+            const persistData = async () => {
+                try {
+                    const db = await getDb();
+                    // Using user.id as the key scopes the data correctly.
+                    await db.put(DATA_STORE_NAME, data, user.id);
+                    console.log('Local data changes persisted to IndexedDB.');
+                } catch (error) {
+                    console.error('Failed to persist data to IndexedDB:', error);
+                }
+            };
+            persistData();
+        }
+    }, [data, isDirty, isDataLoading, user]);
+
 
     // This ref is crucial to prevent a race condition.
     // The initial data pull should only happen ONCE per login session.
@@ -424,6 +445,47 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         onSyncStatusChange: handleSyncStatusChange,
         isOnline, isAuthLoading, syncStatus
     });
+    
+    const getDocumentFile = React.useCallback(async (doc: CaseDocument): Promise<File | null> => {
+        const db = await getDb();
+        const supabase = getSupabaseClient();
+        
+        if (!doc) {
+            console.error(`getDocumentFile called with null/undefined document.`);
+            return null;
+        }
+    
+        const localFile = await db.get(DOCS_FILES_STORE_NAME, doc.id);
+        if (localFile) {
+            return localFile;
+        }
+    
+        if ((doc.localState === 'pending_download' || doc.localState === 'error') && isOnline && supabase) {
+            try {
+                setData(p => ({...p, documents: p.documents.map(d => d.id === doc.id ? {...d, localState: 'downloading' } : d)}));
+    
+                const { data: blob, error: downloadError } = await supabase.storage.from('documents').download(doc.storagePath);
+                if (downloadError) throw downloadError;
+                if (!blob) throw new Error("Download returned an empty blob.");
+    
+                const downloadedFile = new File([blob], doc.name, { type: doc.type });
+    
+                await db.put(DOCS_FILES_STORE_NAME, downloadedFile, doc.id);
+                await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'synced' }, doc.id);
+    
+                setData(p => ({...p, documents: p.documents.map(d => d.id === doc.id ? {...d, localState: 'synced'} : d)}));
+    
+                return downloadedFile;
+            } catch (error: any) {
+                console.error(`Failed to download document ${doc.id}:`, error.message || error);
+                await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'error' }, doc.id);
+                setData(p => ({...p, documents: p.documents.map(d => d.id === doc.id ? {...d, localState: 'error'} : d)}));
+                return null;
+            }
+        }
+        
+        return null;
+    }, [isOnline]);
 
     React.useEffect(() => {
         // If we've logged out, reset the "initial sync" flag so the next user gets a fresh sync.
@@ -441,25 +503,35 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         const loadData = async () => {
             try {
                 const db = await getDb();
-                const [storedData, storedDeletedIds, localDocsMetadata] = await Promise.all([
+                const [storedData, storedDeletedIds] = await Promise.all([
                     db.get(DATA_STORE_NAME, user.id),
                     db.get(DATA_STORE_NAME, `deletedIds_${user.id}`),
-                    db.getAll(DOCS_METADATA_STORE_NAME)
                 ]);
                 
                 if (cancelled) return;
+                
+                let finalData;
+                try {
+                    // This block now safely processes stored data. If anything fails,
+                    // it falls back to the initial empty state instead of crashing.
+                    const validatedData = validateAndFixData(storedData, user);
+                    const localDocsMetadata = await db.getAll(DOCS_METADATA_STORE_NAME);
+                    if (cancelled) return;
+                    
+                    const localDocsMetadataMap = new Map((localDocsMetadata as any[]).map((meta: any) => [meta.id, meta]));
 
-                const validatedData = validateAndFixData(storedData, user);
-                
-                const localDocsMetadataMap = new Map((localDocsMetadata as any[]).map((meta: any) => [meta.id, meta]));
+                    const finalDocs = validatedData.documents.map(doc => {
+                        const localMeta: any = localDocsMetadataMap.get(doc.id);
+                        return { ...doc, localState: localMeta?.localState || doc.localState || 'pending_download' };
+                    }).filter(doc => !!doc) as CaseDocument[];
+                    
+                    finalData = { ...validatedData, documents: finalDocs };
 
-                const finalDocs = validatedData.documents.map(doc => {
-                    const localMeta: any = localDocsMetadataMap.get(doc.id);
-                    return { ...doc, localState: localMeta?.localState || doc.localState || 'pending_download' };
-                }).filter(doc => !!doc) as CaseDocument[];
-                
-                const finalData = { ...validatedData, documents: finalDocs };
-                
+                } catch (validationError) {
+                     console.error("CRITICAL: Failed to validate data from IndexedDB. Data may be corrupt. Resetting to a clean state for this session.", validationError);
+                     finalData = getInitialData();
+                }
+
                 setData(finalData);
                 setDeletedIds(storedDeletedIds || getInitialDeletedIds());
                 
@@ -618,6 +690,32 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         return () => clearTimeout(handler);
 
     }, [isOnline, user, data.documents]);
+    
+    // This effect handles automatic file downloads reactively, one by one.
+    React.useEffect(() => {
+        if (!isOnline || !user || isDataLoading || isDownloadingRef.current) return;
+    
+        const downloadNextFile = async () => {
+            // Find the *first* document that needs downloading.
+            const docToDownload = data.documents.find(d => d.localState === 'pending_download');
+    
+            if (docToDownload) {
+                isDownloadingRef.current = true;
+                console.log(`Background downloader is processing document: ${docToDownload.name}`);
+                
+                // The getDocumentFile function will handle the download and update the document's state.
+                // When the state is updated (via setData), this effect will re-run, automatically
+                // picking up the next file after the current download completes or fails.
+                await getDocumentFile(docToDownload);
+                
+                isDownloadingRef.current = false;
+            }
+        };
+    
+        downloadNextFile();
+        
+    }, [isOnline, user, isDataLoading, data.documents, getDocumentFile]);
+
 
     const dismissAlert = (appointmentId: string) => {
         setTriggeredAlerts(prev => prev.filter(a => a.id !== appointmentId));
@@ -816,48 +914,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         }
         setData(p => ({...p, documents: [...p.documents, ...newDocs]}));
         setDirty(true);
-    };
-
-    const getDocumentFile = async (docId: string): Promise<File | null> => {
-        const db = await getDb();
-        const supabase = getSupabaseClient();
-        const doc = data.documents.find(d => d.id === docId);
-    
-        if (!doc) {
-            console.error(`Document metadata not found for id: ${docId}`);
-            return null;
-        }
-    
-        const localFile = await db.get(DOCS_FILES_STORE_NAME, docId);
-        if (localFile) {
-            return localFile;
-        }
-    
-        if (doc.localState === 'pending_download' && isOnline && supabase) {
-            try {
-                setData(p => ({...p, documents: p.documents.map(d => d.id === docId ? {...d, localState: 'downloading' } : d)}));
-    
-                const { data: blob, error: downloadError } = await supabase.storage.from('documents').download(doc.storagePath);
-                if (downloadError) throw downloadError;
-                if (!blob) throw new Error("Download returned an empty blob.");
-    
-                const downloadedFile = new File([blob], doc.name, { type: doc.type });
-    
-                await db.put(DOCS_FILES_STORE_NAME, downloadedFile, doc.id);
-                await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'synced' }, doc.id);
-    
-                setData(p => ({...p, documents: p.documents.map(d => d.id === docId ? {...d, localState: 'synced'} : d)}));
-    
-                return downloadedFile;
-            } catch (error: any) {
-                console.error(`Failed to download document ${docId}:`, error);
-                await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'error' }, doc.id);
-                setData(p => ({...p, documents: p.documents.map(d => d.id === docId ? {...d, localState: 'error'} : d)}));
-                return null;
-            }
-        }
-        
-        return null;
     };
     
     const exportData = (): boolean => {
