@@ -41,7 +41,7 @@ const FilePreview: React.FC<{ doc: CaseDocument, onPreview: (doc: CaseDocument) 
             }
 
             setIsLoadingThumbnail(true);
-            const file = await getDocumentFile(doc);
+            const file = await getDocumentFile(doc.id);
             if (!file || !isMounted) {
                 setIsLoadingThumbnail(false);
                 return;
@@ -203,7 +203,7 @@ const PreviewModal: React.FC<{ doc: CaseDocument; onClose: () => void }> = ({ do
             setError(null);
             try {
                 // getDocumentFile now handles downloading and updates state internally
-                const retrievedFile = await getDocumentFile(doc);
+                const retrievedFile = await getDocumentFile(doc.id);
                 
                 if (retrievedFile) {
                     setFile(retrievedFile);
@@ -411,7 +411,7 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
     
     const handlePreview = async (doc: CaseDocument) => {
         if (doc.type === 'application/pdf') {
-            const file = await getDocumentFile(doc);
+            const file = await getDocumentFile(doc.id);
             if (file) {
                 const url = URL.createObjectURL(file);
                 window.open(url, '_blank');
