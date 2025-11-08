@@ -937,7 +937,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         const newDocs: CaseDocument[] = [];
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            const docId = `doc-${Date.now()}-${i}`;
+            const docId = `doc-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 9)}`;
             
             const lastDot = file.name.lastIndexOf('.');
             const extension = lastDot !== -1 ? file.name.substring(lastDot) : '';
