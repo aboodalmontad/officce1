@@ -8,7 +8,7 @@ import { openDB } from 'idb';
 interface SettingsPageProps {}
 
 const SettingsPage: React.FC<SettingsPageProps> = () => {
-    const { setFullData, assistants, setAssistants, userId, isAutoSyncEnabled, setAutoSyncEnabled, isAutoBackupEnabled, setAutoBackupEnabled, adminTasksLayout, setAdminTasksLayout, deleteAssistant, exportData } = useData();
+    const { setFullData, assistants, setAssistants, userId, isAutoSyncEnabled, setAutoSyncEnabled, isAutoBackupEnabled, setAutoBackupEnabled, adminTasksLayout, setAdminTasksLayout, deleteAssistant, exportData, clearAllDataAndMarkForDeletion } = useData();
     const [feedback, setFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = React.useState(false);
     const [isDeleteAssistantModalOpen, setIsDeleteAssistantModalOpen] = React.useState(false);
@@ -22,20 +22,13 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
         setTimeout(() => setFeedback(null), 4000);
     };
 
-    const handleConfirmClearData = () => {
+    const handleConfirmClearData = async () => {
         try {
-            const emptyData = {
-                clients: [],
-                adminTasks: [],
-                appointments: [],
-                accountingEntries: [],
-                assistants: ['بدون تخصيص'],
-            };
-            setFullData(emptyData);
-            showFeedback('تم مسح جميع البيانات بنجاح.', 'success');
-        } catch (error) {
+            await clearAllDataAndMarkForDeletion();
+            showFeedback('تم مسح البيانات المحلية بنجاح. ستتم إزالتها من السحابة عند المزامنة التالية.', 'success');
+        } catch (error: any) {
             console.error('Failed to clear data:', error);
-            showFeedback('حدث خطأ أثناء مسح البيانات.', 'error');
+            showFeedback(`حدث خطأ أثناء مسح البيانات: ${error.message}`, 'error');
         }
         setIsConfirmModalOpen(false);
     };

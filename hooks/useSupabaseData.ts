@@ -867,6 +867,58 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             return false;
         }
     };
+    
+    const clearAllDataAndMarkForDeletion = async () => {
+        if (!user) {
+            throw new Error("يجب تسجيل الدخول لمسح البيانات.");
+        }
+
+        const allIdsToDelete: DeletedIds = getInitialDeletedIds();
+
+        // Collect all IDs from the current data state
+        data.clients.forEach(client => {
+            allIdsToDelete.clients.push(client.id);
+            client.cases.forEach(caseItem => {
+                allIdsToDelete.cases.push(caseItem.id);
+                caseItem.stages.forEach(stage => {
+                    allIdsToDelete.stages.push(stage.id);
+                    stage.sessions.forEach(session => {
+                        allIdsToDelete.sessions.push(session.id);
+                    });
+                });
+            });
+        });
+        allIdsToDelete.adminTasks = data.adminTasks.map(t => t.id);
+        allIdsToDelete.appointments = data.appointments.map(a => a.id);
+        allIdsToDelete.accountingEntries = data.accountingEntries.map(e => e.id);
+        data.invoices.forEach(invoice => {
+            allIdsToDelete.invoices.push(invoice.id);
+            invoice.items.forEach(item => allIdsToDelete.invoiceItems.push(item.id));
+        });
+        allIdsToDelete.assistants = data.assistants.filter(a => a !== 'بدون تخصيص');
+        allIdsToDelete.documents = data.documents.map(d => d.id);
+        allIdsToDelete.documentPaths = data.documents.map(d => d.storagePath).filter(Boolean);
+        // Note: profiles and site_finances are not cleared by this user-facing action.
+
+        // Prepare the new empty state
+        const emptyData = getInitialData();
+        emptyData.assistants = ['بدون تخصيص'];
+        
+        // Atomically update state and mark as dirty to trigger sync
+        setData(emptyData);
+        setDeletedIds(allIdsToDelete);
+        setDirty(true);
+
+        // Persist the empty data and the populated deletion list to IndexedDB
+        try {
+            const db = await getDb();
+            await db.put(DATA_STORE_NAME, emptyData, user.id);
+            await db.put(DATA_STORE_NAME, allIdsToDelete, `deletedIds_${user.id}`);
+        } catch (dbError) {
+            console.error("Failed to update IndexedDB after clearing data:", dbError);
+            throw new Error("فشل تحديث قاعدة البيانات المحلية.");
+        }
+    };
 
     return {
         ...data,
@@ -904,6 +956,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         deleteInvoice,
         deleteAssistant,
         deleteDocument,
+        clearAllDataAndMarkForDeletion,
         addDocuments,
         getDocumentFile,
         postponeSession,
