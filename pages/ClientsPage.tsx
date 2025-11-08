@@ -660,7 +660,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                 </div>
             </div>
             
-             {clients.length === 0 ? (
+             {clients.length === 0 && (
                  <div className="text-center py-12 px-6 bg-white rounded-lg shadow">
                     <h2 className="text-xl font-semibold text-gray-700">لا يوجد موكلون بعد</h2>
                     <p className="text-gray-500 mt-2">ابدأ بإضافة موكلك الأول، أو دع الذكاء الاصطناعي ينشئ لك بعض البيانات التجريبية لتبدأ.</p>
@@ -676,11 +676,11 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                         </button>
                     </div>
                 </div>
-            ) : (
-                <div className="bg-white rounded-lg shadow">
-                    {viewMode === 'tree' ? <ClientsTreeView {...commonViewProps} /> : <ClientsListView {...commonViewProps} />}
-                </div>
             )}
+
+            <div className="bg-white rounded-lg shadow">
+                {viewMode === 'tree' ? <ClientsTreeView {...commonViewProps} /> : <ClientsListView {...commonViewProps} />}
+            </div>
 
             {/* Modals are placed here */}
             {modal.type && (
