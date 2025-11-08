@@ -451,7 +451,7 @@ const ScriptDisplay: React.FC<{ script: string }> = ({ script }) => {
 }
 
 const ConfigurationModal: React.FC<{ onRetry: () => void }> = ({ onRetry }) => {
-    const [view, setView] = React.useState<'setup' | 'storage' | 'realtime' | 'repair'>('setup');
+    const [view, setView] = React.useState<'setup' | 'storage' | 'realtime' | 'repair' | 'cors'>('setup');
 
     return (
         <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4" dir="rtl">
@@ -463,6 +463,7 @@ const ConfigurationModal: React.FC<{ onRetry: () => void }> = ({ onRetry }) => {
                         {view === 'storage' && "لتمكين مزامنة الوثائق، يجب إعداد مساحة التخزين السحابية (Storage)."}
                         {view === 'realtime' && "استخدم هذا القسم لتفعيل المزامنة الفورية إذا توقفت عن العمل."}
                         {view === 'repair' && "إذا واجهت أخطاء، قد تحتاج لتشغيل سكربت الإصلاح."}
+                        {view === 'cors' && "إذا واجهت أخطاء 'Failed to fetch' فهذا يعني أن الخادم يرفض الاتصال من هذا الموقع."}
                     </p>
                 </div>
 
@@ -472,6 +473,7 @@ const ConfigurationModal: React.FC<{ onRetry: () => void }> = ({ onRetry }) => {
                         <button onClick={() => setView('storage')} className={`${view === 'storage' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}>إعداد التخزين</button>
                         <button onClick={() => setView('realtime')} className={`${view === 'realtime' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}>المزامنة الفورية</button>
                         <button onClick={() => setView('repair')} className={`${view === 'repair' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}>إصلاح الأخطاء</button>
+                        <button onClick={() => setView('cors')} className={`${view === 'cors' ? 'border-red-500 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}>إصلاح أخطاء الشبكة (CORS)</button>
                     </nav>
                 </div>
 
@@ -484,6 +486,23 @@ const ConfigurationModal: React.FC<{ onRetry: () => void }> = ({ onRetry }) => {
                             <li>الصق السكربت، عدّل بيانات المدير، ثم اضغط <strong className="font-semibold text-green-600">RUN</strong>.</li>
                             <li><strong className="text-red-600">بعد النجاح، انتقل إلى تبويب "إعداد التخزين" لإكمال الإعداد.</strong></li>
                         </ol>
+                    </div>
+                )}
+                
+                {view === 'cors' && (
+                     <div className="space-y-4 animate-fade-in">
+                        <h2 className="text-xl font-semibold text-red-700">حل مشكلة "Failed to fetch"</h2>
+                         <p className="text-sm text-gray-600">لأسباب أمنية، يرفض خادم Supabase الاتصالات من مصادر غير معروفة. يجب عليك أن تخبر الخادم صراحةً أن هذا التطبيق مسموح له بالاتصال.</p>
+                        <ol className="list-decimal list-inside space-y-3 text-gray-700">
+                            <li>اذهب إلى لوحة تحكم مشروعك في Supabase.</li>
+                            <li>من القائمة الجانبية، اذهب إلى <strong className="font-semibold">API Settings</strong>.</li>
+                            <li>ابحث عن قسم <strong className="font-semibold">CORS settings</strong>.</li>
+                            <li>في حقل الإدخال تحت <strong className="font-semibold">Allowed Origins (CORS)</strong>، أدخل الرمز التالي: <code className="bg-gray-200 p-1 rounded">*</code></li>
+                            <li>اضغط <strong className="font-semibold">Add</strong> ثم اضغط <strong className="font-semibold text-green-600">Save</strong>.</li>
+                        </ol>
+                         <div className="p-4 bg-yellow-50 border-l-4 border-yellow-400">
+                            <p className="text-yellow-800"><strong className="font-semibold">ملاحظة:</strong> استخدام الرمز <code className="bg-gray-200 p-1 rounded text-sm">*</code> يسمح لأي موقع بالاتصال بقاعدة بياناتك. هذا مناسب للتطوير والاختبار. للبيئات الإنتاجية، يفضل استخدام رابط التطبيق المحدد بدلاً من <code className="bg-gray-200 p-1 rounded text-sm">*</code>.</p>
+                        </div>
                     </div>
                 )}
                 
