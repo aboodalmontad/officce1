@@ -188,10 +188,7 @@ const Navbar: React.FC<{
         <header className="bg-white shadow-md p-2 sm:p-4 flex justify-between items-center no-print sticky top-0 z-30">
             <nav className="flex items-center gap-1 sm:gap-4 flex-wrap">
                 <button onClick={() => onNavigate('home')} className="flex items-center" aria-label="العودة إلى الصفحة الرئيسية">
-                    <div className="flex items-baseline gap-2">
-                        <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
-                        <span className="text-xs font-mono text-gray-500">الإصدار 13</span>
-                    </div>
+                    <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
                 </button>
                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
                     {navItems.map(item => (
