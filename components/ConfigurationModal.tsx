@@ -3,7 +3,7 @@ import { ClipboardDocumentCheckIcon, ClipboardDocumentIcon, ExclamationTriangleI
 
 const unifiedScript = `
 -- =================================================================
--- السكربت الشامل والنهائي (الإصدار 32.2)
+-- السكربت الشامل والنهائي (الإصدار 32.3)
 -- =================================================================
 -- هذا السكربت يقوم بإعداد قاعدة البيانات بالكامل، تفعيل المزامنة الفورية، وإنشاء حساب مدير تلقائياً.
 -- يطبق هذا الإصدار صلاحيات أمان تعاونية تسمح لجميع المستخدمين بالاطلاع على البيانات ومزامنة الوثائق.
@@ -78,8 +78,12 @@ CREATE OR REPLACE FUNCTION public.check_if_mobile_exists(mobile_to_check text)
 RETURNS boolean AS $$
 DECLARE
     mobile_exists boolean;
+    normalized_check_text text := '0' || RIGHT(regexp_replace(mobile_to_check, '\\D', '', 'g'), 9);
 BEGIN
-    SELECT EXISTS(SELECT 1 FROM public.profiles WHERE mobile_number = mobile_to_check) INTO mobile_exists;
+    SELECT EXISTS(
+        SELECT 1 FROM public.profiles 
+        WHERE '0' || RIGHT(regexp_replace(mobile_number, '\\D', '', 'g'), 9) = normalized_check_text
+    ) INTO mobile_exists;
     RETURN mobile_exists;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
@@ -238,9 +242,11 @@ DECLARE
     admin_full_name TEXT := 'المدير العام';
     admin_user_id uuid;
 BEGIN
+    -- Check if the admin user already exists based on the generated email.
     SELECT id INTO admin_user_id FROM auth.users WHERE email = admin_email;
 
     IF admin_user_id IS NULL THEN
+        -- If admin user does not exist, create it.
         INSERT INTO auth.users(id, email, encrypted_password, raw_user_meta_data, email_confirmed_at, aud, role)
         VALUES (
             gen_random_uuid(),
@@ -251,8 +257,15 @@ BEGIN
             'authenticated',
             'authenticated'
         ) RETURNING id INTO admin_user_id;
+    ELSE
+        -- If admin user exists, update their password. This is useful for password recovery
+        -- or if the setup script is run multiple times with a different password.
+        UPDATE auth.users
+        SET encrypted_password = crypt(admin_password, gen_salt('bf'))
+        WHERE id = admin_user_id;
     END IF;
 
+    -- Insert or update the profile for the admin user, ensuring their role and status are correct.
     INSERT INTO public.profiles (id, full_name, mobile_number, role, is_approved, is_active, subscription_start_date, subscription_end_date)
     VALUES (
         admin_user_id,

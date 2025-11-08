@@ -53,6 +53,16 @@ const DatabaseIcon: React.FC<{ className?: string }> = ({ className = "w-6 h-6" 
     </svg>
 );
 
+const normalizeMobileForDBCheck = (mobile: string): string | null => {
+    // Takes the last 9 digits of any number string and prepends a '0' if it's a valid Syrian mobile start.
+    const digits = (mobile || '').replace(/\D/g, '').slice(-9);
+    if (digits.length === 9 && digits.startsWith('9')) {
+        return '0' + digits;
+    }
+    return null;
+};
+
+
 const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) => {
     const [isLoginView, setIsLoginView] = React.useState(true);
     const [loading, setLoading] = React.useState(false);
@@ -190,7 +200,7 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                 }
     
                 const cachedCredentials = JSON.parse(cachedCredentialsRaw);
-    
+
                 const normalize = (numStr: string) => (numStr || '').replace(/\D/g, '').slice(-9);
                 
                 if (normalize(cachedCredentials.mobile) === normalize(form.mobile) && cachedCredentials.password === form.password) {
@@ -237,7 +247,15 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                 let displayError: React.ReactNode = 'حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.';
     
                 if (lowerMsg.includes('invalid login credentials')) {
-                    displayError = "بيانات الدخول غير صحيحة. يرجى التحقق من رقم الجوال وكلمة المرور.";
+                    displayError = (
+                        <span>
+                            بيانات الدخول غير صحيحة. يرجى التحقق من رقم الجوال وكلمة المرور.
+                            <br />
+                            <small className="text-gray-500">
+                                إذا كنت المدير، تأكد من استخدام كلمة المرور التي عينتها في سكربت الإعداد.
+                            </small>
+                        </span>
+                    );
                     setAuthFailed(true);
                 } else if (lowerMsg.includes('email not confirmed')) {
                     const sqlCommandAll = `UPDATE auth.users SET email_confirmed_at = NOW() WHERE email_confirmed_at IS NULL;`;
@@ -286,20 +304,9 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                     throw new Error('لا يمكن إنشاء حساب جديد بدون اتصال بالإنترنت.');
                 }
                 
-                const normalizeMobileForDBCheck = (mobile: string): string | null => {
-                    const digits = mobile.replace(/\D/g, '');
-                    if (digits.length >= 9) {
-                        const lastNine = digits.slice(-9);
-                        if (lastNine.startsWith('9')) {
-                            return '0' + lastNine;
-                        }
-                    }
-                    return null;
-                };
-
                 const normalizedMobile = normalizeMobileForDBCheck(form.mobile);
                 if (!normalizedMobile) {
-                    setError('رقم الجوال غير صالح.');
+                    setError('رقم الجوال غير صالح. يجب أن يكون رقماً سورياً صحيحاً (مثال: 0912345678).');
                     setLoading(false);
                     setAuthFailed(true);
                     return;
@@ -324,7 +331,7 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                 const { data, error: signUpError } = await supabase.auth.signUp({
                     email,
                     password: form.password,
-                    options: { data: { full_name: form.fullName, mobile_number: form.mobile } }
+                    options: { data: { full_name: form.fullName, mobile_number: normalizedMobile } }
                 });
     
                 if (signUpError) throw signUpError;
