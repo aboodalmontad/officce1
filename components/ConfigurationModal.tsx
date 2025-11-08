@@ -3,7 +3,7 @@ import { ClipboardDocumentCheckIcon, ClipboardDocumentIcon, ExclamationTriangleI
 
 const unifiedScript = `
 -- =================================================================
--- السكربت الشامل والنهائي (الإصدار 32.3)
+-- السكربت الشامل والنهائي (الإصدار 32.4)
 -- =================================================================
 -- هذا السكربت يقوم بإعداد قاعدة البيانات بالكامل، تفعيل المزامنة الفورية، وإنشاء حساب مدير تلقائياً.
 -- يطبق هذا الإصدار صلاحيات أمان تعاونية تسمح لجميع المستخدمين بالاطلاع على البيانات ومزامنة الوثائق.
@@ -110,6 +110,10 @@ CREATE TABLE public.case_documents (id text NOT NULL PRIMARY KEY, user_id uuid N
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
+  -- Bypassing RLS for this specific operation inside a security definer function.
+  -- This is safe as it's confined to this trigger. The setting is transaction-scoped.
+  PERFORM set_config('rls.bypass_rls', 'on', true);
+
   INSERT INTO public.profiles (id, full_name, mobile_number, created_at)
   VALUES (
     new.id,
@@ -123,9 +127,11 @@ BEGIN
     created_at = EXCLUDED.created_at;
   
   UPDATE auth.users SET email_confirmed_at = NOW() WHERE id = new.id;
+  
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+
 
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
