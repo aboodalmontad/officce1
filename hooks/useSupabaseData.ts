@@ -734,22 +734,13 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     
         const downloadNextFile = async () => {
             // Find a document that needs downloading and is not already being processed.
+            // FIX: Only process 'pending_download' state to prevent retrying 'error' states.
             const docToDownload = data.documents.find(d => 
-                (d.localState === 'pending_download' || d.localState === 'error') && 
+                d.localState === 'pending_download' && 
                 !downloadingDocsRef.current.has(d.id)
             );
     
             if (docToDownload) {
-                // If the state is 'error', we must verify it's a download error by ensuring no local file exists.
-                // If a local file exists, it's an upload error, so we should skip it.
-                if (docToDownload.localState === 'error') {
-                    const db = await getDb();
-                    const fileExists = await db.get(DOCS_FILES_STORE_NAME, docToDownload.id);
-                    if (fileExists) {
-                        return; // Let the uploader handle this.
-                    }
-                }
-                
                 const downloadedFile = await getDocumentFile(docToDownload);
     
                 if (!downloadedFile) {
