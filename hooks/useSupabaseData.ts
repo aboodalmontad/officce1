@@ -325,6 +325,12 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const userRef = React.useRef(user);
     userRef.current = user;
 
+    // This ref is crucial to prevent a race condition.
+    // The initial data pull should only happen ONCE per login session.
+    // Re-authenticating (e.g., to verify password for deleting data) should NOT trigger a full data pull,
+    // as it would overwrite local state changes (like marking all data for deletion).
+    const initialSyncDone = React.useRef(false);
+
     const setFullData = React.useCallback(async (newData: any) => {
         const validated = validateAndFixData(newData, userRef.current);
         setData(validated);
@@ -420,6 +426,11 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     });
 
     React.useEffect(() => {
+        // If we've logged out, reset the "initial sync" flag so the next user gets a fresh sync.
+        if (!user) {
+            initialSyncDone.current = false;
+        }
+
         if (!user || isAuthLoading) {
             if (!isAuthLoading) setIsDataLoading(false);
             return;
@@ -453,7 +464,14 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 setDeletedIds(storedDeletedIds || getInitialDeletedIds());
                 
                 if (isOnline) {
-                    await manualSync(true);
+                     // This check prevents a full data pull on re-authentication (e.g., during password check for data deletion),
+                    // which was causing a race condition where remote data would overwrite the local state before deletions could be synced.
+                    if (!initialSyncDone.current) {
+                        await manualSync(true);
+                        if (!cancelled) {
+                           initialSyncDone.current = true;
+                        }
+                    }
                 } else {
                     setSyncStatus('synced'); // Offline but data loaded
                 }
