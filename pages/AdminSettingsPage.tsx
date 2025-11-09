@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { MusicalNoteIcon, PlayCircleIcon, TrashIcon, ArrowUpTrayIcon } from '../components/icons';
+import { defaultUserApprovalSoundBase64 } from '../components/RealtimeNotifier';
 
 const USER_APPROVAL_SOUND_KEY = 'customUserApprovalSound';
 
@@ -8,6 +9,15 @@ const AdminSettingsPage: React.FC = () => {
     const [customSound, setCustomSound] = useLocalStorage<string | null>(USER_APPROVAL_SOUND_KEY, null);
     const [feedback, setFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const audioRef = React.useRef<HTMLAudioElement | null>(null);
+    
+    const soundToPlay = customSound || defaultUserApprovalSoundBase64;
+
+    React.useEffect(() => {
+        if (audioRef.current) {
+            audioRef.current.src = soundToPlay;
+            audioRef.current.load();
+        }
+    }, [soundToPlay]);
 
     const showFeedback = (message: string, type: 'success' | 'error') => {
         setFeedback({ message, type });
@@ -37,6 +47,7 @@ const AdminSettingsPage: React.FC = () => {
 
     const playSound = () => {
         if (audioRef.current) {
+            audioRef.current.currentTime = 0;
             audioRef.current.play().catch(e => {
                 console.error("Audio playback failed:", e);
                 showFeedback('فشل تشغيل الصوت.', 'error');
@@ -87,27 +98,26 @@ const AdminSettingsPage: React.FC = () => {
                             <span>اختر ملفًا صوتيًا...</span>
                         </label>
 
+                        
+                        <button
+                            onClick={playSound}
+                            className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-600 transition-colors"
+                        >
+                            <PlayCircleIcon className="w-5 h-5" />
+                            <span>تشغيل الصوت الحالي</span>
+                        </button>
                         {customSound && (
-                            <>
-                                <button
-                                    onClick={playSound}
-                                    className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-600 transition-colors"
-                                >
-                                    <PlayCircleIcon className="w-5 h-5" />
-                                    <span>تشغيل الصوت الحالي</span>
-                                </button>
-                                <button
-                                    onClick={resetSound}
-                                    className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white font-semibold rounded-lg hover:bg-red-600 transition-colors"
-                                >
-                                    <TrashIcon className="w-5 h-5" />
-                                    <span>استعادة الافتراضي</span>
-                                </button>
-                            </>
+                            <button
+                                onClick={resetSound}
+                                className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white font-semibold rounded-lg hover:bg-red-600 transition-colors"
+                            >
+                                <TrashIcon className="w-5 h-5" />
+                                <span>استعادة الافتراضي</span>
+                            </button>
                         )}
-                         <audio ref={audioRef} src={customSound || undefined} preload="auto" className="hidden" />
+                         <audio ref={audioRef} preload="auto" className="hidden" />
                     </div>
-                     {customSound && <p className="text-xs text-gray-500 mt-2">تم تعيين صوت مخصص.</p>}
+                     {customSound ? <p className="text-xs text-gray-500 mt-2">تم تعيين صوت مخصص.</p> : <p className="text-xs text-gray-500 mt-2">يتم استخدام الصوت الافتراضي حالياً.</p>}
                 </div>
             </div>
         </div>

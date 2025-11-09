@@ -5,14 +5,33 @@ import App from './App';
 // Register Service Worker for offline capabilities
 if ('serviceWorker' in navigator) {
   // This block handles service worker updates. When a new worker takes control,
-  // the page is reloaded to ensure the latest assets are used.
-  let refreshing = false;
+  // it displays a banner prompting the user to reload the page.
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) return;
-    console.log('A new version of the application is available. Reloading page...');
-    refreshing = true;
-    window.location.reload();
+    // Avoid showing multiple banners if the event fires more than once.
+    if (document.getElementById('update-banner')) return;
+
+    // Create banner elements
+    const banner = document.createElement('div');
+    banner.id = 'update-banner';
+    // Using Tailwind classes available in index.html
+    banner.className = 'fixed top-0 left-0 right-0 bg-blue-600 text-white p-4 flex justify-between items-center shadow-lg z-[9999]';
+    banner.style.direction = 'rtl'; // Ensure correct direction
+
+    const message = document.createElement('p');
+    message.className = 'font-semibold';
+    message.textContent = 'تحديث جديد متوفر للتطبيق!';
+
+    const updateButton = document.createElement('button');
+    updateButton.className = 'px-4 py-2 bg-white text-blue-700 font-bold rounded-lg hover:bg-blue-100 transition-colors';
+    updateButton.textContent = 'تحديث الآن';
+    updateButton.onclick = () => window.location.reload();
+
+    // Assemble and append the banner
+    banner.appendChild(message);
+    banner.appendChild(updateButton);
+    document.body.appendChild(banner);
   });
+
 
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js')
