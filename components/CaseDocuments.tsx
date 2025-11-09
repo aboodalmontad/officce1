@@ -3,6 +3,7 @@ import { useData } from '../App';
 import { CaseDocument } from '../types';
 import { DocumentArrowUpIcon, TrashIcon, EyeIcon, DocumentTextIcon, PhotoIcon, XMarkIcon, ExclamationTriangleIcon, ArrowPathIcon, CameraIcon, CloudArrowUpIcon, CloudArrowDownIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowDownTrayIcon } from './icons';
 import { renderAsync } from 'docx-preview';
+import { GoogleGenAI, Modality } from '@google/genai';
 
 interface CaseDocumentsProps {
     caseId: string;
@@ -311,7 +312,14 @@ const CameraModal: React.FC<{ onClose: () => void; onCapture: (file: File) => vo
         
         const startCamera = async () => {
             try {
-                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                const constraints = {
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 4096 },
+                        height: { ideal: 2160 }
+                    }
+                };
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
                 }
@@ -367,6 +375,21 @@ const CameraModal: React.FC<{ onClose: () => void; onCapture: (file: File) => vo
     );
 };
 
+const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            if (typeof reader.result === 'string') {
+                resolve(reader.result.split(',')[1]); // remove data:mime/type;base64,
+            } else {
+                reject(new Error('Failed to convert blob to base64 string.'));
+            }
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+};
+
 
 const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
     const { documents, addDocuments, deleteDocument } = useData();
@@ -375,6 +398,7 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
     const [previewDoc, setPreviewDoc] = React.useState<CaseDocument | null>(null);
     const [isDragging, setIsDragging] = React.useState(false);
     const [isCameraOpen, setIsCameraOpen] = React.useState(false);
+    const [isProcessing, setIsProcessing] = React.useState(false);
 
     const caseDocuments = React.useMemo(() => 
         documents.filter(doc => doc.caseId === caseId).sort((a,b) => b.addedAt.getTime() - a.addedAt.getTime()), 
@@ -419,11 +443,71 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
         setDocToDelete(null);
     };
 
-    const handlePhotoCapture = (file: File) => {
-        const fileList = new DataTransfer();
-        fileList.items.add(file);
-        addDocuments(caseId, fileList.files);
+    const handlePhotoCapture = async (file: File) => {
         setIsCameraOpen(false);
+        setIsProcessing(true);
+    
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+            const base64Data = await blobToBase64(file);
+    
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash-image',
+                contents: {
+                    parts: [
+                        {
+                            inlineData: {
+                                data: base64Data,
+                                mimeType: file.type,
+                            },
+                        },
+                        {
+                            text: 'This is an image of a document captured by a phone camera. Please perform the following enhancements: automatically detect and crop the document to its boundaries, correct any perspective distortion (straighten the document), and enhance the contrast and clarity to make the text sharp and readable as if it were scanned. If the document is primarily text, convert it to a high-contrast black and white image. Otherwise, enhance the existing colors for clarity. Return the enhanced document as a high-quality JPEG image.',
+                        },
+                    ],
+                },
+                config: {
+                    responseModalities: [Modality.IMAGE],
+                },
+            });
+    
+            let processedImageFound = false;
+            for (const part of response.candidates[0].content.parts) {
+                if (part.inlineData) {
+                    const base64ImageBytes = part.inlineData.data;
+                    const mimeType = part.inlineData.mimeType;
+    
+                    const byteCharacters = atob(base64ImageBytes);
+                    const byteNumbers = new Array(byteCharacters.length);
+                    for (let i = 0; i < byteCharacters.length; i++) {
+                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    }
+                    const byteArray = new Uint8Array(byteNumbers);
+                    const blob = new Blob([byteArray], { type: mimeType });
+                    
+                    const originalName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+                    const newExtension = mimeType.split('/')[1] || 'jpeg';
+                    const enhancedFile = new File([blob], `${originalName}_enhanced.${newExtension}`, { type: mimeType });
+    
+                    const fileList = new DataTransfer();
+                    fileList.items.add(enhancedFile);
+                    await addDocuments(caseId, fileList.files);
+                    processedImageFound = true;
+                    break; 
+                }
+            }
+            if (!processedImageFound) {
+                throw new Error('AI processing did not return an image. Saving original.');
+            }
+    
+        } catch (error) {
+            console.error("AI enhancement failed, saving original image:", error);
+            const fileList = new DataTransfer();
+            fileList.items.add(file);
+            await addDocuments(caseId, fileList.files);
+        } finally {
+            setIsProcessing(false);
+        }
     };
     
     const handlePreview = (doc: CaseDocument) => {
@@ -432,6 +516,12 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
 
     return (
         <div className="space-y-4">
+            {isProcessing && (
+                <div className="fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-[60]">
+                    <ArrowPathIcon className="w-12 h-12 text-white animate-spin" />
+                    <p className="mt-4 text-white font-semibold">جاري تحسين الصورة بواسطة الذكاء الاصطناعي...</p>
+                </div>
+            )}
             <div className="flex flex-col sm:flex-row gap-4">
                  <input type="file" id={`file-upload-${caseId}`} multiple className="hidden" onChange={(e) => handleFileChange(e.target.files)} />
                  <div 
