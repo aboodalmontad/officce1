@@ -399,6 +399,7 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
     const [isDragging, setIsDragging] = React.useState(false);
     const [isCameraOpen, setIsCameraOpen] = React.useState(false);
     const [isProcessing, setIsProcessing] = React.useState(false);
+    const [processingError, setProcessingError] = React.useState<string | null>(null);
 
     const caseDocuments = React.useMemo(() => 
         documents.filter(doc => doc.caseId === caseId).sort((a,b) => b.addedAt.getTime() - a.addedAt.getTime()), 
@@ -446,24 +447,20 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
     const handlePhotoCapture = async (file: File) => {
         setIsCameraOpen(false);
         setIsProcessing(true);
+        setProcessingError(null);
     
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
             const base64Data = await blobToBase64(file);
     
+            const prompt = "Act as a professional document scanner. Take this image of a document, automatically detect the document's edges, crop it, correct any perspective distortion to make it perfectly rectangular, remove any shadows, and enhance the contrast and lighting to make the text sharp and clear, like a high-quality black and white scan. Return the processed image as a high-quality JPEG.";
+
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash-image',
                 contents: {
                     parts: [
-                        {
-                            inlineData: {
-                                data: base64Data,
-                                mimeType: file.type,
-                            },
-                        },
-                        {
-                            text: 'This is an image of a document captured by a phone camera. Please perform the following enhancements: automatically detect and crop the document to its boundaries, correct any perspective distortion (straighten the document), and enhance the contrast and clarity to make the text sharp and readable as if it were scanned. If the document is primarily text, convert it to a high-contrast black and white image. Otherwise, enhance the existing colors for clarity. Return the enhanced document as a high-quality JPEG image.',
-                        },
+                        { inlineData: { data: base64Data, mimeType: file.type } },
+                        { text: prompt },
                     ],
                 },
                 config: {
@@ -472,36 +469,42 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
             });
     
             let processedImageFound = false;
-            for (const part of response.candidates[0].content.parts) {
-                if (part.inlineData) {
-                    const base64ImageBytes = part.inlineData.data;
-                    const mimeType = part.inlineData.mimeType;
-    
-                    const byteCharacters = atob(base64ImageBytes);
-                    const byteNumbers = new Array(byteCharacters.length);
-                    for (let i = 0; i < byteCharacters.length; i++) {
-                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+            if (response.candidates && response.candidates[0].content && response.candidates[0].content.parts) {
+                for (const part of response.candidates[0].content.parts) {
+                    if (part.inlineData) {
+                        const base64ImageBytes = part.inlineData.data;
+                        const mimeType = part.inlineData.mimeType;
+        
+                        const byteCharacters = atob(base64ImageBytes);
+                        const byteNumbers = new Array(byteCharacters.length);
+                        for (let i = 0; i < byteCharacters.length; i++) {
+                            byteNumbers[i] = byteCharacters.charCodeAt(i);
+                        }
+                        const byteArray = new Uint8Array(byteNumbers);
+                        const blob = new Blob([byteArray], { type: mimeType });
+                        
+                        const originalName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+                        const newExtension = mimeType.split('/')[1] || 'jpeg';
+                        const enhancedFile = new File([blob], `${originalName}_enhanced.${newExtension}`, { type: mimeType });
+        
+                        const fileList = new DataTransfer();
+                        fileList.items.add(enhancedFile);
+                        await addDocuments(caseId, fileList.files);
+                        processedImageFound = true;
+                        break; 
                     }
-                    const byteArray = new Uint8Array(byteNumbers);
-                    const blob = new Blob([byteArray], { type: mimeType });
-                    
-                    const originalName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
-                    const newExtension = mimeType.split('/')[1] || 'jpeg';
-                    const enhancedFile = new File([blob], `${originalName}_enhanced.${newExtension}`, { type: mimeType });
-    
-                    const fileList = new DataTransfer();
-                    fileList.items.add(enhancedFile);
-                    await addDocuments(caseId, fileList.files);
-                    processedImageFound = true;
-                    break; 
                 }
             }
             if (!processedImageFound) {
-                throw new Error('AI processing did not return an image. Saving original.');
+                setProcessingError('لم يتمكن الذكاء الاصطناعي من معالجة الصورة. سيتم حفظ الصورة الأصلية.');
+                const fileList = new DataTransfer();
+                fileList.items.add(file);
+                await addDocuments(caseId, fileList.files);
             }
     
         } catch (error) {
             console.error("AI enhancement failed, saving original image:", error);
+            setProcessingError('فشل تحسين الصورة. قد تكون هناك مشكلة في الاتصال بالشبكة أو في خدمة الذكاء الاصطناعي. تم حفظ الصورة الأصلية.');
             const fileList = new DataTransfer();
             fileList.items.add(file);
             await addDocuments(caseId, fileList.files);
@@ -520,6 +523,14 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
                 <div className="fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-[60]">
                     <ArrowPathIcon className="w-12 h-12 text-white animate-spin" />
                     <p className="mt-4 text-white font-semibold">جاري تحسين الصورة بواسطة الذكاء الاصطناعي...</p>
+                </div>
+            )}
+            {processingError && (
+                <div className="mb-4 p-3 bg-red-100 text-red-800 border border-red-200 rounded-lg flex justify-between items-center">
+                    <span>{processingError}</span>
+                    <button onClick={() => setProcessingError(null)} className="p-1 rounded-full hover:bg-red-200">
+                        <XMarkIcon className="w-4 h-4" />
+                    </button>
                 </div>
             )}
             <div className="flex flex-col sm:flex-row gap-4">
