@@ -1,16 +1,14 @@
 import * as React from 'react';
-import { TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, PlusIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ShieldCheckIcon, EyeIcon, EyeSlashIcon } from '../components/icons';
+import { TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, PlusIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ShieldCheckIcon } from '../components/icons';
 import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
 import { APP_DATA_KEY } from '../hooks/useSupabaseData';
 import { useData } from '../App';
 import { openDB } from 'idb';
-import { getSupabaseClient } from '../supabaseClient';
-
 
 interface SettingsPageProps {}
 
 const SettingsPage: React.FC<SettingsPageProps> = () => {
-    const { setFullData, assistants, setAssistants, userId, profiles, isAutoSyncEnabled, setAutoSyncEnabled, isAutoBackupEnabled, setAutoBackupEnabled, adminTasksLayout, setAdminTasksLayout, deleteAssistant, exportData, clearAllDataAndMarkForDeletion } = useData();
+    const { setFullData, assistants, setAssistants, userId, isAutoSyncEnabled, setAutoSyncEnabled, isAutoBackupEnabled, setAutoBackupEnabled, adminTasksLayout, setAdminTasksLayout, deleteAssistant, exportData } = useData();
     const [feedback, setFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = React.useState(false);
     const [isDeleteAssistantModalOpen, setIsDeleteAssistantModalOpen] = React.useState(false);
@@ -18,98 +16,29 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
     const [newAssistant, setNewAssistant] = React.useState('');
     const [dbStats, setDbStats] = React.useState<string | null>(null);
     
-    // State for verification modal
-    const [verificationMobile, setVerificationMobile] = React.useState('');
-    const [verificationPassword, setVerificationPassword] = React.useState('');
-    const [verificationError, setVerificationError] = React.useState<string | null>(null);
-    const [isVerifying, setIsVerifying] = React.useState(false);
-    const [showPassword, setShowPassword] = React.useState(false);
-
 
     const showFeedback = (message: string, type: 'success' | 'error') => {
         setFeedback({ message, type });
         setTimeout(() => setFeedback(null), 4000);
     };
-    
-    const handleOpenClearDataModal = () => {
-        setVerificationMobile('');
-        setVerificationPassword('');
-        setVerificationError(null);
-        setIsVerifying(false);
-        setShowPassword(false);
-        setIsConfirmModalOpen(true);
-    };
 
-    const handleVerifyAndDelete = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsVerifying(true);
-        setVerificationError(null);
-
-        const supabase = getSupabaseClient();
-        if (!supabase) {
-            setVerificationError('Supabase client not available.');
-            setIsVerifying(false);
-            return;
-        }
-        
-        const currentUserProfile = profiles.find(p => p.id === userId);
-        if (!currentUserProfile) {
-            setVerificationError('لم يتم العثور على ملفك الشخصي للتحقق.');
-            setIsVerifying(false);
-            return;
-        }
-
-        const normalizeForCompare = (numStr: string | null | undefined): string => {
-            if (!numStr) return '';
-            return numStr.replace(/\D/g, '').slice(-9);
-        };
-
-        if (normalizeForCompare(currentUserProfile.mobile_number) !== normalizeForCompare(verificationMobile)) {
-            setVerificationError('رقم الجوال المدخل لا يطابق رقم الحساب الحالي.');
-            setIsVerifying(false);
-            return;
-        }
-
-        const normalizeMobileToE164 = (mobile: string): string | null => {
-            let digits = mobile.replace(/\D/g, '');
-            if (digits.startsWith('009639') && digits.length === 14) return `+${digits.substring(2)}`;
-            if (digits.startsWith('9639') && digits.length === 12) return `+${digits}`;
-            if (digits.startsWith('09') && digits.length === 10) return `+963${digits.substring(1)}`;
-            if (digits.startsWith('9') && digits.length === 9) return `+963${digits}`;
-            return null;
-        };
-
-        const phone = normalizeMobileToE164(verificationMobile);
-        if (!phone) {
-            setVerificationError('رقم الجوال المدخل غير صالح.');
-            setIsVerifying(false);
-            return;
-        }
-        const email = `sy${phone.substring(1)}@email.com`;
-        
+    const handleConfirmClearData = () => {
         try {
-            const { error: signInError } = await supabase.auth.signInWithPassword({
-                email,
-                password: verificationPassword
-            });
-
-            if (signInError) throw signInError;
-
-            await clearAllDataAndMarkForDeletion();
-            showFeedback('تم مسح البيانات بنجاح. ستتم إزالتها من السحابة عند المزامنة التالية.', 'success');
-            setIsConfirmModalOpen(false);
-
-        } catch (err: any) {
-            if (String(err.message).toLowerCase().includes('invalid login credentials')) {
-                setVerificationError('بيانات الدخول غير صحيحة. يرجى التحقق من رقم الجوال وكلمة المرور.');
-            } else {
-                setVerificationError('فشل التحقق: ' + err.message);
-            }
-        } finally {
-            setIsVerifying(false);
+            const emptyData = {
+                clients: [],
+                adminTasks: [],
+                appointments: [],
+                accountingEntries: [],
+                assistants: ['بدون تخصيص'],
+            };
+            setFullData(emptyData);
+            showFeedback('تم مسح جميع البيانات بنجاح.', 'success');
+        } catch (error) {
+            console.error('Failed to clear data:', error);
+            showFeedback('حدث خطأ أثناء مسح البيانات.', 'error');
         }
+        setIsConfirmModalOpen(false);
     };
-
 
     const handleExportData = () => {
         if (exportData()) {
@@ -365,7 +294,7 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
                                 <p>هذا الإجراء سيقوم بحذف جميع البيانات المخزنة في التطبيق بشكل نهائي على هذا الجهاز. لا يمكن التراجع عن هذا الإجراء.</p>
                             </div>
                              <div className="mt-4">
-                                 <button onClick={handleOpenClearDataModal} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors">
+                                 <button onClick={() => setIsConfirmModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors">
                                     <TrashIcon className="w-5 h-5" />
                                     <span>أفهم المخاطر، قم بالمسح الآن</span>
                                 </button>
@@ -376,78 +305,37 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
             </div>
 
             {isConfirmModalOpen && (
-                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={() => setIsConfirmModalOpen(false)}>
-                    <form onSubmit={handleVerifyAndDelete} className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={() => setIsConfirmModalOpen(false)}>
+                    <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
                         <div className="text-center">
                             <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
                                 <ExclamationTriangleIcon className="h-8 w-8 text-red-600" aria-hidden="true" />
                             </div>
                             <h3 className="text-2xl font-bold text-gray-900" id="modal-title">
-                                تأكيد الهوية لحذف البيانات
+                                تأكيد الحذف
                             </h3>
                             <p className="text-gray-600 my-4">
-                                هذا إجراء خطير. لحماية بياناتك، يرجى إدخال رقم الجوال وكلمة المرور لتأكيد رغبتك في حذف جميع البيانات بشكل نهائي.
+                                هل أنت متأكد من رغبتك في حذف جميع بيانات التطبيق؟ <br />
+                                هذا الإجراء نهائي ولا يمكن التراجع عنه.
                             </p>
                         </div>
-                        
-                        <div className="space-y-4">
-                            <div>
-                                <label htmlFor="verificationMobile" className="block text-sm font-medium text-gray-700">رقم الجوال المسجل</label>
-                                <input 
-                                    id="verificationMobile" 
-                                    name="verificationMobile" 
-                                    type="tel" 
-                                    value={verificationMobile} 
-                                    onChange={(e) => setVerificationMobile(e.target.value)} 
-                                    required 
-                                    placeholder="09xxxxxxxx" 
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500" 
-                                />
-                            </div>
-                            <div>
-                                <label htmlFor="verificationPassword" className="block text-sm font-medium text-gray-700">كلمة المرور</label>
-                                <div className="relative mt-1">
-                                    <input 
-                                        id="verificationPassword" 
-                                        name="verificationPassword" 
-                                        type={showPassword ? 'text' : 'password'} 
-                                        value={verificationPassword} 
-                                        onChange={(e) => setVerificationPassword(e.target.value)} 
-                                        required 
-                                        className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500" 
-                                    />
-                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 left-0 px-3 flex items-center text-gray-400">
-                                        {showPassword ? <EyeSlashIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {verificationError && (
-                            <div className="mt-4 p-3 text-sm text-red-800 bg-red-100 rounded-lg">
-                                {verificationError}
-                            </div>
-                        )}
-
                         <div className="mt-6 flex justify-center gap-4">
                             <button
                                 type="button"
                                 className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
                                 onClick={() => setIsConfirmModalOpen(false)}
-                                disabled={isVerifying}
                             >
                                 إلغاء
                             </button>
                             <button
-                                type="submit"
-                                className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center disabled:bg-red-300"
-                                disabled={isVerifying}
+                                type="button"
+                                className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors"
+                                onClick={handleConfirmClearData}
                             >
-                                {isVerifying && <ArrowPathIcon className="w-5 h-5 animate-spin -ms-1 me-3" />}
-                                {isVerifying ? 'جاري التحقق...' : 'تأكيد الحذف'}
+                                نعم، قم بالحذف
                             </button>
                         </div>
-                    </form>
+                    </div>
                 </div>
             )}
 

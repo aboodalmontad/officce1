@@ -240,6 +240,12 @@ export const UserIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props 
     </svg>
 );
 
+export const UserPlusIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className} {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.5 21c-2.39 0-4.64-.666-6.5-1.765z" />
+    </svg>
+);
+
 export const FolderIcon: React.FC<IconProps> = ({ className = "w-6 h-6", ...props }) => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...props}>
       <path d="M19.5 21a3 3 0 003-3v-8.625a3 3 0 00-3-3h-3.375l-2.25-2.25a3 3 0 00-2.121-.875H7.5a3 3 0 00-3 3v11.25a3 3 0 003 3h12z" />

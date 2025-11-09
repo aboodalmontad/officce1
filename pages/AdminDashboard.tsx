@@ -4,7 +4,6 @@ import { PowerIcon, UserGroupIcon, ChartPieIcon, Bars3Icon, XMarkIcon, CurrencyD
 import { useData } from '../App';
 import AdminAnalyticsPage from './AdminAnalyticsPage';
 import SiteFinancesPage from './SiteFinancesPage';
-import NotificationCenter from '../components/RealtimeNotifier';
 
 interface AdminDashboardProps {
     onLogout: () => void;
@@ -41,12 +40,12 @@ const NavLink: React.FC<{
 
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
-    const { profiles, isDataLoading: loading, newUnapprovedUserAlerts, dismissNewUserAlert } = useData();
+    const { profiles, isDataLoading: loading } = useData();
     const [view, setView] = React.useState<AdminView>('analytics');
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
 
     const pendingUsersCount = React.useMemo(() => {
-        return profiles.filter(p => !p.is_approved && p.role !== 'admin').length;
+        return profiles.filter(p => !p.is_approved).length;
     }, [profiles]);
 
 
@@ -66,12 +65,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     if (loading) {
         return <div className="flex justify-center items-center h-screen">جاري التحميل...</div>
     }
-    
-    const handleNewUserAlertClick = () => {
-        setView('users');
-        // Dismiss all alerts when the button is clicked, as the user is navigating to the page.
-        newUnapprovedUserAlerts.forEach(user => dismissNewUserAlert(user.id));
-    };
 
     const sidebarContent = (
         <>
@@ -136,12 +129,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                     {renderView()}
                 </main>
             </div>
-            
-            <NotificationCenter
-                newUserAlerts={newUnapprovedUserAlerts}
-                dismissNewUserAlert={dismissNewUserAlert}
-                onNewUserAlertClick={handleNewUserAlertClick}
-            />
         </div>
     );
 };

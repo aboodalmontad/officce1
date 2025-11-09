@@ -7,6 +7,7 @@ import { useSync, SyncStatus as SyncStatusType } from './useSync';
 import { getSupabaseClient } from '../supabaseClient';
 import { isBeforeToday, toInputDateString } from '../utils/dateUtils';
 import { openDB, IDBPDatabase } from 'idb';
+import { RealtimeAlert } from '../components/RealtimeNotifier';
 
 
 export const APP_DATA_KEY = 'lawyerBusinessManagementData';
@@ -314,13 +315,9 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const [isDataLoading, setIsDataLoading] = React.useState(true);
     const [triggeredAlerts, setTriggeredAlerts] = React.useState<Appointment[]>([]);
     const [showUnpostponedSessionsModal, setShowUnpostponedSessionsModal] = React.useState(false);
-    const [newUnapprovedUserAlerts, setNewUnapprovedUserAlerts] = React.useState<Profile[]>([]);
-    const prevProfilesRef = React.useRef<Profile[]>([]);
+    const [realtimeAlerts, setRealtimeAlerts] = React.useState<RealtimeAlert[]>([]);
+    const [userApprovalAlerts, setUserApprovalAlerts] = React.useState<RealtimeAlert[]>([]);
     const isOnline = useOnlineStatus();
-    const downloadingDocsRef = React.useRef<Set<string>>(new Set());
-    const lastDownloadAttemptRef = React.useRef(0);
-    const isUploadingRef = React.useRef(false);
-    const lastUploadAttemptRef = React.useRef(0);
 
     // --- User Settings State ---
     const [userSettings, setUserSettings] = React.useState<UserSettings>(defaultSettings);
@@ -330,32 +327,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
     const userRef = React.useRef(user);
     userRef.current = user;
-
-    // Effect to persist data changes to IndexedDB to ensure offline changes are not lost on page reload.
-    React.useEffect(() => {
-        // Only persist if there's a logged-in user, the app isn't in an initial loading state,
-        // and there are actual changes to save (indicated by isDirty).
-        if (!isDataLoading && user && isDirty) {
-            const persistData = async () => {
-                try {
-                    const db = await getDb();
-                    // Using user.id as the key scopes the data correctly.
-                    await db.put(DATA_STORE_NAME, data, user.id);
-                    console.log('Local data changes persisted to IndexedDB.');
-                } catch (error) {
-                    console.error('Failed to persist data to IndexedDB:', error);
-                }
-            };
-            persistData();
-        }
-    }, [data, isDirty, isDataLoading, user]);
-
-
-    // This ref is crucial to prevent a race condition.
-    // The initial data pull should only happen ONCE per login session.
-    // Re-authenticating (e.g., to verify password for deleting data) should NOT trigger a full data pull,
-    // as it would overwrite local state changes (like marking all data for deletion).
-    const initialSyncDone = React.useRef(false);
+    
+    const prevProfilesRef = React.useRef<Profile[]>([]);
 
     const setFullData = React.useCallback(async (newData: any) => {
         const validated = validateAndFixData(newData, userRef.current);
@@ -450,65 +423,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         onSyncStatusChange: handleSyncStatusChange,
         isOnline, isAuthLoading, syncStatus
     });
-    
-    const getDocumentFile = React.useCallback(async (doc: CaseDocument): Promise<File | null> => {
-        const db = await getDb();
-        const supabase = getSupabaseClient();
-        
-        if (!doc) {
-            console.error(`getDocumentFile called with null/undefined document.`);
-            return null;
-        }
-    
-        // Add a lock to prevent concurrent downloads for the same document.
-        if (doc.localState === 'downloading' || downloadingDocsRef.current.has(doc.id)) {
-            return null;
-        }
-    
-        const localFile = await db.get(DOCS_FILES_STORE_NAME, doc.id);
-        if (localFile) {
-            return localFile;
-        }
-    
-        if ((doc.localState === 'pending_download' || doc.localState === 'error') && isOnline && supabase) {
-            try {
-                // Set state to 'downloading' to act as a lock
-                downloadingDocsRef.current.add(doc.id);
-                setData(p => ({...p, documents: p.documents.map(d => d.id === doc.id ? {...d, localState: 'downloading' } : d)}));
-    
-                const { data: blob, error: downloadError } = await supabase.storage.from('documents').download(doc.storagePath);
-                if (downloadError) throw downloadError;
-                if (!blob) throw new Error("Download returned an empty blob.");
-    
-                const downloadedFile = new File([blob], doc.name, { type: doc.type });
-    
-                await db.put(DOCS_FILES_STORE_NAME, downloadedFile, doc.id);
-                await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'synced' }, doc.id);
-    
-                // Update state to 'synced' to release lock and show correct status
-                setData(p => ({...p, documents: p.documents.map(d => d.id === doc.id ? {...d, localState: 'synced'} : d)}));
-    
-                return downloadedFile;
-            } catch (error: any) {
-                console.error(`Failed to download document ${doc.id}:`, JSON.stringify(error, null, 2));
-                await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'error' }, doc.id);
-                // Update state to 'error' to release lock and show error status
-                setData(p => ({...p, documents: p.documents.map(d => d.id === doc.id ? {...d, localState: 'error'} : d)}));
-                return null;
-            } finally {
-                downloadingDocsRef.current.delete(doc.id);
-            }
-        }
-        
-        return null;
-    }, [isOnline]);
 
     React.useEffect(() => {
-        // If we've logged out, reset the "initial sync" flag so the next user gets a fresh sync.
-        if (!user) {
-            initialSyncDone.current = false;
-        }
-
         if (!user || isAuthLoading) {
             if (!isAuthLoading) setIsDataLoading(false);
             return;
@@ -519,48 +435,30 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         const loadData = async () => {
             try {
                 const db = await getDb();
-                const [storedData, storedDeletedIds] = await Promise.all([
+                const [storedData, storedDeletedIds, localDocsMetadata] = await Promise.all([
                     db.get(DATA_STORE_NAME, user.id),
                     db.get(DATA_STORE_NAME, `deletedIds_${user.id}`),
+                    db.getAll(DOCS_METADATA_STORE_NAME)
                 ]);
                 
                 if (cancelled) return;
+
+                const validatedData = validateAndFixData(storedData, user);
                 
-                let finalData;
-                try {
-                    // This block now safely processes stored data. If anything fails,
-                    // it falls back to the initial empty state instead of crashing.
-                    const validatedData = validateAndFixData(storedData, user);
-                    const localDocsMetadata = await db.getAll(DOCS_METADATA_STORE_NAME);
-                    if (cancelled) return;
-                    
-                    const localDocsMetadataMap = new Map((localDocsMetadata as any[]).map((meta: any) => [meta.id, meta]));
+                const localDocsMetadataMap = new Map((localDocsMetadata as any[]).map((meta: any) => [meta.id, meta]));
 
-                    const finalDocs = validatedData.documents.map(doc => {
-                        const localMeta: any = localDocsMetadataMap.get(doc.id);
-                        return { ...doc, localState: localMeta?.localState || doc.localState || 'pending_download' };
-                    }).filter(doc => !!doc) as CaseDocument[];
-                    
-                    finalData = { ...validatedData, documents: finalDocs };
-
-                } catch (validationError) {
-                     console.error("CRITICAL: Failed to validate data from IndexedDB. Data may be corrupt. Resetting to a clean state for this session.", validationError);
-                     finalData = getInitialData();
-                }
-
+                const finalDocs = validatedData.documents.map(doc => {
+                    const localMeta: any = localDocsMetadataMap.get(doc.id);
+                    return { ...doc, localState: localMeta?.localState || doc.localState || 'pending_download' };
+                }).filter(doc => !!doc) as CaseDocument[];
+                
+                const finalData = { ...validatedData, documents: finalDocs };
+                
                 setData(finalData);
-                prevProfilesRef.current = finalData.profiles;
                 setDeletedIds(storedDeletedIds || getInitialDeletedIds());
                 
                 if (isOnline) {
-                     // This check prevents a full data pull on re-authentication (e.g., during password check for data deletion),
-                    // which was causing a race condition where remote data would overwrite the local state before deletions could be synced.
-                    if (!initialSyncDone.current) {
-                        await manualSync(true);
-                        if (!cancelled) {
-                           initialSyncDone.current = true;
-                        }
-                    }
+                    await manualSync(true);
                 } else {
                     setSyncStatus('synced'); // Offline but data loaded
                 }
@@ -640,6 +538,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
         const handleRealtimeUpdate = (payload: any) => {
             console.log('Realtime change received:', payload);
+            // setRealtimeAlerts(prev => [...prev, { id: Date.now(), message: `تم تحديث البيانات من قبل مستخدم آخر.`, type: 'sync' }]);
             fetchAndRefresh();
         };
 
@@ -655,227 +554,169 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         };
     }, [isOnline, user, fetchAndRefresh]);
 
-    // This effect handles automatic file uploads reactively, one by one, with a cooldown on failure.
+    const currentUserProfile = React.useMemo(() => {
+        return data.profiles.find(p => p.id === user?.id);
+    }, [data.profiles, user]);
+
     React.useEffect(() => {
-        const UPLOAD_COOLDOWN = 30000; // 30 seconds
-
-        if (!isOnline || !user || isDataLoading || isUploadingRef.current) return;
-
-        const now = Date.now();
-        if (now - lastUploadAttemptRef.current < UPLOAD_COOLDOWN) {
-            return; // Still in cooldown.
+        if (currentUserProfile?.role !== 'admin' || isDataLoading) {
+            prevProfilesRef.current = data.profiles;
+            return;
         }
 
-        const uploadNextFile = async () => {
+        const currentProfiles = data.profiles;
+        const prevProfiles = prevProfilesRef.current;
+
+        if (currentProfiles.length > prevProfiles.length) {
+            const prevProfileIds = new Set(prevProfiles.map(p => p.id));
+            const newUsers = currentProfiles.filter(p => !prevProfileIds.has(p.id));
+            const newPendingUsers = newUsers.filter(u => !u.is_approved && u.role !== 'admin');
+
+            if (newPendingUsers.length > 0) {
+                const newAlerts: RealtimeAlert[] = newPendingUsers.map(u => ({
+                    id: Date.now() + Math.random(),
+                    message: `المستخدم "${u.full_name}" ينتظر الموافقة.`,
+                    type: 'userApproval'
+                }));
+                setUserApprovalAlerts(prev => [...prev, ...newAlerts]);
+            }
+        }
+
+        prevProfilesRef.current = currentProfiles;
+    }, [data.profiles, currentUserProfile, isDataLoading]);
+
+    // This effect handles automatic file uploads when the app is online.
+    React.useEffect(() => {
+        if (!isOnline || !user) return;
+
+        const uploadPendingFiles = async () => {
             const db = await getDb();
             const supabase = getSupabaseClient();
             if (!supabase) return;
 
-            // Prioritize new uploads, then retry failed ones.
-            const docToUpload = data.documents.find(d => d.localState === 'pending_upload' || d.localState === 'error');
+            // Find documents that are marked for upload
+            const docsToUpload = data.documents.filter(d => d.localState === 'pending_upload');
+            if (docsToUpload.length === 0) return;
 
-            if (docToUpload) {
-                isUploadingRef.current = true; // Set lock early to prevent race conditions
+            let documentsUpdated = false;
+            const updatedDocuments = [...data.documents];
 
-                // If the state is 'error', we must verify it's an upload error by checking for the local file.
-                // If the local file doesn't exist, it's a download error, so we should skip it.
-                if (docToUpload.localState === 'error') {
-                    const fileExists = await db.get(DOCS_FILES_STORE_NAME, docToUpload.id);
-                    if (!fileExists) {
-                        isUploadingRef.current = false; // Release lock
-                        return; // Let the downloader handle this.
-                    }
-                }
-
+            for (const doc of docsToUpload) {
                 try {
-                    const file = await db.get(DOCS_FILES_STORE_NAME, docToUpload.id);
-                    if (!file) throw new Error(`File for doc ${docToUpload.id} not found in local DB for upload.`);
+                    const file = await db.get(DOCS_FILES_STORE_NAME, doc.id);
+                    if (!file) throw new Error(`File for doc ${doc.id} not found in local DB for upload.`);
+                    
+                    const { error: uploadError } = await supabase.storage.from('documents').upload(doc.storagePath, file, { upsert: true });
 
-                    const { error: uploadError } = await supabase.storage.from('documents').upload(docToUpload.storagePath, file, { upsert: true });
+                    if (uploadError && !uploadError.message.includes('Duplicate')) throw uploadError;
 
-                    if (uploadError && !uploadError.message.includes('Duplicate')) {
-                        throw uploadError;
+                    await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'synced' }, doc.id);
+                    const docIndex = updatedDocuments.findIndex(d => d.id === doc.id);
+                    if (docIndex > -1) {
+                        updatedDocuments[docIndex] = { ...updatedDocuments[docIndex], localState: 'synced' };
+                        documentsUpdated = true;
                     }
-
-                    await db.put(DOCS_METADATA_STORE_NAME, { ...docToUpload, localState: 'synced' }, docToUpload.id);
-                    setData(prev => ({
-                        ...prev,
-                        documents: prev.documents.map(d => d.id === docToUpload.id ? { ...d, localState: 'synced' } : d)
-                    }));
-                    setDirty(true);
-
                 } catch (error) {
-                    console.error(`Failed to upload document ${docToUpload.id}:`, error);
-                    await db.put(DOCS_METADATA_STORE_NAME, { ...docToUpload, localState: 'error' }, docToUpload.id);
-                    setData(prev => ({
-                        ...prev,
-                        documents: prev.documents.map(d => d.id === docToUpload.id ? { ...d, localState: 'error' } : d)
-                    }));
-                    setDirty(true);
-                    lastUploadAttemptRef.current = Date.now();
-                } finally {
-                    isUploadingRef.current = false;
+                    console.error(`Failed to upload document ${doc.id}:`, error);
+                    await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'error' }, doc.id);
+                    const docIndex = updatedDocuments.findIndex(d => d.id === doc.id);
+                    if (docIndex > -1) {
+                        updatedDocuments[docIndex] = { ...updatedDocuments[docIndex], localState: 'error' };
+                        documentsUpdated = true;
+                    }
                 }
+            }
+
+            if (documentsUpdated) {
+                setData(prev => ({ ...prev, documents: updatedDocuments }));
+                setDirty(true); // Mark data as dirty to sync the updated 'localState'
             }
         };
-        
-        uploadNextFile();
 
-    }, [isOnline, user, isDataLoading, data.documents]);
-    
-    // This effect handles automatic file downloads reactively, one by one, with a cooldown on failure.
-    React.useEffect(() => {
-        const DOWNLOAD_COOLDOWN = 30000; // 30 seconds
-    
-        // Don't run if offline, not logged in, data is loading, or another download is in progress globally.
-        if (!isOnline || !user || isDataLoading || downloadingDocsRef.current.size > 0) return;
-    
-        const now = Date.now();
-        if (now - lastDownloadAttemptRef.current < DOWNLOAD_COOLDOWN) {
-            return; // Still in cooldown from a previous failure.
-        }
-    
-        const downloadNextFile = async () => {
-            // Find a document that needs downloading and is not already being processed.
-            // FIX: Only process 'pending_download' state to prevent retrying 'error' states.
-            const docToDownload = data.documents.find(d => 
-                d.localState === 'pending_download' && 
-                !downloadingDocsRef.current.has(d.id)
-            );
-    
-            if (docToDownload) {
-                const downloadedFile = await getDocumentFile(docToDownload);
-    
-                if (!downloadedFile) {
-                    // The download failed. Set cooldown to prevent hammering the server.
-                    lastDownloadAttemptRef.current = Date.now();
-                }
-            }
-        };
-    
-        downloadNextFile();
-        
-    }, [isOnline, user, isDataLoading, data.documents, getDocumentFile]);
+        const handler = setTimeout(uploadPendingFiles, 2000); // Debounce to avoid rapid firing
+        return () => clearTimeout(handler);
 
-    // Effect to detect new unapproved users for admin alerts
-    React.useEffect(() => {
-        if (!isDataLoading && user?.id) {
-            const currentProfiles = prevProfilesRef.current;
-            const newProfiles = data.profiles;
-
-            if (currentProfiles.length > 0) { // Only check if we have a previous state to compare against
-                const currentProfileIds = new Set(currentProfiles.map(p => p.id));
-                const newlyFoundUsers = newProfiles.filter(p => !currentProfileIds.has(p.id) && !p.is_approved);
-                
-                if (newlyFoundUsers.length > 0) {
-                    setNewUnapprovedUserAlerts(prev => {
-                        const existingIds = new Set(prev.map(u => u.id));
-                        const uniqueNewUsers = newlyFoundUsers.filter(u => !existingIds.has(u.id));
-                        return [...prev, ...uniqueNewUsers];
-                    });
-                }
-            }
-            
-            prevProfilesRef.current = newProfiles;
-        }
-    }, [data.profiles, isDataLoading, user]);
-
+    }, [isOnline, user, data.documents]);
 
     const dismissAlert = (appointmentId: string) => {
         setTriggeredAlerts(prev => prev.filter(a => a.id !== appointmentId));
     };
     
-    const dismissNewUserAlert = (userId: string) => {
-        setNewUnapprovedUserAlerts(prev => prev.filter(u => u.id !== userId));
+    const dismissRealtimeAlert = (alertId: number) => {
+        setRealtimeAlerts(prev => prev.filter(a => a.id !== alertId));
     };
 
-    const updateNestedState = (clientId: string, caseId: string, stageId: string, sessionId: string | null, updater: (session: Session) => Session) => {
-         setData(prev => ({ ...prev, clients: prev.clients.map(c => {
-            if (c.id !== clientId) return c;
-            return { ...c, updated_at: new Date(), cases: c.cases.map(cs => {
-                if (cs.id !== caseId) return cs;
-                return { ...cs, updated_at: new Date(), stages: cs.stages.map(st => {
-                    if (st.id !== stageId) return st;
-                    const sessionIndex = sessionId ? st.sessions.findIndex(s => s.id === sessionId) : -1;
-                    if (sessionIndex === -1 && sessionId) return st; // session not found
-                    return {
-                        ...st,
-                        updated_at: new Date(),
-                        sessions: sessionId ? st.sessions.map((s, idx) => idx === sessionIndex ? updater(s) : s) : st.sessions,
-                    };
-                })};
-            })};
-        })}));
-        setDirty(true);
+    const dismissUserApprovalAlert = (alertId: number) => {
+        setUserApprovalAlerts(prev => prev.filter(a => a.id !== alertId));
     };
 
     const postponeSession = (sessionId: string, newDate: Date, newReason: string) => {
-        let wasPostponed = false;
-
-        setData(prevData => {
-            const updatedClients = prevData.clients.map(client => {
-                let clientNeedsUpdate = false;
-                const updatedCases = client.cases.map(caseItem => {
-                    let caseNeedsUpdate = false;
-                    const updatedStages = caseItem.stages.map(stage => {
+        setData(prev => {
+            const newClients = prev.clients.map(client => {
+                let clientModified = false;
+                const newCases = client.cases.map(caseItem => {
+                    let caseModified = false;
+                    const newStages = caseItem.stages.map(stage => {
                         const sessionIndex = stage.sessions.findIndex(s => s.id === sessionId);
-
                         if (sessionIndex !== -1) {
-                            wasPostponed = true;
-                            caseNeedsUpdate = true;
-                            clientNeedsUpdate = true;
-
-                            const originalSession = stage.sessions[sessionIndex];
-
-                            // 1. Mark the original session as postponed
+                            const oldSession = stage.sessions[sessionIndex];
+    
+                            // Create the new session for the future date
+                            const newSession: Session = {
+                                id: `session-${Date.now()}`,
+                                court: oldSession.court,
+                                caseNumber: oldSession.caseNumber,
+                                date: newDate,
+                                clientName: oldSession.clientName,
+                                opponentName: oldSession.opponentName,
+                                postponementReason: newReason, // The reason this session exists is the postponement of the previous one.
+                                isPostponed: false,
+                                assignee: oldSession.assignee, // Carry over the assignee
+                                updated_at: new Date(),
+                            };
+    
+                            // Update the old session to mark it as postponed
                             const updatedOldSession: Session = {
-                                ...originalSession,
+                                ...oldSession,
                                 isPostponed: true,
                                 nextSessionDate: newDate,
                                 nextPostponementReason: newReason,
                                 updated_at: new Date(),
                             };
-
-                            // 2. Create a new session for the new date
-                            const newSession: Session = {
-                                ...originalSession,
-                                id: `session-${Date.now()}`,
-                                date: newDate,
-                                isPostponed: false,
-                                postponementReason: newReason, // Reason why *this* session is happening
-                                nextSessionDate: undefined,
-                                nextPostponementReason: undefined,
-                                updated_at: new Date(),
-                            };
-                            
+    
                             const newSessions = [...stage.sessions];
                             newSessions[sessionIndex] = updatedOldSession;
                             newSessions.push(newSession);
-
-                            return { ...stage, sessions: newSessions, updated_at: new Date() };
+                            
+                            caseModified = true;
+                            clientModified = true;
+    
+                            return {
+                                ...stage,
+                                sessions: newSessions,
+                                updated_at: new Date(),
+                            };
                         }
                         return stage;
                     });
-                    
-                    if (caseNeedsUpdate) {
-                        return { ...caseItem, stages: updatedStages, updated_at: new Date() };
+    
+                    if (caseModified) {
+                        return { ...caseItem, stages: newStages, updated_at: new Date() };
                     }
                     return caseItem;
                 });
-
-                if (clientNeedsUpdate) {
-                    return { ...client, cases: updatedCases, updated_at: new Date() };
+    
+                if (clientModified) {
+                    return { ...client, cases: newCases, updated_at: new Date() };
                 }
                 return client;
             });
-
-            if (wasPostponed) {
-                setDirty(true);
-                return { ...prevData, clients: updatedClients };
-            }
-            
-            return prevData; // No changes
+    
+            // Only return a new object if something actually changed.
+            return newClients.some((c, i) => c !== prev.clients[i]) ? { ...prev, clients: newClients } : prev;
         });
+    
+        setDirty(true);
     };
     
     // --- Memos for derived data ---
@@ -934,9 +775,40 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     };
 
     const deleteClient = (clientId: string) => { setData(p => ({ ...p, clients: p.clients.filter(c => c.id !== clientId) })); createDeleteFunction('clients')(clientId); };
-    const deleteCase = (caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.filter(cs => cs.id !== caseId) } : c) })); createDeleteFunction('cases')(caseId); };
-    const deleteStage = (stageId: string, caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.filter(st => st.id !== stageId) } : cs) } : c) })); createDeleteFunction('stages')(stageId); };
-    const deleteSession = (sessionId: string, stageId: string, caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.map(st => st.id === stageId ? { ...st, sessions: st.sessions.filter(s => s.id !== sessionId) } : st) } : cs) } : c) })); createDeleteFunction('sessions')(sessionId); };
+    const deleteCase = async (caseId: string, clientId: string) => {
+        // Find documents to delete that are associated with the case
+        const docsToDelete = data.documents.filter(doc => doc.caseId === caseId);
+        const docIdsToDelete = docsToDelete.map(doc => doc.id);
+        const docPathsToDelete = docsToDelete.map(doc => doc.storagePath).filter(Boolean); // Ensure no null/empty paths
+
+        // Update local state by removing the case and its documents
+        setData(p => {
+            const updatedClients = p.clients.map(c => 
+                c.id === clientId 
+                ? { ...c, cases: c.cases.filter(cs => cs.id !== caseId) } 
+                : c
+            );
+            const updatedDocuments = p.documents.filter(doc => doc.caseId !== caseId);
+            return { ...p, clients: updatedClients, documents: updatedDocuments };
+        });
+
+        // Add all deleted IDs to the pending deletions list in IndexedDB
+        const db = await getDb();
+        setDeletedIds(prevDeletedIds => {
+            const newDeletedIds = { 
+                ...prevDeletedIds, 
+                cases: [...prevDeletedIds.cases, caseId],
+                documents: [...prevDeletedIds.documents, ...docIdsToDelete],
+                documentPaths: [...prevDeletedIds.documentPaths, ...docPathsToDelete],
+            };
+            db.put(DATA_STORE_NAME, newDeletedIds, `deletedIds_${userRef.current!.id}`);
+            return newDeletedIds;
+        });
+        
+        setDirty(true);
+    };
+    const deleteStage = (stageId: string, caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: p.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.filter(st => st.id !== stageId) } : cs) } : c) })); createDeleteFunction('stages')(stageId); };
+    const deleteSession = (sessionId: string, stageId: string, caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: p.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.map(st => st.id === stageId ? { ...st, sessions: st.sessions.filter(s => s.id !== sessionId) } : st) } : cs) } : c) })); createDeleteFunction('sessions')(sessionId); };
     const deleteAdminTask = (taskId: string) => { setData(p => ({...p, adminTasks: p.adminTasks.filter(t => t.id !== taskId)})); createDeleteFunction('adminTasks')(taskId); };
     const deleteAppointment = (appointmentId: string) => { setData(p => ({...p, appointments: p.appointments.filter(a => a.id !== appointmentId)})); createDeleteFunction('appointments')(appointmentId); };
     const deleteAccountingEntry = (entryId: string) => { setData(p => ({...p, accountingEntries: p.accountingEntries.filter(e => e.id !== entryId)})); createDeleteFunction('accountingEntries')(entryId); };
@@ -958,7 +830,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         const newDocs: CaseDocument[] = [];
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            const docId = `doc-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 9)}`;
+            const docId = `doc-${Date.now()}-${i}`;
             
             const lastDot = file.name.lastIndexOf('.');
             const extension = lastDot !== -1 ? file.name.substring(lastDot) : '';
@@ -982,6 +854,48 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         }
         setData(p => ({...p, documents: [...p.documents, ...newDocs]}));
         setDirty(true);
+    };
+
+    const getDocumentFile = async (docId: string): Promise<File | null> => {
+        const db = await getDb();
+        const supabase = getSupabaseClient();
+        const doc = data.documents.find(d => d.id === docId);
+    
+        if (!doc) {
+            console.error(`Document metadata not found for id: ${docId}`);
+            return null;
+        }
+    
+        const localFile = await db.get(DOCS_FILES_STORE_NAME, docId);
+        if (localFile) {
+            return localFile;
+        }
+    
+        if (doc.localState === 'pending_download' && isOnline && supabase) {
+            try {
+                setData(p => ({...p, documents: p.documents.map(d => d.id === docId ? {...d, localState: 'downloading' } : d)}));
+    
+                const { data: blob, error: downloadError } = await supabase.storage.from('documents').download(doc.storagePath);
+                if (downloadError) throw downloadError;
+                if (!blob) throw new Error("Download returned an empty blob.");
+    
+                const downloadedFile = new File([blob], doc.name, { type: doc.type });
+    
+                await db.put(DOCS_FILES_STORE_NAME, downloadedFile, doc.id);
+                await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'synced' }, doc.id);
+    
+                setData(p => ({...p, documents: p.documents.map(d => d.id === docId ? {...d, localState: 'synced'} : d)}));
+    
+                return downloadedFile;
+            } catch (error: any) {
+                console.error(`Failed to download document ${docId}:`, error);
+                await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'error' }, doc.id);
+                setData(p => ({...p, documents: p.documents.map(d => d.id === docId ? {...d, localState: 'error'} : d)}));
+                return null;
+            }
+        }
+        
+        return null;
     };
     
     const exportData = (): boolean => {
@@ -1007,58 +921,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         } catch (error) {
             console.error('Failed to export data:', error);
             return false;
-        }
-    };
-    
-    const clearAllDataAndMarkForDeletion = async () => {
-        if (!user) {
-            throw new Error("يجب تسجيل الدخول لمسح البيانات.");
-        }
-
-        const allIdsToDelete: DeletedIds = getInitialDeletedIds();
-
-        // Collect all IDs from the current data state
-        data.clients.forEach(client => {
-            allIdsToDelete.clients.push(client.id);
-            client.cases.forEach(caseItem => {
-                allIdsToDelete.cases.push(caseItem.id);
-                caseItem.stages.forEach(stage => {
-                    allIdsToDelete.stages.push(stage.id);
-                    stage.sessions.forEach(session => {
-                        allIdsToDelete.sessions.push(session.id);
-                    });
-                });
-            });
-        });
-        allIdsToDelete.adminTasks = data.adminTasks.map(t => t.id);
-        allIdsToDelete.appointments = data.appointments.map(a => a.id);
-        allIdsToDelete.accountingEntries = data.accountingEntries.map(e => e.id);
-        data.invoices.forEach(invoice => {
-            allIdsToDelete.invoices.push(invoice.id);
-            invoice.items.forEach(item => allIdsToDelete.invoiceItems.push(item.id));
-        });
-        allIdsToDelete.assistants = data.assistants.filter(a => a !== 'بدون تخصيص');
-        allIdsToDelete.documents = data.documents.map(d => d.id);
-        allIdsToDelete.documentPaths = data.documents.map(d => d.storagePath).filter(Boolean);
-        // Note: profiles and site_finances are not cleared by this user-facing action.
-
-        // Prepare the new empty state
-        const emptyData = getInitialData();
-        emptyData.assistants = ['بدون تخصيص'];
-        
-        // Atomically update state and mark as dirty to trigger sync
-        setData(emptyData);
-        setDeletedIds(allIdsToDelete);
-        setDirty(true);
-
-        // Persist the empty data and the populated deletion list to IndexedDB
-        try {
-            const db = await getDb();
-            await db.put(DATA_STORE_NAME, emptyData, user.id);
-            await db.put(DATA_STORE_NAME, allIdsToDelete, `deletedIds_${user.id}`);
-        } catch (dbError) {
-            console.error("Failed to update IndexedDB after clearing data:", dbError);
-            throw new Error("فشل تحديث قاعدة البيانات المحلية.");
         }
     };
 
@@ -1088,8 +950,10 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         exportData,
         triggeredAlerts,
         dismissAlert,
-        newUnapprovedUserAlerts,
-        dismissNewUserAlert,
+        realtimeAlerts,
+        dismissRealtimeAlert,
+        userApprovalAlerts,
+        dismissUserApprovalAlert,
         deleteClient,
         deleteCase,
         deleteStage,
@@ -1100,7 +964,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         deleteInvoice,
         deleteAssistant,
         deleteDocument,
-        clearAllDataAndMarkForDeletion,
         addDocuments,
         getDocumentFile,
         postponeSession,

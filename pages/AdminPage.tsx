@@ -72,38 +72,13 @@ const AdminPage: React.FC = () => {
 
     const handleUpdateUser = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        if (!editingUser || !supabase) return;
-
-        const originalUser = users.find(u => u.id === editingUser.id);
-        if (!originalUser) return;
-
-        const updatedUserWithTimestamp = { ...editingUser, updated_at: new Date() };
-
-        // Optimistic UI update
-        setUsers(prevUsers => prevUsers.map(u => 
-            u.id === editingUser.id ? updatedUserWithTimestamp : u
-        ));
+        if (!editingUser) return;
         
-        setEditingUser(null); // Close the modal immediately
+        setUsers(prevUsers => prevUsers.map(u => 
+            u.id === editingUser.id ? { ...editingUser, updated_at: new Date() } : u
+        ));
 
-        const { error: updateError } = await supabase
-            .from('profiles')
-            .update({
-                full_name: editingUser.full_name,
-                subscription_start_date: editingUser.subscription_start_date,
-                subscription_end_date: editingUser.subscription_end_date,
-                is_approved: editingUser.is_approved,
-                is_active: editingUser.is_active,
-                updated_at: updatedUserWithTimestamp.updated_at.toISOString()
-            })
-            .eq('id', editingUser.id);
-
-        if (updateError) {
-            console.error("Failed to update user profile:", updateError);
-            setError(`فشل تحديث ملف المستخدم ${originalUser.full_name}.`);
-            // Revert UI on failure
-            setUsers(prev => prev.map(u => u.id === originalUser.id ? originalUser : u));
-        }
+        setEditingUser(null);
     };
 
     const handleConfirmDelete = async () => {
@@ -120,50 +95,18 @@ const AdminPage: React.FC = () => {
         setUserToDelete(null);
     };
     
-    // Quick toggle functions with direct DB update
-    const toggleUserApproval = async (user: Profile) => {
-        if (!supabase || user.role === 'admin') return;
-        
-        const originalUser = { ...user };
-        const updatedUser = { ...user, is_approved: !user.is_approved, updated_at: new Date() };
-
-        // Optimistic UI update
-        setUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
-
-        const { error: updateError } = await supabase
-            .from('profiles')
-            .update({ is_approved: updatedUser.is_approved, updated_at: updatedUser.updated_at.toISOString() })
-            .eq('id', user.id);
-
-        if (updateError) {
-            console.error("Failed to update user approval:", updateError);
-            setError(`فشل تحديث حالة الموافقة للمستخدم ${user.full_name}.`);
-            // Revert UI on failure
-            setUsers(prev => prev.map(u => u.id === user.id ? originalUser : u));
-        }
-    };
+    // Quick toggle functions
+    const toggleUserApproval = (user: Profile) => {
+         if (!supabase || user.role === 'admin') return;
+         const updatedUser = { ...user, is_approved: !user.is_approved, updated_at: new Date() };
+         setUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
+    }
     
-    const toggleUserActiveStatus = async (user: Profile) => {
-        if (!supabase || user.role === 'admin') return;
-
-        const originalUser = { ...user };
-        const updatedUser = { ...user, is_active: !user.is_active, updated_at: new Date() };
-
-        // Optimistic UI update
-        setUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
-
-        const { error: updateError } = await supabase
-            .from('profiles')
-            .update({ is_active: updatedUser.is_active, updated_at: updatedUser.updated_at.toISOString() })
-            .eq('id', user.id);
-
-        if (updateError) {
-            console.error("Failed to update user active status:", updateError);
-            setError(`فشل تحديث حالة الحساب للمستخدم ${user.full_name}.`);
-            // Revert UI on failure
-            setUsers(prev => prev.map(u => u.id === user.id ? originalUser : u));
-        }
-    };
+    const toggleUserActiveStatus = (user: Profile) => {
+         if (!supabase || user.role === 'admin') return;
+         const updatedUser = { ...user, is_active: !user.is_active, updated_at: new Date() };
+         setUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
+    }
     
     const sortedUsers = React.useMemo(() => {
         return [...users].sort((a, b) => {

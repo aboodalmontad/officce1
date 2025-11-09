@@ -3,7 +3,6 @@ import { useData } from '../App';
 import { CaseDocument } from '../types';
 import { DocumentArrowUpIcon, TrashIcon, EyeIcon, DocumentTextIcon, PhotoIcon, XMarkIcon, ExclamationTriangleIcon, ArrowPathIcon, CameraIcon, CloudArrowUpIcon, CloudArrowDownIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowDownTrayIcon } from './icons';
 import { renderAsync } from 'docx-preview';
-import { GoogleGenAI, Modality } from '@google/genai';
 
 interface CaseDocumentsProps {
     caseId: string;
@@ -26,15 +25,6 @@ const SyncStatusIcon: React.FC<{ state: CaseDocument['localState'] }> = ({ state
     }
 };
 
-const getFileIcon = (doc: CaseDocument) => {
-    const type = doc.type;
-    const name = doc.name.toLowerCase();
-    if (type.startsWith('image/')) return <PhotoIcon className="w-12 h-12 text-gray-400" />;
-    if (type === 'application/pdf' || name.endsWith('.pdf')) return <DocumentTextIcon className="w-12 h-12 text-red-500" />;
-    if (type.includes('word') || name.endsWith('.docx') || name.endsWith('.doc')) return <DocumentTextIcon className="w-12 h-12 text-blue-500" />;
-    return <DocumentTextIcon className="w-12 h-12 text-gray-400" />;
-};
-
 
 const FilePreview: React.FC<{ doc: CaseDocument, onPreview: (doc: CaseDocument) => void, onDelete: (doc: CaseDocument) => void }> = ({ doc, onPreview, onDelete }) => {
     const [thumbnailUrl, setThumbnailUrl] = React.useState<string | null>(null);
@@ -51,7 +41,7 @@ const FilePreview: React.FC<{ doc: CaseDocument, onPreview: (doc: CaseDocument) 
             }
 
             setIsLoadingThumbnail(true);
-            const file = await getDocumentFile(doc);
+            const file = await getDocumentFile(doc.id);
             if (!file || !isMounted) {
                 setIsLoadingThumbnail(false);
                 return;
@@ -72,7 +62,7 @@ const FilePreview: React.FC<{ doc: CaseDocument, onPreview: (doc: CaseDocument) 
                 URL.revokeObjectURL(objectUrl);
             }
         };
-    }, [doc, getDocumentFile]);
+    }, [doc.id, doc.type, doc.localState, getDocumentFile]);
     
     return (
         <div className="relative group border rounded-lg overflow-hidden bg-gray-50 flex flex-col aspect-w-1 aspect-h-1">
@@ -96,7 +86,7 @@ const FilePreview: React.FC<{ doc: CaseDocument, onPreview: (doc: CaseDocument) 
                     <img src={thumbnailUrl} alt={doc.name} className="object-cover w-full h-full" />
                 ) : (
                     <div className="flex-grow flex items-center justify-center bg-gray-200 w-full h-full">
-                        {getFileIcon(doc)}
+                        <DocumentTextIcon className="w-12 h-12 text-gray-400" />
                     </div>
                 )}
             </div>
@@ -131,7 +121,7 @@ const TextPreview: React.FC<{ file: File; name: string }> = ({ file, name }) => 
     );
 };
 
-const DocxPreview: React.FC<{ file: File; name: string }> = ({ file, name }) => {
+const DocxPreview: React.FC<{ file: File; name: string; onClose: () => void; onDownload: () => void }> = ({ file, name, onClose, onDownload }) => {
     const previewerRef = React.useRef<HTMLDivElement>(null);
     const [error, setError] = React.useState<string | null>(null);
     const [isLoading, setIsLoading] = React.useState(true);
@@ -155,7 +145,19 @@ const DocxPreview: React.FC<{ file: File; name: string }> = ({ file, name }) => 
     }, [file, isOldDocFormat]);
 
     return (
-        <div className="w-full h-full bg-gray-100 rounded-lg overflow-auto flex flex-col">
+        <div className="w-full h-full bg-gray-100 p-4 rounded-lg overflow-auto flex flex-col">
+            <div className="flex justify-between items-center border-b border-gray-300 pb-2 mb-4 flex-shrink-0">
+                <h3 className="text-lg font-semibold text-gray-800">{name}</h3>
+                <div className="flex items-center gap-4">
+                    <button onClick={onDownload} className="flex items-center gap-2 text-sm px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        <ArrowDownTrayIcon className="w-4 h-4" />
+                        <span>تنزيل الملف</span>
+                    </button>
+                    <button onClick={onClose} className="p-2 text-gray-500 hover:bg-gray-200 rounded-full">
+                        <XMarkIcon className="w-5 h-5" />
+                    </button>
+                </div>
+            </div>
             <div className="flex-grow bg-white p-2 rounded shadow-inner overflow-auto relative">
                 {isLoading && (
                     <div className="absolute inset-0 flex items-center justify-center bg-white/70">
@@ -191,6 +193,7 @@ const PreviewModal: React.FC<{ doc: CaseDocument; onClose: () => void }> = ({ do
     const [error, setError] = React.useState<string | null>(null);
     const [isLoading, setIsLoading] = React.useState(true);
 
+    // Get the latest doc state from context, in case it was updated by a download
     const currentDoc = documents.find(d => d.id === doc.id) || doc;
 
     React.useEffect(() => {
@@ -199,7 +202,9 @@ const PreviewModal: React.FC<{ doc: CaseDocument; onClose: () => void }> = ({ do
             setIsLoading(true);
             setError(null);
             try {
-                const retrievedFile = await getDocumentFile(doc);
+                // getDocumentFile now handles downloading and updates state internally
+                const retrievedFile = await getDocumentFile(doc.id);
+                
                 if (retrievedFile) {
                     setFile(retrievedFile);
                     url = URL.createObjectURL(retrievedFile);
@@ -208,7 +213,7 @@ const PreviewModal: React.FC<{ doc: CaseDocument; onClose: () => void }> = ({ do
                     const latestDocState = documents.find(d => d.id === doc.id)?.localState;
                     if (latestDocState === 'error') {
                         setError('فشل تنزيل الملف. يرجى التحقق من اتصالك بالإنترنت والتأكد من تطبيق صلاحيات التخزين (Storage Policies) بشكل صحيح في لوحة تحكم Supabase.');
-                    } else if (latestDocState !== 'downloading') {
+                    } else {
                         setError('الملف غير متوفر محلياً. حاول مرة أخرى عند توفر اتصال بالإنترنت لتنزيله.');
                     }
                 }
@@ -226,7 +231,7 @@ const PreviewModal: React.FC<{ doc: CaseDocument; onClose: () => void }> = ({ do
                 URL.revokeObjectURL(url);
             }
         };
-    }, [doc.id, documents]);
+    }, [doc.id, getDocumentFile]);
 
 
     const handleDownload = () => {
@@ -241,7 +246,10 @@ const PreviewModal: React.FC<{ doc: CaseDocument; onClose: () => void }> = ({ do
     };
 
     const renderPreview = () => {
-        if (currentDoc.localState === 'downloading' || isLoading) {
+        if (!file || !objectUrl) return null;
+        
+        // Show a loading indicator if the file is currently being downloaded
+        if (currentDoc.localState === 'downloading') {
             return (
                 <div className="flex flex-col items-center justify-center h-full">
                     <CloudArrowDownIcon className="w-12 h-12 text-blue-500 animate-spin mb-4" />
@@ -250,19 +258,11 @@ const PreviewModal: React.FC<{ doc: CaseDocument; onClose: () => void }> = ({ do
             );
         }
 
-        if (error) {
-             return <div className="flex flex-col items-center justify-center h-full p-4"><ExclamationTriangleIcon className="w-10 h-10 text-red-500 mb-4"/><p className="text-red-700 text-center">{error}</p></div>;
-        }
-
-        if (!file || !objectUrl) {
-            return <div className="flex items-center justify-center h-full"><p className="text-gray-500">لا يمكن عرض الملف.</p></div>;
-        }
-        
         if (file.type.startsWith('image/')) return <img src={objectUrl} alt={doc.name} className="max-h-full max-w-full object-contain mx-auto" />;
-        if (file.type === 'application/pdf') return <embed src={objectUrl} type="application/pdf" width="100%" height="100%" />;
-        if (doc.name.toLowerCase().endsWith('.docx') || doc.name.toLowerCase().endsWith('.doc')) return <DocxPreview file={file} name={doc.name} />;
         if (file.type.startsWith('text/')) return <TextPreview file={file} name={doc.name} />;
-        
+        if (doc.name.toLowerCase().endsWith('.docx') || doc.name.toLowerCase().endsWith('.doc')) {
+             return <DocxPreview file={file} name={doc.name} onClose={onClose} onDownload={handleDownload} />;
+        }
         return (
             <div className="text-center p-8 flex flex-col items-center justify-center h-full">
                 <DocumentTextIcon className="w-16 h-16 text-gray-400 mb-4" />
@@ -275,27 +275,13 @@ const PreviewModal: React.FC<{ doc: CaseDocument; onClose: () => void }> = ({ do
             </div>
         );
     };
-    
-    const isComplexPreview = file && (file.type === 'application/pdf' || doc.name.toLowerCase().endsWith('.docx') || doc.name.toLowerCase().endsWith('.doc'));
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className="bg-white rounded-lg shadow-xl w-full h-full max-w-6xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                <header className="flex justify-between items-center p-3 border-b bg-gray-50 flex-shrink-0">
-                    <h3 className="text-lg font-semibold text-gray-800 truncate">{doc.name}</h3>
-                    <div className="flex items-center gap-4">
-                        <button onClick={handleDownload} className="flex items-center gap-2 text-sm px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                            <ArrowDownTrayIcon className="w-4 h-4" />
-                            <span>تنزيل</span>
-                        </button>
-                        <button onClick={onClose} className="p-2 text-gray-500 hover:bg-gray-200 rounded-full">
-                            <XMarkIcon className="w-5 h-5" />
-                        </button>
-                    </div>
-                </header>
-                 <main className="flex-grow p-1 bg-gray-200 overflow-auto">
-                    {renderPreview()}
-                </main>
+            <div className="bg-white rounded-lg shadow-xl w-full h-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                {isLoading && <div className="flex items-center justify-center h-full"><ArrowPathIcon className="w-8 h-8 animate-spin text-blue-500" /></div>}
+                {error && <div className="flex flex-col items-center justify-center h-full p-4"><ExclamationTriangleIcon className="w-10 h-10 text-red-500 mb-4"/><p className="text-red-700 text-center">{error}</p></div>}
+                {!isLoading && !error && renderPreview()}
             </div>
         </div>
     );
@@ -312,14 +298,7 @@ const CameraModal: React.FC<{ onClose: () => void; onCapture: (file: File) => vo
         
         const startCamera = async () => {
             try {
-                const constraints = {
-                    video: {
-                        facingMode: 'environment',
-                        width: { ideal: 4096 },
-                        height: { ideal: 2160 }
-                    }
-                };
-                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
                 }
@@ -355,50 +334,30 @@ const CameraModal: React.FC<{ onClose: () => void; onCapture: (file: File) => vo
     };
 
     return (
-        <div className="fixed inset-0 bg-black flex flex-col z-50" onClick={onClose}>
-            <div className="relative w-full h-full" onClick={e => e.stopPropagation()}>
-                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center z-50" onClick={onClose}>
+            <div className="relative w-full max-w-4xl aspect-video bg-black" onClick={e => e.stopPropagation()}>
+                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-contain"></video>
                 <canvas ref={canvasRef} className="hidden"></canvas>
                 {error && <div className="absolute inset-0 flex items-center justify-center text-white bg-black/50 p-4">{error}</div>}
-                
-                <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-black/50 text-white rounded-full transition-opacity hover:opacity-100 opacity-80">
-                    <XMarkIcon className="w-6 h-6" />
+            </div>
+            <div className="flex items-center gap-8 mt-4" onClick={e => e.stopPropagation()}>
+                <button onClick={onClose} className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">إلغاء</button>
+                <button onClick={handleCapture} className="p-4 bg-white rounded-full shadow-lg" aria-label="التقاط صورة">
+                    <div className="w-12 h-12 rounded-full bg-blue-600 ring-4 ring-white"></div>
                 </button>
-                
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-6 flex justify-center items-center">
-                    <button onClick={handleCapture} className="p-4 bg-white rounded-full shadow-lg" aria-label="التقاط صورة">
-                        <div className="w-12 h-12 rounded-full bg-blue-600 ring-4 ring-white ring-offset-2 ring-offset-transparent"></div>
-                    </button>
-                </div>
             </div>
         </div>
     );
 };
 
-const blobToBase64 = (blob: Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            if (typeof reader.result === 'string') {
-                resolve(reader.result.split(',')[1]); // remove data:mime/type;base64,
-            } else {
-                reject(new Error('Failed to convert blob to base64 string.'));
-            }
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-    });
-};
-
 
 const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
-    const { documents, addDocuments, deleteDocument } = useData();
+    const { documents, addDocuments, deleteDocument, getDocumentFile } = useData();
     const [isDeleteModalOpen, setIsDeleteModalOpen] = React.useState(false);
     const [docToDelete, setDocToDelete] = React.useState<CaseDocument | null>(null);
     const [previewDoc, setPreviewDoc] = React.useState<CaseDocument | null>(null);
     const [isDragging, setIsDragging] = React.useState(false);
     const [isCameraOpen, setIsCameraOpen] = React.useState(false);
-    const [isProcessing, setIsProcessing] = React.useState(false);
 
     const caseDocuments = React.useMemo(() => 
         documents.filter(doc => doc.caseId === caseId).sort((a,b) => b.addedAt.getTime() - a.addedAt.getTime()), 
@@ -443,85 +402,27 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
         setDocToDelete(null);
     };
 
-    const handlePhotoCapture = async (file: File) => {
+    const handlePhotoCapture = (file: File) => {
+        const fileList = new DataTransfer();
+        fileList.items.add(file);
+        addDocuments(caseId, fileList.files);
         setIsCameraOpen(false);
-        setIsProcessing(true);
-    
-        try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
-            const base64Data = await blobToBase64(file);
-    
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash-image',
-                contents: {
-                    parts: [
-                        {
-                            inlineData: {
-                                data: base64Data,
-                                mimeType: file.type,
-                            },
-                        },
-                        {
-                            text: 'This is an image of a document captured by a phone camera. Please perform the following enhancements: automatically detect and crop the document to its boundaries, correct any perspective distortion (straighten the document), and enhance the contrast and clarity to make the text sharp and readable as if it were scanned. If the document is primarily text, convert it to a high-contrast black and white image. Otherwise, enhance the existing colors for clarity. Return the enhanced document as a high-quality JPEG image.',
-                        },
-                    ],
-                },
-                config: {
-                    responseModalities: [Modality.IMAGE],
-                },
-            });
-    
-            let processedImageFound = false;
-            for (const part of response.candidates[0].content.parts) {
-                if (part.inlineData) {
-                    const base64ImageBytes = part.inlineData.data;
-                    const mimeType = part.inlineData.mimeType;
-    
-                    const byteCharacters = atob(base64ImageBytes);
-                    const byteNumbers = new Array(byteCharacters.length);
-                    for (let i = 0; i < byteCharacters.length; i++) {
-                        byteNumbers[i] = byteCharacters.charCodeAt(i);
-                    }
-                    const byteArray = new Uint8Array(byteNumbers);
-                    const blob = new Blob([byteArray], { type: mimeType });
-                    
-                    const originalName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
-                    const newExtension = mimeType.split('/')[1] || 'jpeg';
-                    const enhancedFile = new File([blob], `${originalName}_enhanced.${newExtension}`, { type: mimeType });
-    
-                    const fileList = new DataTransfer();
-                    fileList.items.add(enhancedFile);
-                    await addDocuments(caseId, fileList.files);
-                    processedImageFound = true;
-                    break; 
-                }
-            }
-            if (!processedImageFound) {
-                throw new Error('AI processing did not return an image. Saving original.');
-            }
-    
-        } catch (error) {
-            console.error("AI enhancement failed, saving original image:", error);
-            const fileList = new DataTransfer();
-            fileList.items.add(file);
-            await addDocuments(caseId, fileList.files);
-        } finally {
-            setIsProcessing(false);
-        }
     };
     
-    const handlePreview = (doc: CaseDocument) => {
-        setPreviewDoc(doc);
+    const handlePreview = async (doc: CaseDocument) => {
+        if (doc.type === 'application/pdf') {
+            const file = await getDocumentFile(doc.id);
+            if (file) {
+                const url = URL.createObjectURL(file);
+                window.open(url, '_blank');
+            }
+        } else {
+            setPreviewDoc(doc);
+        }
     };
 
     return (
         <div className="space-y-4">
-            {isProcessing && (
-                <div className="fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-[60]">
-                    <ArrowPathIcon className="w-12 h-12 text-white animate-spin" />
-                    <p className="mt-4 text-white font-semibold">جاري تحسين الصورة بواسطة الذكاء الاصطناعي...</p>
-                </div>
-            )}
             <div className="flex flex-col sm:flex-row gap-4">
                  <input type="file" id={`file-upload-${caseId}`} multiple className="hidden" onChange={(e) => handleFileChange(e.target.files)} />
                  <div 

@@ -428,8 +428,6 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                         <span>زيارة الصفحة الرئيسية للتطبيق</span>
                         <ArrowTopRightOnSquareIcon className="w-4 h-4" />
                     </a>
-                    <p className="text-xs text-gray-400 mt-2">الإصدار 8-11-2025-2</p>
-                    <p className="text-xs text-gray-400 mt-1">حقوق الملكية محفوظة للمحامي عبد الرحمن نحوي</p>
                 </div>
             </div>
         </div>

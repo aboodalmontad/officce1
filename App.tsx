@@ -22,7 +22,7 @@ import { AdminTask, Profile, Session, Client, Appointment, AccountingEntry, Invo
 import { getSupabaseClient } from './supabaseClient';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import UnpostponedSessionsModal from './components/UnpostponedSessionsModal';
-import NotificationCenter from './components/RealtimeNotifier';
+import NotificationCenter, { RealtimeAlert } from './components/RealtimeNotifier';
 
 
 // --- Data Context for avoiding prop drilling ---
@@ -55,8 +55,12 @@ interface IDataContext extends AppData {
     exportData: () => boolean;
     triggeredAlerts: Appointment[];
     dismissAlert: (appointmentId: string) => void;
+    realtimeAlerts: RealtimeAlert[];
+    dismissRealtimeAlert: (alertId: number) => void;
+    userApprovalAlerts: RealtimeAlert[];
+    dismissUserApprovalAlert: (alertId: number) => void;
     deleteClient: (clientId: string) => void;
-    deleteCase: (caseId: string, clientId: string) => void;
+    deleteCase: (caseId: string, clientId: string) => Promise<void>;
     deleteStage: (stageId: string, caseId: string, clientId: string) => void;
     deleteSession: (sessionId: string, stageId: string, caseId: string, clientId: string) => void;
     deleteAdminTask: (taskId: string) => void;
@@ -66,12 +70,10 @@ interface IDataContext extends AppData {
     deleteAssistant: (name: string) => void;
     deleteDocument: (doc: CaseDocument) => Promise<void>;
     addDocuments: (caseId: string, files: FileList) => Promise<void>;
-    getDocumentFile: (doc: CaseDocument) => Promise<File | null>;
+    getDocumentFile: (docId: string) => Promise<File | null>;
     postponeSession: (sessionId: string, newDate: Date, newReason: string) => void;
     showUnpostponedSessionsModal: boolean;
     setShowUnpostponedSessionsModal: (show: boolean) => void;
-    newUnapprovedUserAlerts: Profile[];
-    dismissNewUserAlert: (userId: string) => void;
 }
 
 const DataContext = React.createContext<IDataContext | null>(null);
@@ -190,7 +192,10 @@ const Navbar: React.FC<{
         <header className="bg-white shadow-md p-2 sm:p-4 flex justify-between items-center no-print sticky top-0 z-30">
             <nav className="flex items-center gap-1 sm:gap-4 flex-wrap">
                 <button onClick={() => onNavigate('home')} className="flex items-center" aria-label="العودة إلى الصفحة الرئيسية">
-                    <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
+                    <div className="flex items-baseline gap-2">
+                        <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
+                        <span className="text-xs font-mono text-gray-500">الإصدار 13</span>
+                    </div>
                 </button>
                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
                     {navItems.map(item => (
@@ -602,12 +607,16 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                             assistants={supabaseData.assistants}
                         />
                     )}
-                    <NotificationCenter
-                        appointmentAlerts={supabaseData.triggeredAlerts}
-                        dismissAppointmentAlert={supabaseData.dismissAlert}
-                    />
                 </>
             )}
+            <NotificationCenter
+                appointmentAlerts={supabaseData.triggeredAlerts}
+                dismissAppointmentAlert={supabaseData.dismissAlert}
+                realtimeAlerts={supabaseData.realtimeAlerts}
+                dismissRealtimeAlert={supabaseData.dismissRealtimeAlert}
+                userApprovalAlerts={supabaseData.userApprovalAlerts}
+                dismissUserApprovalAlert={supabaseData.dismissUserApprovalAlert}
+            />
         </DataProvider>
     );
 };
