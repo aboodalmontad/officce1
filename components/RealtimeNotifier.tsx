@@ -9,7 +9,7 @@ export interface RealtimeAlert {
     type?: 'sync' | 'userApproval';
 }
 
-const appointmentSoundBase64 = 'data:audio/mpeg;base64,SUQzBAAAAAABEVRYWFgAAAASAAADbWFqb3JfYnJhbmQAbXAzNAA6VEVOQwAAAA+AAANMYXZmNTguNDUuMTAwAP/tAwgAnCgpokAAAFBoA/gEiqHEvV+D//300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000-';
+const appointmentSoundBase64 = 'data:audio/mpeg;base64,SUQzBAAAAAABEVRYWFgAAAASAAADbWFqb3JfYnJhbmQAbXAzNAA6VEVOQwAAAA+AAANMYXZmNTguNDUuMTAwAP/tAwgAnCgpokAAAFBoA/gEiqHEvV+D//300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000-';
 //Sound for user approval notifications
 // Fix: Renamed variable to be a valid identifier (camelCase instead of kebab-case). This resolves reference errors throughout the file.
 export const defaultUserApprovalSoundBase64 = 'data:audio/mpeg;base64,/+MYxAAAAANIAUAAAAAAAASW5mbwAAAA8AAAAEAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwAD/79BTEbAAAJbGMgAAAAAAAAAAAAAAAApGAA/+MYxDwAAANIAYAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV-';
@@ -103,39 +103,10 @@ interface NotificationCenterProps {
 
 const NotificationCenter: React.FC<NotificationCenterProps> = ({ appointmentAlerts, realtimeAlerts, userApprovalAlerts, dismissAppointmentAlert, dismissRealtimeAlert, dismissUserApprovalAlert }) => {
     const appointmentAudioRef = React.useRef<HTMLAudioElement | null>(null);
-    const userApprovalAudioRef = React.useRef<HTMLAudioElement | null>(null);
-    const [userApprovalSound, setUserApprovalSound] = React.useState('');
-
-    // Load custom sound from localStorage on mount and listen for changes
-    React.useEffect(() => {
-        const loadSound = () => {
-            const customSound = localStorage.getItem(USER_APPROVAL_SOUND_KEY);
-            setUserApprovalSound(customSound || defaultUserApprovalSoundBase64);
-        };
-
-        loadSound();
-
-        const handleStorageChange = (event: StorageEvent) => {
-            if (event.key === USER_APPROVAL_SOUND_KEY) {
-                loadSound();
-            }
-        };
-
-        window.addEventListener('storage', handleStorageChange);
-        return () => window.removeEventListener('storage', handleStorageChange);
-    }, []);
-
-    // Effect to manage the audio element source and load it
-    React.useEffect(() => {
-        if (userApprovalAudioRef.current && userApprovalSound) {
-            userApprovalAudioRef.current.src = userApprovalSound;
-            userApprovalAudioRef.current.load();
-        }
-    }, [userApprovalSound]);
 
     React.useEffect(() => {
         if (appointmentAlerts.length > 0) {
-            appointmentAudioRef.current?.play().catch(e => console.error("Audio playback failed:", e));
+            appointmentAudioRef.current?.play().catch(e => console.error("Appointment audio playback failed:", e));
             if ('vibrate' in navigator) {
                 navigator.vibrate(200);
             }
@@ -144,10 +115,12 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({ appointmentAler
 
      React.useEffect(() => {
         if (userApprovalAlerts.length > 0) {
-            if (userApprovalAudioRef.current) {
-                userApprovalAudioRef.current.currentTime = 0; // Rewind before playing
-                userApprovalAudioRef.current.play().catch(e => console.error("Audio playback failed:", e));
-            }
+            const customSound = localStorage.getItem(USER_APPROVAL_SOUND_KEY);
+            const soundSource = customSound || defaultUserApprovalSoundBase64;
+            
+            const audio = new Audio(soundSource);
+            audio.play().catch(e => console.error("User approval audio playback failed:", e));
+
             if ('vibrate' in navigator) {
                 navigator.vibrate([100, 50, 100]);
             }
@@ -211,7 +184,6 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({ appointmentAler
         <div aria-live="assertive" className="fixed inset-0 flex items-start px-4 py-6 pointer-events-none sm:p-6 sm:items-start z-[100]">
             <div className="w-full flex flex-col items-center space-y-3 sm:items-end">
                 <audio ref={appointmentAudioRef} src={appointmentSoundBase64} preload="auto" />
-                <audio ref={userApprovalAudioRef} preload="auto" />
                 {allNotifications.map(notification => (
                     <NotificationToast
                         key={notification.id}
