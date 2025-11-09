@@ -3,7 +3,7 @@ import { ClipboardDocumentCheckIcon, ClipboardDocumentIcon, ExclamationTriangleI
 
 const unifiedScript = `
 -- =================================================================
--- السكربت الشامل والآمن (الإصدار 34) - Non-Destructive & Secure RLS
+-- السكربت الشامل والآمن (الإصدار 35) - Non-Destructive & Secure RLS
 -- =================================================================
 -- هذا السكربت يقوم بإنشاء وتحديث قاعدة البيانات دون حذف البيانات الموجودة.
 -- سيقوم بإنشاء الجداول والأعمدة الناقصة، وتحديث الدوال والصلاحيات.
@@ -61,21 +61,40 @@ GRANT EXECUTE ON FUNCTION public.check_if_mobile_exists(text) TO anon, authentic
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
+DECLARE
+    raw_mobile TEXT;
+    normalized_mobile TEXT;
 BEGIN
-  INSERT INTO public.profiles (id, full_name, mobile_number, created_at)
-  VALUES (
-    new.id,
-    new.raw_user_meta_data->>'full_name',
-    '0' || regexp_replace(new.email, '^sy963|@email\\.com$', '', 'g'),
-    new.created_at
-  )
-  ON CONFLICT (id) DO UPDATE SET
-    full_name = EXCLUDED.full_name,
-    mobile_number = EXCLUDED.mobile_number,
-    created_at = EXCLUDED.created_at;
-  
-  UPDATE auth.users SET email_confirmed_at = NOW() WHERE id = new.id;
-  RETURN new;
+    -- Get mobile from metadata
+    raw_mobile := new.raw_user_meta_data->>'mobile_number';
+
+    -- Normalize the mobile number to '09xxxxxxxx' format
+    IF raw_mobile IS NOT NULL AND raw_mobile != '' THEN
+        -- Remove non-digits and get the last 9 digits, then prepend '0'
+        normalized_mobile := '0' || RIGHT(regexp_replace(raw_mobile, '\D', '', 'g'), 9);
+    ELSE
+        -- Fallback for safety, though mobile should always be provided from client
+        normalized_mobile := '0' || regexp_replace(new.email, '^sy963|@email\\.com$', '', 'g');
+    END IF;
+
+    -- Insert the new profile. The unique constraint on mobile_number will
+    -- cause this to fail if the number is a duplicate. This is the correct
+    -- behavior, and the client-side must handle this specific error.
+    INSERT INTO public.profiles (id, full_name, mobile_number, created_at)
+    VALUES (
+      new.id,
+      new.raw_user_meta_data->>'full_name',
+      normalized_mobile,
+      new.created_at
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      full_name = EXCLUDED.full_name,
+      mobile_number = EXCLUDED.mobile_number,
+      created_at = EXCLUDED.created_at;
+
+    -- Confirm the user's email since we handle approval manually
+    UPDATE auth.users SET email_confirmed_at = NOW() WHERE id = new.id;
+    RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
 

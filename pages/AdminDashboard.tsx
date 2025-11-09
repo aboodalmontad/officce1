@@ -1,15 +1,16 @@
 import * as React from 'react';
 import AdminPage from './AdminPage';
-import { PowerIcon, UserGroupIcon, ChartPieIcon, Bars3Icon, XMarkIcon, CurrencyDollarIcon } from '../components/icons';
+import { PowerIcon, UserGroupIcon, ChartPieIcon, Bars3Icon, XMarkIcon, CurrencyDollarIcon, Cog6ToothIcon } from '../components/icons';
 import { useData } from '../App';
 import AdminAnalyticsPage from './AdminAnalyticsPage';
 import SiteFinancesPage from './SiteFinancesPage';
+import AdminSettingsPage from './AdminSettingsPage';
 
 interface AdminDashboardProps {
     onLogout: () => void;
 }
 
-type AdminView = 'analytics' | 'users' | 'finances';
+type AdminView = 'analytics' | 'users' | 'finances' | 'settings';
 
 const NavLink: React.FC<{
     label: string;
@@ -45,7 +46,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
 
     const pendingUsersCount = React.useMemo(() => {
-        return profiles.filter(p => !p.is_approved).length;
+        return profiles.filter(p => !p.is_approved && p.role !== 'admin').length;
     }, [profiles]);
 
 
@@ -57,6 +58,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                 return <AdminPage />;
             case 'finances':
                 return <SiteFinancesPage />;
+            case 'settings':
+                return <AdminSettingsPage />;
             default:
                 return <AdminAnalyticsPage />;
         }
@@ -90,6 +93,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                     icon={<CurrencyDollarIcon className="w-6 h-6" />}
                     isActive={view === 'finances'}
                     onClick={() => { setView('finances'); setIsSidebarOpen(false); }}
+                />
+                <NavLink
+                    label="الإعدادات"
+                    icon={<Cog6ToothIcon className="w-6 h-6" />}
+                    isActive={view === 'settings'}
+                    onClick={() => { setView('settings'); setIsSidebarOpen(false); }}
                 />
             </nav>
             <div className="mt-auto">
