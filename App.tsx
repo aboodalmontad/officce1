@@ -66,10 +66,12 @@ interface IDataContext extends AppData {
     deleteAssistant: (name: string) => void;
     deleteDocument: (doc: CaseDocument) => Promise<void>;
     addDocuments: (caseId: string, files: FileList) => Promise<void>;
-    getDocumentFile: (docId: string) => Promise<File | null>;
+    getDocumentFile: (doc: CaseDocument) => Promise<File | null>;
     postponeSession: (sessionId: string, newDate: Date, newReason: string) => void;
     showUnpostponedSessionsModal: boolean;
     setShowUnpostponedSessionsModal: (show: boolean) => void;
+    newUnapprovedUserAlerts: Profile[];
+    dismissNewUserAlert: (userId: string) => void;
 }
 
 const DataContext = React.createContext<IDataContext | null>(null);

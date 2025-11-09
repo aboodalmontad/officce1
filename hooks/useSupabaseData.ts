@@ -314,6 +314,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const [isDataLoading, setIsDataLoading] = React.useState(true);
     const [triggeredAlerts, setTriggeredAlerts] = React.useState<Appointment[]>([]);
     const [showUnpostponedSessionsModal, setShowUnpostponedSessionsModal] = React.useState(false);
+    const [newUnapprovedUserAlerts, setNewUnapprovedUserAlerts] = React.useState<Profile[]>([]);
+    const prevProfilesRef = React.useRef<Profile[]>([]);
     const isOnline = useOnlineStatus();
     const downloadingDocsRef = React.useRef<Set<string>>(new Set());
     const lastDownloadAttemptRef = React.useRef(0);
@@ -488,7 +490,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     
                 return downloadedFile;
             } catch (error: any) {
-                console.error(`Failed to download document ${doc.id}:`, error.message || error);
+                console.error(`Failed to download document ${doc.id}:`, JSON.stringify(error, null, 2));
                 await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'error' }, doc.id);
                 // Update state to 'error' to release lock and show error status
                 setData(p => ({...p, documents: p.documents.map(d => d.id === doc.id ? {...d, localState: 'error'} : d)}));
@@ -547,6 +549,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 }
 
                 setData(finalData);
+                prevProfilesRef.current = finalData.profiles;
                 setDeletedIds(storedDeletedIds || getInitialDeletedIds());
                 
                 if (isOnline) {
@@ -754,9 +757,36 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         
     }, [isOnline, user, isDataLoading, data.documents, getDocumentFile]);
 
+    // Effect to detect new unapproved users for admin alerts
+    React.useEffect(() => {
+        if (!isDataLoading && user?.id) {
+            const currentProfiles = prevProfilesRef.current;
+            const newProfiles = data.profiles;
+
+            if (currentProfiles.length > 0) { // Only check if we have a previous state to compare against
+                const currentProfileIds = new Set(currentProfiles.map(p => p.id));
+                const newlyFoundUsers = newProfiles.filter(p => !currentProfileIds.has(p.id) && !p.is_approved);
+                
+                if (newlyFoundUsers.length > 0) {
+                    setNewUnapprovedUserAlerts(prev => {
+                        const existingIds = new Set(prev.map(u => u.id));
+                        const uniqueNewUsers = newlyFoundUsers.filter(u => !existingIds.has(u.id));
+                        return [...prev, ...uniqueNewUsers];
+                    });
+                }
+            }
+            
+            prevProfilesRef.current = newProfiles;
+        }
+    }, [data.profiles, isDataLoading, user]);
+
 
     const dismissAlert = (appointmentId: string) => {
         setTriggeredAlerts(prev => prev.filter(a => a.id !== appointmentId));
+    };
+    
+    const dismissNewUserAlert = (userId: string) => {
+        setNewUnapprovedUserAlerts(prev => prev.filter(u => u.id !== userId));
     };
 
     const updateNestedState = (clientId: string, caseId: string, stageId: string, sessionId: string | null, updater: (session: Session) => Session) => {
@@ -1058,6 +1088,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         exportData,
         triggeredAlerts,
         dismissAlert,
+        newUnapprovedUserAlerts,
+        dismissNewUserAlert,
         deleteClient,
         deleteCase,
         deleteStage,
