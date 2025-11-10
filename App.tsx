@@ -3,14 +3,15 @@ import * as React from 'react';
 import type { Session as AuthSession, User } from '@supabase/supabase-js';
 
 // Statically import ALL page components to fix critical lazy loading/module errors.
-import ClientsPage from './pages/ClientsPage';
-import HomePage from './pages/HomePage';
-import AccountingPage from './pages/AccountingPage';
-import SettingsPage from './pages/SettingsPage';
-import LoginPage from './pages/LoginPage';
-import AdminDashboard from './pages/AdminDashboard';
-import PendingApprovalPage from './pages/PendingApprovalPage';
-import SubscriptionExpiredPage from './pages/SubscriptionExpiredPage';
+// Fix: Added '.tsx' extension to page imports to resolve "no default export" error, likely caused by a strict module resolver configuration in the build setup.
+import ClientsPage from './pages/ClientsPage.tsx';
+import HomePage from './pages/HomePage.tsx';
+import AccountingPage from './pages/AccountingPage.tsx';
+import SettingsPage from './pages/SettingsPage.tsx';
+import LoginPage from './pages/LoginPage.tsx';
+import AdminDashboard from './pages/AdminDashboard.tsx';
+import PendingApprovalPage from './pages/PendingApprovalPage.tsx';
+import SubscriptionExpiredPage from './pages/SubscriptionExpiredPage.tsx';
 
 
 import ConfigurationModal from './components/ConfigurationModal';
@@ -23,68 +24,8 @@ import { getSupabaseClient } from './supabaseClient';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import UnpostponedSessionsModal from './components/UnpostponedSessionsModal';
 import NotificationCenter, { RealtimeAlert } from './components/RealtimeNotifier';
+import { IDataContext, DataProvider } from './context/DataContext';
 
-
-// --- Data Context for avoiding prop drilling ---
-interface IDataContext extends AppData {
-    setClients: (updater: React.SetStateAction<Client[]>) => void;
-    setAdminTasks: (updater: React.SetStateAction<AdminTask[]>) => void;
-    setAppointments: (updater: React.SetStateAction<Appointment[]>) => void;
-    setAccountingEntries: (updater: React.SetStateAction<AccountingEntry[]>) => void;
-    setInvoices: (updater: React.SetStateAction<Invoice[]>) => void;
-    setAssistants: (updater: React.SetStateAction<string[]>) => void;
-    setDocuments: (updater: React.SetStateAction<CaseDocument[]>) => void;
-    setProfiles: (updater: React.SetStateAction<Profile[]>) => void;
-    setSiteFinances: (updater: React.SetStateAction<SiteFinancialEntry[]>) => void;
-    allSessions: (Session & { stageId?: string, stageDecisionDate?: Date })[];
-    unpostponedSessions: (Session & { stageId?: string, stageDecisionDate?: Date })[];
-    setFullData: (data: any) => void;
-    syncStatus: SyncStatus;
-    manualSync: () => Promise<void>;
-    lastSyncError: string | null;
-    isDirty: boolean;
-    userId?: string;
-    isDataLoading: boolean;
-    isAuthLoading: boolean;
-    isAutoSyncEnabled: boolean;
-    setAutoSyncEnabled: (enabled: boolean) => void;
-    isAutoBackupEnabled: boolean;
-    setAutoBackupEnabled: (enabled: boolean) => void;
-    adminTasksLayout: 'horizontal' | 'vertical';
-    setAdminTasksLayout: (layout: 'horizontal' | 'vertical') => void;
-    exportData: () => boolean;
-    triggeredAlerts: Appointment[];
-    dismissAlert: (appointmentId: string) => void;
-    realtimeAlerts: RealtimeAlert[];
-    dismissRealtimeAlert: (alertId: number) => void;
-    userApprovalAlerts: RealtimeAlert[];
-    dismissUserApprovalAlert: (alertId: number) => void;
-    deleteClient: (clientId: string) => void;
-    deleteCase: (caseId: string, clientId: string) => Promise<void>;
-    deleteStage: (stageId: string, caseId: string, clientId: string) => void;
-    deleteSession: (sessionId: string, stageId: string, caseId: string, clientId: string) => void;
-    deleteAdminTask: (taskId: string) => void;
-    deleteAppointment: (appointmentId: string) => void;
-    deleteAccountingEntry: (entryId: string) => void;
-    deleteInvoice: (invoiceId: string) => void;
-    deleteAssistant: (name: string) => void;
-    deleteDocument: (doc: CaseDocument) => Promise<void>;
-    addDocuments: (caseId: string, files: FileList) => Promise<void>;
-    getDocumentFile: (docId: string) => Promise<File | null>;
-    postponeSession: (sessionId: string, newDate: Date, newReason: string) => void;
-    showUnpostponedSessionsModal: boolean;
-    setShowUnpostponedSessionsModal: (show: boolean) => void;
-}
-
-const DataContext = React.createContext<IDataContext | null>(null);
-
-export const useData = () => {
-    const context = React.useContext(DataContext);
-    if (!context) {
-        throw new Error('useData must be used within a DataProvider');
-    }
-    return context;
-};
 
 type Page = 'home' | 'clients' | 'accounting' | 'settings';
 
@@ -194,7 +135,7 @@ const Navbar: React.FC<{
                 <button onClick={() => onNavigate('home')} className="flex items-center" aria-label="العودة إلى الصفحة الرئيسية">
                     <div className="flex items-baseline gap-2">
                         <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
-                        <span className="text-xs text-gray-500">الإصدار: 10-11-2025-2</span>
+                        <span className="text-xs text-gray-500">الإصدار: 10-11-2025-3</span>
                     </div>
                 </button>
                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
@@ -270,7 +211,6 @@ const OfflineBanner: React.FC = () => {
     );
 };
 
-const DataProvider = DataContext.Provider;
 
 const LAST_USER_CACHE_KEY = 'lawyerAppLastUser';
 const UNPOSTPONED_MODAL_SHOWN_KEY = 'lawyerAppUnpostponedModalShown';
@@ -290,184 +230,68 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const [showConfigModal, setShowConfigModal] = React.useState(false);
     const [loginMessage, setLoginMessage] = React.useState<string | null>(null);
 
-
     const [currentPage, setCurrentPage] = React.useState<Page>('home');
     const [isAdminTaskModalOpen, setIsAdminTaskModalOpen] = React.useState(false);
     const [initialAdminTaskData, setInitialAdminTaskData] = React.useState<any>(null);
     const [contextMenu, setContextMenu] = React.useState<{ isOpen: boolean; position: { x: number; y: number }; menuItems: MenuItem[] }>({ isOpen: false, position: { x: 0, y: 0 }, menuItems: [] });
-    const [initialInvoiceData, setInitialInvoiceData] = React.useState<{ clientId: string; caseId?: string } | undefined>(undefined);
-
-    const isOnline = useOnlineStatus();
-    const supabase = getSupabaseClient();
-    const supabaseData = useSupabaseData(session?.user ?? null, isAuthLoading);
-
-    React.useEffect(() => {
-        if (supabaseData.syncStatus === 'unconfigured' || supabaseData.syncStatus === 'uninitialized') {
-            setShowConfigModal(true);
-        } else {
-            setShowConfigModal(false);
-        }
-    }, [supabaseData.syncStatus]);
-
-     React.useEffect(() => {
-        if (!supabaseData.isDataLoading && supabaseData.unpostponedSessions.length > 0) {
-            const alreadyShown = sessionStorage.getItem(UNPOSTPONED_MODAL_SHOWN_KEY);
-            if (!alreadyShown) {
-                supabaseData.setShowUnpostponedSessionsModal(true);
-            }
-        }
-    }, [supabaseData.isDataLoading, supabaseData.unpostponedSessions.length]);
+    const [initialInvoiceData, setInitialInvoiceData] = React.useState<{ clientId: string; caseId?: string } | undefined>();
     
-    // This effect runs once to get the initial session state from Supabase.
-    React.useEffect(() => {
-        if (!supabase) {
-            setIsAuthLoading(false);
-            return;
-        }
-        setIsAuthLoading(true);
-        supabase.auth.getSession()
-            .then(({ data: { session: initialSession }, error }) => {
-                if (error) {
-                    // This is expected when offline and the token needs to be refreshed.
-                    console.warn("Initial getSession() failed, likely offline. This is okay.", error.message);
-                }
-                setSession(initialSession);
-            })
-            .catch(err => {
-                // This catches unexpected errors in the client library itself.
-                console.error("A critical error occurred during initial session retrieval:", err);
-                setSession(null);
-            });
-    }, [supabase]); // IMPORTANT: Runs only once when the supabase client is initialized.
+    const supabase = getSupabaseClient();
+    const isOnline = useOnlineStatus();
 
-    // This effect subscribes to all subsequent auth state changes.
+    // This effect handles authentication state changes.
     React.useEffect(() => {
-        if (!supabase) return;
-        
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
-            // Using a functional update for setSession avoids needing `session` in the dependency array.
-            // This prevents re-subscribing on every session change.
-            // We also check if the user or token has actually changed to prevent re-renders on token refresh events.
-            setSession(currentSession => {
-                const hasChanged = newSession?.user.id !== currentSession?.user.id || newSession?.access_token !== currentSession?.access_token;
-                return hasChanged ? newSession : currentSession;
-            });
+        const { data: { subscription } } = supabase!.auth.onAuthStateChange((_event, session) => {
+            setSession(session);
+            setIsAuthLoading(false);
+            
+            // If user logs out, clear the last user cache to prevent auto-login next time.
+            if (_event === 'SIGNED_OUT') {
+                localStorage.removeItem(LAST_USER_CACHE_KEY);
+                 localStorage.setItem('lawyerAppLoggedOut', 'true');
+            } else if (_event === 'SIGNED_IN') {
+                localStorage.removeItem('lawyerAppLoggedOut');
+            }
         });
         
-        return () => {
-            subscription.unsubscribe();
-        };
+        // Check for initial session
+        supabase!.auth.getSession().then(({ data: { session } }) => {
+            if (session) {
+                setSession(session);
+            }
+            setIsAuthLoading(false);
+        });
+
+        return () => subscription.unsubscribe();
     }, [supabase]);
+    
+    // Fetch user profile when session is available
+    const data = useSupabaseData(session?.user ?? null, isAuthLoading);
 
-
-    // This effect handles fetching the user profile and managing auth state.
     React.useEffect(() => {
-        const fetchAndSetProfile = async () => {
-            // If there's no session, we're logged out. Clear data and stop loading.
-            if (!session) {
-                setProfile(null);
-                setAuthError(null);
-                setIsAuthLoading(false);
-                 sessionStorage.removeItem(UNPOSTPONED_MODAL_SHOWN_KEY);
-                return;
-            }
-
-            // A session exists. Start the verification/loading process.
-            setAuthError(null);
-            const userId = session.user.id;
-            const PROFILE_CACHE_KEY = `lawyerAppProfile_${userId}`;
-
-            try {
-                // 1. Try to load profile from local cache first for a faster UI.
-                let profileFromCache: Profile | null = null;
-                try {
-                    const cachedProfileRaw = localStorage.getItem(PROFILE_CACHE_KEY);
-                    if (cachedProfileRaw) {
-                        profileFromCache = JSON.parse(cachedProfileRaw);
-                        // If we have a cached profile, show it immediately.
-                        setProfile(profileFromCache);
-                    }
-                } catch (e) {
-                    console.error("Failed to parse cached profile. Clearing cache.", e);
-                    localStorage.removeItem(PROFILE_CACHE_KEY); // Clear corrupted data
-                }
-                
-                // 2. If online, attempt to fetch the latest profile from the server.
-                if (isOnline) {
-                    setIsAuthLoading(true); // Set loading true only when fetching from network
-                    const { data, error, status } = await supabase!.from('profiles').select('*').eq('id', userId).single();
-                    
-                    if (data) {
-                        // Success: update state and cache.
-                        setProfile(data);
-                        localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(data));
-                        // Save user object for offline login profile creation
-                        localStorage.setItem(LAST_USER_CACHE_KEY, JSON.stringify(session.user));
-                    } else if (error && status !== 406) {
-                        // A real error occurred, and we have no cached data to fall back on.
-                        if (!profileFromCache) {
-                            throw new Error('فشل الاتصال بالخادم لجلب ملفك الشخصي. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.');
-                        } else {
-                            // We have a cache, so we can continue. Log the error for debugging.
-                            console.warn("Failed to refresh profile, using cached version. Error:", error.message);
-                        }
-                    } else if (!data && !profileFromCache) {
-                        // Authenticated but no profile found and nothing in cache. This is a critical error.
-                         setAuthError("تمت المصادقة ولكن تعذر العثور على ملفك الشخصي. قد يكون حسابك غير مكتمل. يرجى المحاولة مرة أخرى أو الاتصال بالدعم.");
-                         return; // Stop further execution in this effect
-                    }
-                } else if (!profileFromCache) {
-                    // Offline and no cached profile, but we might have a stale session from Supabase's cache.
-                    // Instead of throwing an error which leads to an error screen,
-                    // we treat this as an unverified session. By setting the profile to null,
-                    // the app will gracefully fall back to the LoginPage on the next render.
-                    console.warn("Offline with a session but no cached profile. Falling back to login page.");
-                    setProfile(null);
-                }
-
-            } catch (e: any) {
-                console.error("Error in profile loading sequence:", e);
-                setAuthError(e.message);
-                setProfile(null); // Clear profile on critical error
-            } finally {
-                setIsAuthLoading(false); // Always stop the main "Checking identity" loader.
-            }
-        };
-
-        fetchAndSetProfile();
-    }, [session, isOnline, supabase]);
-
-
-    const handleLogout = async () => {
-        setCurrentPage('home');
-        if (supabase) {
-            // Attempt to sign out from the server, but don't let it block the UI.
-            const { error } = await supabase.auth.signOut();
-            if (error) {
-                 console.error('Supabase signOut error (likely offline, this is okay):', error.message);
-            }
+        if (session && data.profiles) {
+            const userProfile = data.profiles.find(p => p.id === session.user.id);
+            setProfile(userProfile || null);
+        } else {
+            setProfile(null);
         }
-        // Manually clear local state for immediate feedback & reliable offline logout.
-        // The onAuthStateChange listener will also catch this if online.
-        setSession(null);
+        
+        // Show unpostponed sessions modal once per session
+        const modalShown = sessionStorage.getItem(UNPOSTPONED_MODAL_SHOWN_KEY);
+        if (session && data.unpostponedSessions.length > 0 && !modalShown) {
+            data.setShowUnpostponedSessionsModal(true);
+            sessionStorage.setItem(UNPOSTPONED_MODAL_SHOWN_KEY, 'true');
+        }
+
+    }, [session, data.profiles, data.unpostponedSessions, data.setShowUnpostponedSessionsModal]);
+    
+    const handleLogout = async () => {
+        await supabase!.auth.signOut();
+        onRefresh(); // Trigger a full app remount to clear all state
     };
     
-    const handleLoginSuccess = (user: User, isOfflineLogin?: boolean) => {
-        // Cache the user object to enable temporary profile creation if needed.
-        localStorage.setItem(LAST_USER_CACHE_KEY, JSON.stringify(user));
-        // Trigger the authentication flow by setting a session-like object.
-        setSession({
-            user,
-            access_token: 'local-session', // Placeholder for local/offline auth
-            token_type: 'bearer',
-            refresh_token: 'local-session',
-            expires_at: Math.floor(Date.now() / 1000) + 3600,
-        } as AuthSession);
-
-        if (isOfflineLogin) {
-            setLoginMessage('تم تسجيل الدخول بنجاح باستخدام البيانات المحفوظة. أنت تعمل في وضع عدم الاتصال.');
-            setTimeout(() => setLoginMessage(null), 5000);
-        }
+    const handleNavigation = (page: Page) => {
+        setCurrentPage(page);
     };
 
     const handleOpenAdminTaskModal = (initialData: any = null) => {
@@ -475,149 +299,158 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         setIsAdminTaskModalOpen(true);
     };
 
-    const handleAdminTaskSubmit = (taskData: Omit<AdminTask, 'id' | 'completed'> & { id?: string }) => {
+    const handleSaveAdminTask = (taskData: Omit<AdminTask, 'completed'> & { id?: string }) => {
         if (taskData.id) { // Editing
-            supabaseData.setAdminTasks(prev => prev.map(t => t.id === taskData.id ? { ...t, ...taskData, updated_at: new Date() } : t));
+            data.setAdminTasks(prev => prev.map(t => t.id === taskData.id ? { ...t, ...taskData, updated_at: new Date() } : t));
         } else { // Adding
-            const newTask: AdminTask = { ...taskData, id: `task-${Date.now()}`, completed: false, updated_at: new Date() };
-            supabaseData.setAdminTasks(prev => [...prev, newTask]);
+            const newTask: AdminTask = {
+                id: `task-${Date.now()}`,
+                ...taskData,
+                completed: false,
+                updated_at: new Date(),
+            };
+            data.setAdminTasks(prev => [...prev, newTask]);
         }
         setIsAdminTaskModalOpen(false);
     };
-    
+
     const showContextMenu = (event: React.MouseEvent, menuItems: MenuItem[]) => {
         event.preventDefault();
-        setContextMenu({ isOpen: true, position: { x: event.clientX, y: event.clientY }, menuItems });
+        setContextMenu({
+            isOpen: true,
+            position: { x: event.clientX, y: event.clientY },
+            menuItems,
+        });
     };
 
+    const closeContextMenu = () => {
+        setContextMenu({ ...contextMenu, isOpen: false });
+    };
+    
     const handleCreateInvoice = (clientId: string, caseId?: string) => {
         setInitialInvoiceData({ clientId, caseId });
         setCurrentPage('accounting');
     };
-    
-    const clearInitialInvoiceData = () => setInitialInvoiceData(undefined);
 
-    const renderPage = () => {
-        switch (currentPage) {
-            case 'home': return <HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} />;
-            case 'clients': return <ClientsPage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} onCreateInvoice={handleCreateInvoice} />;
-            case 'accounting': return <AccountingPage initialInvoiceData={initialInvoiceData} clearInitialInvoiceData={clearInitialInvoiceData} />;
-            case 'settings': return <SettingsPage />;
-            default: return <HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} />;
+    // --- Render Logic ---
+
+    if (isAuthLoading || (data.isDataLoading && session)) {
+        return <FullScreenLoader text="جاري تحميل البيانات..." />;
+    }
+    
+    const handleLoginSuccess = (user: User, isOfflineLogin: boolean = false) => {
+        if (!isOfflineLogin) {
+            localStorage.setItem(LAST_USER_CACHE_KEY, JSON.stringify(user));
         }
+        // Supabase onAuthStateChange will handle setting the session
     };
-    
-    const AuthErrorScreen: React.FC<{ message: string; onRetry: () => void; onLogout: () => void }> = ({ message, onRetry, onLogout }) => (
-        <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
-            <div className="w-full max-w-md p-8 text-center bg-white rounded-lg shadow-md">
-                <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-red-500" />
-                <h1 className="mt-4 text-2xl font-bold text-gray-800">خطأ في المصادقة</h1>
-                <p className="mt-2 text-gray-600">{message}</p>
-                <div className="mt-6 flex justify-center gap-4">
-                     <button onClick={onLogout} className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">تسجيل الخروج</button>
-                     <button onClick={onRetry} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">إعادة المحاولة</button>
-                </div>
-            </div>
-        </div>
-    );
-    
-    if (showConfigModal) {
-        return <ConfigurationModal onRetry={onRefresh} />;
+
+    if (data.syncStatus === 'unconfigured' || data.syncStatus === 'uninitialized') {
+        return <ConfigurationModal onRetry={data.manualSync} />;
     }
     
-    if (isAuthLoading) {
-        return <FullScreenLoader text="جاري التحقق من الهوية..." />;
+    if (!session) {
+        return <LoginPage onForceSetup={() => setShowConfigModal(true)} onLoginSuccess={handleLoginSuccess}/>;
     }
     
-    if (authError) {
-        return <AuthErrorScreen message={authError} onRetry={onRefresh} onLogout={handleLogout} />;
+    if (showConfigModal) { // Allow forcing setup even when logged in
+        return <ConfigurationModal onRetry={() => { data.manualSync(); setShowConfigModal(false); }} />;
+    }
+    
+    if (!profile) {
+        return <FullScreenLoader text="جاري تحميل ملف المستخدم..." />;
     }
 
-    if (!session || !profile) {
-        return <LoginPage onForceSetup={() => setShowConfigModal(true)} onLoginSuccess={handleLoginSuccess} />;
-    }
-    
-    if (supabaseData.isDataLoading) {
-        return <FullScreenLoader text="جاري تحميل بيانات المكتب..." />;
-    }
-    
-    if (!profile.is_approved && profile.role !== 'admin') {
+    if (!profile.is_approved) {
         return <PendingApprovalPage onLogout={handleLogout} />;
     }
-    
-    const subscriptionEndDate = profile.subscription_end_date ? new Date(profile.subscription_end_date) : new Date(0);
-    if (subscriptionEndDate < new Date() && profile.role !== 'admin') {
+
+    if (!profile.is_active || (profile.subscription_end_date && new Date(profile.subscription_end_date) < new Date())) {
         return <SubscriptionExpiredPage onLogout={handleLogout} />;
     }
     
-    return (
-        <DataProvider value={{ ...supabaseData, isAuthLoading }}>
-            {profile.role === 'admin' ? (
+    if (profile.role === 'admin') {
+         return (
+            <DataProvider value={data}>
                 <AdminDashboard onLogout={handleLogout} />
-            ) : (
-                <>
-                    <div className="min-h-screen flex flex-col bg-gray-100">
-                        <Navbar
-                            currentPage={currentPage}
-                            onNavigate={setCurrentPage}
-                            onLogout={handleLogout}
-                            profile={profile}
-                            syncStatus={supabaseData.syncStatus}
-                            lastSyncError={supabaseData.lastSyncError}
-                            isDirty={supabaseData.isDirty}
-                            isOnline={isOnline}
-                            onManualSync={supabaseData.manualSync}
-                            isAutoSyncEnabled={supabaseData.isAutoSyncEnabled}
-                        />
-                        <OfflineBanner />
-                        {loginMessage && (
-                            <div 
-                                className="no-print w-full bg-blue-100 text-blue-800 p-3 text-center text-sm font-semibold flex items-center justify-center gap-2 animate-fade-in"
-                                role="status"
-                            >
-                                <CheckCircleIcon className="w-5 h-5" />
-                                <span>{loginMessage}</span>
-                            </div>
-                        )}
-                        <main className="flex-grow p-4 sm:p-6">
-                            {renderPage()}
-                        </main>
-                    </div>
-                    <AdminTaskModal
-                        isOpen={isAdminTaskModalOpen}
-                        onClose={() => setIsAdminTaskModalOpen(false)}
-                        onSubmit={handleAdminTaskSubmit}
-                        initialData={initialAdminTaskData}
-                        assistants={supabaseData.assistants}
-                    />
-                    <ContextMenu 
-                        isOpen={contextMenu.isOpen}
-                        position={contextMenu.position}
-                        menuItems={contextMenu.menuItems}
-                        onClose={() => setContextMenu(p => ({...p, isOpen: false}))}
-                    />
-                     {supabaseData.showUnpostponedSessionsModal && (
-                        <UnpostponedSessionsModal
-                            isOpen={supabaseData.showUnpostponedSessionsModal}
-                            onClose={() => {
-                                supabaseData.setShowUnpostponedSessionsModal(false);
-                                sessionStorage.setItem(UNPOSTPONED_MODAL_SHOWN_KEY, 'true');
-                            }}
-                            sessions={supabaseData.unpostponedSessions}
-                            onPostpone={supabaseData.postponeSession}
-                            assistants={supabaseData.assistants}
-                        />
-                    )}
-                </>
-            )}
-            <NotificationCenter
-                appointmentAlerts={supabaseData.triggeredAlerts}
-                dismissAppointmentAlert={supabaseData.dismissAlert}
-                realtimeAlerts={supabaseData.realtimeAlerts}
-                dismissRealtimeAlert={supabaseData.dismissRealtimeAlert}
-                userApprovalAlerts={supabaseData.userApprovalAlerts}
-                dismissUserApprovalAlert={supabaseData.dismissUserApprovalAlert}
-            />
+                <NotificationCenter 
+                    appointmentAlerts={data.triggeredAlerts}
+                    realtimeAlerts={data.realtimeAlerts}
+                    userApprovalAlerts={data.userApprovalAlerts}
+                    dismissAppointmentAlert={data.dismissAlert}
+                    dismissRealtimeAlert={data.dismissRealtimeAlert}
+                    dismissUserApprovalAlert={data.dismissUserApprovalAlert}
+                />
+            </DataProvider>
+        );
+    }
+
+    const renderPage = () => {
+        switch (currentPage) {
+            case 'clients':
+                return <ClientsPage showContextMenu={showContextMenu} onOpenAdminTaskModal={handleOpenAdminTaskModal} onCreateInvoice={handleCreateInvoice} />;
+            case 'accounting':
+                return <AccountingPage initialInvoiceData={initialInvoiceData} clearInitialInvoiceData={() => setInitialInvoiceData(undefined)} />;
+            case 'settings':
+                return <SettingsPage />;
+            case 'home':
+            default:
+                return <HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} />;
+        }
+    };
+
+    return (
+        <DataProvider value={data}>
+            <div className="flex flex-col h-screen bg-gray-50">
+                <Navbar
+                    currentPage={currentPage}
+                    onNavigate={handleNavigation}
+                    onLogout={handleLogout}
+                    syncStatus={data.syncStatus}
+                    lastSyncError={data.lastSyncError}
+                    isDirty={data.isDirty}
+                    isOnline={isOnline}
+                    onManualSync={data.manualSync}
+                    profile={profile}
+                    isAutoSyncEnabled={data.isAutoSyncEnabled}
+                />
+                <OfflineBanner />
+                <main className="flex-grow p-4 sm:p-6 overflow-y-auto">
+                    {renderPage()}
+                </main>
+                
+                <AdminTaskModal 
+                    isOpen={isAdminTaskModalOpen}
+                    onClose={() => setIsAdminTaskModalOpen(false)}
+                    onSubmit={handleSaveAdminTask}
+                    initialData={initialAdminTaskData}
+                    assistants={data.assistants}
+                />
+
+                <ContextMenu 
+                    isOpen={contextMenu.isOpen}
+                    position={contextMenu.position}
+                    menuItems={contextMenu.menuItems}
+                    onClose={closeContextMenu}
+                />
+                
+                <UnpostponedSessionsModal
+                    isOpen={data.showUnpostponedSessionsModal}
+                    onClose={() => data.setShowUnpostponedSessionsModal(false)}
+                    sessions={data.unpostponedSessions}
+                    onPostpone={data.postponeSession}
+                    assistants={data.assistants}
+                />
+
+                <NotificationCenter 
+                    appointmentAlerts={data.triggeredAlerts}
+                    realtimeAlerts={data.realtimeAlerts}
+                    userApprovalAlerts={data.userApprovalAlerts}
+                    dismissAppointmentAlert={data.dismissAlert}
+                    dismissRealtimeAlert={data.dismissRealtimeAlert}
+                    dismissUserApprovalAlert={data.dismissUserApprovalAlert}
+                />
+            </div>
         </DataProvider>
     );
 };

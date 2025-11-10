@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Profile, SiteFinancialEntry } from '../types';
-import { useData } from '../App';
+import { useData } from '../context/DataContext';
 import { formatDate } from '../utils/dateUtils';
 import { XMarkIcon, PhoneIcon, UserGroupIcon, FolderIcon, CalendarDaysIcon, DocumentTextIcon, CheckCircleIcon, NoSymbolIcon, PencilIcon, ExclamationTriangleIcon } from './icons';
 

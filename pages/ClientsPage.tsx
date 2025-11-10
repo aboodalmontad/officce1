@@ -2,14 +2,14 @@ import * as React from 'react';
 import { GoogleGenAI, Type } from '@google/genai';
 import ClientsTreeView from '../components/ClientsTreeView';
 import ClientsListView from '../components/ClientsListView';
-import { PlusIcon, SearchIcon, ListBulletIcon, ViewColumnsIcon, ExclamationTriangleIcon, PrintIcon, ScaleIcon, FolderOpenIcon, SparklesIcon, ArrowPathIcon } from '../components/icons';
+import { PlusIcon, SearchIcon, ListBulletIcon, ViewColumnsIcon, ExclamationTriangleIcon, PrintIcon, ScaleIcon, FolderOpenIcon, SparklesIcon, ArrowPathIcon, GavelIcon } from '../components/icons';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
 import { formatDate, toInputDateString, parseInputDateString } from '../utils/dateUtils';
 import PrintableClientReport from '../components/PrintableClientReport';
 import { printElement } from '../utils/printUtils';
 import { MenuItem } from '../components/ContextMenu';
 import { useDebounce } from '../hooks/useDebounce';
-import { useData } from '../App';
+import { useData } from '../context/DataContext';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 
 interface ClientsPageProps {
@@ -59,6 +59,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
     
     // State for AI data generation
     const [isGenerating, setIsGenerating] = React.useState(false);
+    const [aiError, setAiError] = React.useState<string | null>(null);
     const isOnline = useOnlineStatus();
 
 
@@ -66,14 +67,8 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
         if (!debouncedSearchQuery) return clients;
         const lowercasedQuery = debouncedSearchQuery.toLowerCase();
 
-        return clients.filter(client => {
-            // Search client info
-            if (client.name.toLowerCase().includes(lowercasedQuery) || client.contactInfo.toLowerCase().includes(lowercasedQuery)) {
-                return true;
-            }
-
-            // Search cases, stages, and sessions
-            return client.cases.some(c => 
+        return clients.map(client => {
+            const matchingCases = client.cases.filter(c => 
                 c.subject.toLowerCase().includes(lowercasedQuery) ||
                 c.opponentName.toLowerCase().includes(lowercasedQuery) ||
                 c.stages.some(s => 
@@ -86,7 +81,17 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                     )
                 )
             );
-        });
+
+            if (client.name.toLowerCase().includes(lowercasedQuery) || client.contactInfo.toLowerCase().includes(lowercasedQuery)) {
+                return client;
+            }
+            
+            if (matchingCases.length > 0) {
+                return { ...client, cases: matchingCases };
+            }
+
+            return null;
+        }).filter((client): client is Client => client !== null);
     }, [clients, debouncedSearchQuery]);
 
 
@@ -330,25 +335,37 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                     alert("تاريخ الجلسة غير صالح.");
                     return;
                 }
-                const newSession: Session = {
-                    id: `session-${Date.now()}`,
-                    date: parsedDate,
-                    court: formData.court,
-                    caseNumber: formData.caseNumber,
-                    clientName: formData.clientName,
-                    opponentName: formData.opponentName,
-                    isPostponed: false,
-                    assignee: formData.assignee,
-                    updated_at: new Date(),
-                };
-                 setClients(prev => prev.map(c => c.id === context.clientId ? {
-                    ...c,
-                    updated_at: new Date(),
-                    cases: c.cases.map(cs => cs.id === context.caseId ? { ...cs, updated_at: new Date(), stages: [...cs.stages, newSession] } : cs)
-                } : c));
+                const client = clients.find(c => c.id === context.clientId);
+                const caseItem = client?.cases.find(c => c.id === context.caseId);
+                const stage = caseItem?.stages.find(st => st.id === context.stageId);
+                if (client && caseItem && stage) {
+                    const newSession: Session = {
+                        id: `session-${Date.now()}`,
+                        date: parsedDate,
+                        court: stage.court,
+                        caseNumber: stage.caseNumber,
+                        clientName: client.name,
+                        opponentName: caseItem.opponentName,
+                        isPostponed: false,
+                        assignee: formData.assignee || 'بدون تخصيص',
+                        updated_at: new Date(),
+                    };
+                    setClients(prev => prev.map(c => c.id === context.clientId ? {
+                        ...c,
+                        updated_at: new Date(),
+                        cases: c.cases.map(cs => cs.id === context.caseId ? { 
+                            ...cs, 
+                            updated_at: new Date(), 
+                            stages: cs.stages.map(st => st.id === context.stageId ? {
+                                ...st,
+                                sessions: [...st.sessions, newSession],
+                                updated_at: new Date(),
+                            } : st)
+                        } : cs)
+                    } : c));
+                }
             }
         }
-
         handleCloseModal();
     };
     
@@ -370,27 +387,22 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
         setCaseToDelete({ caseId, clientId, caseSubject });
         setIsDeleteCaseModalOpen(true);
     };
-    
-    const handleConfirmDeleteCase = async () => {
+
+    const handleConfirmDeleteCase = () => {
         if (caseToDelete) {
-            try {
-                await deleteCase(caseToDelete.caseId, caseToDelete.clientId);
-            } catch (err: any) {
-                alert(`فشل حذف القضية: ${err.message}`);
-            }
+            deleteCase(caseToDelete.caseId, caseToDelete.clientId);
         }
         setIsDeleteCaseModalOpen(false);
         setCaseToDelete(null);
     };
-
+    
     const handleDeleteStage = (stageId: string, caseId: string, clientId: string) => {
         const client = clients.find(c => c.id === clientId);
         const caseItem = client?.cases.find(c => c.id === caseId);
         const stage = caseItem?.stages.find(s => s.id === stageId);
-        if (stage) {
-            setStageToDelete({ stageId, caseId, clientId, stageInfo: `${stage.court} - ${stage.caseNumber}` });
-            setIsDeleteStageModalOpen(true);
-        }
+        const stageInfo = stage ? `${stage.court} (${stage.caseNumber})` : 'هذه المرحلة';
+        setStageToDelete({ stageId, caseId, clientId, stageInfo });
+        setIsDeleteStageModalOpen(true);
     };
     
     const handleConfirmDeleteStage = () => {
@@ -402,12 +414,13 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
     };
 
     const handleDeleteSession = (sessionId: string, stageId: string, caseId: string, clientId: string) => {
-        const session = clients.find(c => c.id === clientId)?.cases.find(cs => cs.id === caseId)?.stages.find(st => st.id === stageId)?.sessions.find(s => s.id === sessionId);
-        if (session) {
-            const message = `جلسة يوم ${formatDate(session.date)} في قضية ${session.clientName}`;
-            setSessionToDelete({ sessionId, stageId, caseId, clientId, message });
-            setIsDeleteSessionModalOpen(true);
-        }
+        const client = clients.find(c => c.id === clientId);
+        const caseItem = client?.cases.find(c => c.id === caseId);
+        const stage = caseItem?.stages.find(s => s.id === stageId);
+        const session = stage?.sessions.find(s => s.id === sessionId);
+        const message = session ? `جلسة يوم ${formatDate(session.date)} الخاصة بقضية ${caseItem?.subject}` : 'هذه الجلسة';
+        setSessionToDelete({ sessionId, stageId, caseId, clientId, message });
+        setIsDeleteSessionModalOpen(true);
     };
 
     const handleConfirmDeleteSession = () => {
@@ -417,31 +430,9 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
         setIsDeleteSessionModalOpen(false);
         setSessionToDelete(null);
     };
-
-
-    const handlePostponeSession = (sessionId: string, newDate: Date, newReason: string) => {
-        postponeSession(sessionId, newDate, newReason);
-    };
-
-    // Printing Handlers
-    const handlePrintClient = (client: Client, caseItem?: Case) => {
-        const entries = caseItem 
-            ? accountingEntries.filter(e => e.caseId === caseItem.id)
-            : accountingEntries.filter(e => e.clientId === client.id);
-
-        const totals = entries.reduce((acc, entry) => {
-            if (entry.type === 'income') acc.income += entry.amount;
-            else acc.expense += entry.amount;
-            return acc;
-        }, { income: 0, expense: 0, balance: 0 });
-        totals.balance = totals.income - totals.expense;
-
-        setPrintData({ client, caseData: caseItem, entries, totals });
-        setIsPrintChoiceModalOpen(false);
-        setIsPrintModalOpen(true);
-    };
     
-    const openPrintChoiceModal = (clientId: string) => {
+    // Printing
+    const handlePrintClientStatement = (clientId: string) => {
         const client = clients.find(c => c.id === clientId);
         if (client) {
             setClientForPrintChoice(client);
@@ -449,7 +440,20 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
         }
     };
 
-    // Decide Session handlers
+    const handleGeneratePrintData = (client: Client, caseData?: Case) => {
+        const entries = caseData 
+            ? accountingEntries.filter(e => e.caseId === caseData.id)
+            : accountingEntries.filter(e => e.clientId === client.id);
+        
+        const income = entries.filter(e => e.type === 'income').reduce((sum, e) => sum + e.amount, 0);
+        const expense = entries.filter(e => e.type === 'expense').reduce((sum, e) => sum + e.amount, 0);
+        
+        setPrintData({ client, caseData, entries, totals: { income, expense, balance: income - expense } });
+        setIsPrintChoiceModalOpen(false);
+        setIsPrintModalOpen(true);
+    };
+    
+    // Decide Session
     const handleOpenDecideModal = (session: Session) => {
         if (!session.stageId) return;
 
@@ -465,17 +469,14 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
             if (foundStage) break;
         }
 
-        if (!foundStage) {
-            console.error("Cannot decide session: Corresponding stage not found for stageId:", session.stageId);
-            return;
-        }
+        if (!foundStage) return;
 
-        setDecideFormData({ decisionNumber: '', decisionSummary: '', decisionNotes: '' });
+        setDecideFormData({ decisionNumber: foundStage.decisionNumber || '', decisionSummary: foundStage.decisionSummary || '', decisionNotes: foundStage.decisionNotes || '' });
         setDecideModal({ isOpen: true, session, stage: foundStage });
     };
 
     const handleCloseDecideModal = () => setDecideModal({ isOpen: false });
-    
+
     const handleDecideSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const { session, stage } = decideModal;
@@ -506,362 +507,212 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
         handleCloseDecideModal();
     };
     
-     const generateSampleData = async () => {
+    // AI data generation logic
+    const handleGenerateData = async () => {
+        if (!isOnline) {
+            alert("لا يمكن استخدام هذه الميزة إلا عند وجود اتصال بالإنترنت.");
+            return;
+        }
+        if (!confirm("سيقوم الذكاء الاصطناعي بإنشاء بيانات تجريبية (3 موكلين مع قضاياهم). سيتم استبدال جميع البيانات الحالية. هل تريد المتابعة؟")) {
+            return;
+        }
         setIsGenerating(true);
+        setAiError(null);
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
             const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
-                contents: "Generate a realistic but entirely fictional dataset for a Syrian lawyer's office management app. Provide the data in a single JSON object. The JSON should have a root key named `appData` containing four arrays: `clients`, `adminTasks`, `appointments`, and `accountingEntries`. Follow the provided TypeScript interfaces precisely. Generate around 5 clients, with 1-2 cases each, and a few stages and sessions per case. Use realistic Syrian names, court names, and legal scenarios. Dates should be relative to today. Ensure all nested structures (cases in clients, stages in cases, sessions in stages) are correctly populated. Generate about 5 admin tasks, 5 appointments, and 10 accounting entries, linking some accounting entries to the generated clients and cases. The `assistants` list should be ['أحمد', 'فاطمة', 'سارة', 'بدون تخصيص']. For IDs, use placeholders like 'client-1', 'case-1-1', etc. for clarity. For `updated_at`, use the current timestamp placeholder. All text should be in Arabic. For dates, use ISO 8601 format (YYYY-MM-DDTHH:mm:ss.sssZ).",
+                model: 'gemini-2.5-flash',
+                contents: "Generate mock data for a lawyer's app. Provide 3 clients. Each client should have 1-2 cases. Each case should have 1-2 stages. Each stage should have 1-3 sessions. Include all fields as per the provided schema. The data must be realistic for a Syrian lawyer, with Arabic names and realistic case subjects. Respond ONLY with a JSON object { clients: Client[] } matching the provided TypeScript types. Do not include any other text or markdown.",
                 config: {
                     responseMimeType: "application/json",
                     responseSchema: {
                         type: Type.OBJECT,
                         properties: {
-                            appData: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    clients: { type: Type.ARRAY, items: { type: Type.OBJECT } },
-                                    adminTasks: { type: Type.ARRAY, items: { type: Type.OBJECT } },
-                                    appointments: { type: Type.ARRAY, items: { type: Type.OBJECT } },
-                                    accountingEntries: { type: Type.ARRAY, items: { type: Type.OBJECT } },
-                                    assistants: { type: Type.ARRAY, items: { type: Type.STRING } },
+                            clients: {
+                                type: Type.ARRAY,
+                                items: {
+                                    type: Type.OBJECT,
+                                    properties: {
+                                        id: { type: Type.STRING }, name: { type: Type.STRING }, contactInfo: { type: Type.STRING },
+                                        cases: {
+                                            type: Type.ARRAY,
+                                            items: {
+                                                type: Type.OBJECT,
+                                                properties: {
+                                                    id: { type: Type.STRING }, subject: { type: Type.STRING }, clientName: { type: Type.STRING }, opponentName: { type: Type.STRING }, feeAgreement: { type: Type.STRING }, status: { type: Type.STRING },
+                                                    stages: {
+                                                        type: Type.ARRAY,
+                                                        items: {
+                                                            type: Type.OBJECT,
+                                                            properties: {
+                                                                id: { type: Type.STRING }, court: { type: Type.STRING }, caseNumber: { type: Type.STRING }, firstSessionDate: { type: Type.STRING }, decisionDate: { type: Type.STRING },
+                                                                sessions: {
+                                                                    type: Type.ARRAY,
+                                                                    items: {
+                                                                        type: Type.OBJECT,
+                                                                        properties: {
+                                                                            id: { type: Type.STRING }, court: { type: Type.STRING }, caseNumber: { type: Type.STRING }, date: { type: Type.STRING }, clientName: { type: Type.STRING }, opponentName: { type: Type.STRING }, isPostponed: { type: Type.BOOLEAN }, postponementReason: { type: Type.STRING }, nextSessionDate: { type: Type.STRING }, nextPostponementReason: { type: Type.STRING }, assignee: { type: Type.STRING },
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
             });
-            const jsonText = response.text.trim();
-            const parsedData = JSON.parse(jsonText);
-
-            if (parsedData && parsedData.appData) {
-                const uniqueIdPrefix = Date.now();
-                const generatedData = parsedData.appData;
-
-                const idMap = new Map<string, string>();
-                let counter = 0;
-                const reId = (item: any, prefix: string) => {
-                    const newId = `${prefix}-${uniqueIdPrefix}-${counter++}`;
-                    if (item.id) { idMap.set(item.id, newId); }
-                    item.id = newId;
-                };
-                
-                (generatedData.clients || []).forEach((c: any) => {
-                    reId(c, 'client');
-                    (c.cases || []).forEach((cs: any) => {
-                        reId(cs, 'case');
-                        (cs.stages || []).forEach((st: any) => {
-                            reId(st, 'stage');
-                            (st.sessions || []).forEach((s: any) => reId(s, 'session'));
-                        });
-                    });
-                });
-
-                (generatedData.adminTasks || []).forEach((t: any) => reId(t, 'task'));
-                (generatedData.appointments || []).forEach((a: any) => reId(a, 'apt'));
-
-                (generatedData.accountingEntries || []).forEach((e: any) => {
-                    reId(e, 'acc');
-                    if (e.clientId && idMap.has(e.clientId)) {
-                        e.clientId = idMap.get(e.clientId)!;
-                    }
-                    if (e.caseId && idMap.has(e.caseId)) {
-                        e.caseId = idMap.get(e.caseId)!;
-                    }
-                });
-
-                setFullData(generatedData);
+            const jsonStr = response.text.trim();
+            const generatedData = JSON.parse(jsonStr);
+            
+            if (generatedData && Array.isArray(generatedData.clients)) {
+                setFullData({ clients: generatedData.clients, adminTasks: [], appointments: [], accountingEntries: [], invoices: [], assistants: ['أحمد', 'فاطمة', 'بدون تخصيص'], documents: [], profiles: [], siteFinances: [] });
+            } else {
+                throw new Error("Invalid data format received from AI.");
             }
-        } catch (error) {
-            console.error("AI data generation failed:", error);
-            alert("فشل إنشاء البيانات التجريبية. يرجى التأكد من إعدادات مفتاح API.");
+        } catch (e: any) {
+            console.error("AI data generation failed:", e);
+            setAiError("فشل في إنشاء البيانات. " + e.message);
         } finally {
             setIsGenerating(false);
         }
     };
-
-
-    const commonViewProps = {
-        clients: filteredClients,
-        setClients,
-        accountingEntries,
-        setAccountingEntries,
-        onAddCase: (clientId: string) => handleOpenModal('case', false, { clientId }),
-        onEditCase: (caseItem: Case, client: Client) => handleOpenModal('case', true, { item: caseItem, client }),
-        onDeleteCase: (caseId: string, clientId: string) => {
-             const caseToDelete = clients.find(c => c.id === clientId)?.cases.find(cs => cs.id === caseId);
-             if (caseToDelete) {
-                handleDeleteCase(caseId, clientId, caseToDelete.subject);
-             }
-        },
-        onAddStage: (clientId: string, caseId: string) => handleOpenModal('stage', false, { clientId, caseId }),
-        onEditStage: (stage: Stage, caseItem: Case, client: Client) => handleOpenModal('stage', true, { item: stage, case: caseItem, client }),
-        onDeleteStage: (stageId: string, caseId: string, clientId: string) => handleDeleteStage(stageId, caseId, clientId),
-        onAddSession: (clientId: string, caseId: string, stageId: string) => {
-            const client = clients.find(c => c.id === clientId);
-            const caseItem = client?.cases.find(c => c.id === caseId);
-            const stage = caseItem?.stages.find(s => s.id === stageId);
-            if (client && caseItem && stage) {
-                handleOpenModal('session', false, { 
-                    clientId, caseId, stageId, 
-                    court: stage.court, 
-                    caseNumber: stage.caseNumber, 
-                    clientName: client.name, 
-                    opponentName: caseItem.opponentName 
-                });
-            }
-        },
-        onEditSession: (session: Session, stage: Stage, caseItem: Case, client: Client) => handleOpenModal('session', true, { item: session, stage, case: caseItem, client }),
-        onDeleteSession: handleDeleteSession,
-        onPostponeSession: handlePostponeSession,
-        onEditClient: (client: Client) => handleOpenModal('client', true, { item: client }),
-        onDeleteClient: (clientId: string) => {
-            const client = clients.find(c => c.id === clientId);
-            if (client) handleDeleteClient(client);
-        },
-        onPrintClientStatement: openPrintChoiceModal,
-        assistants,
-        onUpdateSession,
-        onDecide: handleOpenDecideModal,
-        showContextMenu,
-        onOpenAdminTaskModal,
-        onCreateInvoice
+    
+    const getModalTitle = () => {
+        const { type, isEditing } = modal;
+        if (!type) return '';
+        const action = isEditing ? 'تعديل' : 'إضافة';
+        switch (type) {
+            case 'client': return `${action} موكل`;
+            case 'case': return `${action} قضية`;
+            case 'stage': return `${action} مرحلة تقاضي`;
+            case 'session': return `${action} جلسة`;
+            default: return '';
+        }
     };
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
-                    <FolderOpenIcon className="w-8 h-8"/>
-                    <span>ملفات الموكلين</span>
-                </h1>
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full md:w-auto">
-                     <div className="relative flex-grow">
-                        <input 
-                            type="search" 
-                            placeholder="ابحث..." 
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full p-2 ps-10 text-sm border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500" 
-                        />
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                 <h1 className="text-3xl font-bold text-gray-800">الموكلين والقضايا</h1>
+                 <div className="flex items-center gap-2">
+                    <button onClick={() => handleOpenModal('client')} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                        <PlusIcon className="w-5 h-5" />
+                        <span>إضافة موكل</span>
+                    </button>
+                    <button onClick={handleGenerateData} disabled={isGenerating || !isOnline} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-colors disabled:bg-purple-300">
+                        {isGenerating ? <ArrowPathIcon className="w-5 h-5 animate-spin" /> : <SparklesIcon className="w-5 h-5" />}
+                        <span>{isGenerating ? 'جاري الإنشاء...' : 'إنشاء بيانات تجريبية (AI)'}</span>
+                    </button>
+                 </div>
+            </div>
+            
+            {aiError && <div className="p-4 text-red-700 bg-red-100 rounded-md">{aiError}</div>}
+
+            <div className="bg-white p-4 rounded-lg shadow space-y-4">
+                 <div className="flex justify-between items-center flex-wrap gap-4">
+                    <div className="relative flex-grow">
+                        <input type="search" placeholder="ابحث عن موكل، قضية، محكمة..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full sm:w-80 p-2 ps-10 text-sm border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500" />
                         <div className="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
                             <SearchIcon className="w-4 h-4 text-gray-500" />
                         </div>
                     </div>
-                    <button onClick={() => handleOpenModal('client')} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap">
-                        <PlusIcon className="w-5 h-5" />
-                        <span>إضافة موكل</span>
-                    </button>
-                    <div className="flex items-center gap-2">
-                        <button onClick={() => setViewMode('tree')} className={`p-2 rounded-lg ${viewMode === 'tree' ? 'bg-gray-300' : 'bg-gray-100 hover:bg-gray-200'}`}><ViewColumnsIcon className="w-5 h-5"/></button>
-                        <button onClick={() => setViewMode('list')} className={`p-2 rounded-lg ${viewMode === 'list' ? 'bg-gray-300' : 'bg-gray-100 hover:bg-gray-200'}`}><ListBulletIcon className="w-5 h-5"/></button>
+                    <div className="flex items-center gap-2 p-1 bg-gray-100 rounded-lg">
+                        <button onClick={() => setViewMode('tree')} className={`p-2 rounded-md ${viewMode === 'tree' ? 'bg-white shadow' : ''}`} title="عرض شجري"><ViewColumnsIcon className="w-5 h-5" /></button>
+                        <button onClick={() => setViewMode('list')} className={`p-2 rounded-md ${viewMode === 'list' ? 'bg-white shadow' : ''}`} title="عرض قائمة"><ListBulletIcon className="w-5 h-5" /></button>
                     </div>
                 </div>
             </div>
-            
-             {clients.length === 0 && (
-                 <div className="text-center py-12 px-6 bg-white rounded-lg shadow">
-                    <h2 className="text-xl font-semibold text-gray-700">لا يوجد موكلون بعد</h2>
-                    <p className="text-gray-500 mt-2">ابدأ بإضافة موكلك الأول، أو دع الذكاء الاصطناعي ينشئ لك بعض البيانات التجريبية لتبدأ.</p>
-                    <div className="mt-6">
-                        <button 
-                            onClick={generateSampleData}
-                            disabled={isGenerating || !isOnline}
-                            title={!isOnline ? "هذه الميزة تتطلب اتصالاً بالإنترنت" : "إنشاء بيانات باستخدام الذكاء الاصطناعي"}
-                            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-colors disabled:bg-purple-300 disabled:cursor-not-allowed"
-                        >
-                            {isGenerating ? <ArrowPathIcon className="w-5 h-5 animate-spin" /> : <SparklesIcon className="w-5 h-5" />}
-                            <span>{isGenerating ? 'جاري الإنشاء...' : 'إنشاء بيانات تجريبية (AI)'}</span>
-                        </button>
-                    </div>
-                </div>
-            )}
 
-            <div className="bg-white rounded-lg shadow">
-                {viewMode === 'tree' ? <ClientsTreeView {...commonViewProps} /> : <ClientsListView {...commonViewProps} />}
+            <div>
+                {viewMode === 'tree' ? (
+                    <ClientsTreeView clients={filteredClients} setClients={setClients} accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} onAddCase={(clientId) => handleOpenModal('case', false, { clientId })} onEditCase={(caseItem, client) => handleOpenModal('case', true, { item: caseItem, client })} onDeleteCase={(caseId, clientId) => handleDeleteCase(caseId, clientId, clients.find(c=>c.id===clientId)?.cases.find(cs=>cs.id===caseId)?.subject || 'هذه القضية')} onAddStage={(clientId, caseId) => handleOpenModal('stage', false, { clientId, caseId })} onEditStage={(stage, caseItem, client) => handleOpenModal('stage', true, { item: stage, case: caseItem, client })} onDeleteStage={handleDeleteStage} onAddSession={(clientId, caseId, stageId) => handleOpenModal('session', false, { clientId, caseId, stageId })} onEditSession={(session, stage, caseItem, client) => handleOpenModal('session', true, { item: session, stage, case: caseItem, client })} onDeleteSession={handleDeleteSession} onEditClient={(client) => handleOpenModal('client', true, { item: client })} onDeleteClient={(clientId) => handleDeleteClient(clients.find(c=>c.id===clientId)!)} onPrintClientStatement={handlePrintClientStatement} assistants={assistants} onPostponeSession={postponeSession} onUpdateSession={onUpdateSession} onDecide={handleOpenDecideModal} showContextMenu={showContextMenu} onOpenAdminTaskModal={onOpenAdminTaskModal} onCreateInvoice={onCreateInvoice}/>
+                ) : (
+                    <ClientsListView clients={filteredClients} setClients={setClients} accountingEntries={accountingEntries} setAccountingEntries={setAccountingEntries} onAddCase={(clientId) => handleOpenModal('case', false, { clientId })} onEditCase={(caseItem, client) => handleOpenModal('case', true, { item: caseItem, client })} onDeleteCase={(caseId, clientId) => handleDeleteCase(caseId, clientId, clients.find(c=>c.id===clientId)?.cases.find(cs=>cs.id===caseId)?.subject || 'هذه القضية')} onAddStage={(clientId, caseId) => handleOpenModal('stage', false, { clientId, caseId })} onEditStage={(stage, caseItem, client) => handleOpenModal('stage', true, { item: stage, case: caseItem, client })} onDeleteStage={handleDeleteStage} onAddSession={(clientId, caseId, stageId) => handleOpenModal('session', false, { clientId, caseId, stageId })} onEditSession={(session, stage, caseItem, client) => handleOpenModal('session', true, { item: session, stage, case: caseItem, client })} onDeleteSession={handleDeleteSession} onEditClient={(client) => handleOpenModal('client', true, { item: client })} onDeleteClient={(clientId) => handleDeleteClient(clients.find(c=>c.id===clientId)!)} onPrintClientStatement={handlePrintClientStatement} assistants={assistants} onPostponeSession={postponeSession} onUpdateSession={onUpdateSession} onDecide={handleOpenDecideModal} showContextMenu={showContextMenu} onOpenAdminTaskModal={onOpenAdminTaskModal} onCreateInvoice={onCreateInvoice}/>
+                )}
             </div>
 
-            {/* Modals are placed here */}
             {modal.type && (
-                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={handleCloseModal}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={handleCloseModal}>
                     <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                        {modal.type === 'client' && (
-                             <form onSubmit={handleSubmit}>
-                                <h2 className="text-xl font-bold mb-4">{modal.isEditing ? 'تعديل موكل' : 'إضافة موكل جديد'}</h2>
-                                <div className="space-y-4">
-                                    <div><label className="block text-sm font-medium">الاسم الكامل</label><input name="name" value={formData.name || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
-                                    <div><label className="block text-sm font-medium">معلومات الاتصال</label><input name="contactInfo" value={formData.contactInfo || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
-                                </div>
-                                <div className="mt-6 flex justify-end gap-4"><button type="button" onClick={handleCloseModal} className="px-4 py-2 bg-gray-200 rounded">إلغاء</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">حفظ</button></div>
-                            </form>
-                        )}
-                        {modal.type === 'case' && (
-                            <form onSubmit={handleSubmit}>
-                                <h2 className="text-xl font-bold mb-4">{modal.isEditing ? 'تعديل قضية' : 'إضافة قضية جديدة'}</h2>
-                                <div className="space-y-4">
-                                    <div><label className="block text-sm font-medium">موضوع القضية</label><input name="subject" value={formData.subject || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
-                                    <div><label className="block text-sm font-medium">اسم الخصم</label><input name="opponentName" value={formData.opponentName || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
-                                    <div><label className="block text-sm font-medium">اتفاقية الأتعاب</label><textarea name="feeAgreement" value={formData.feeAgreement || ''} onChange={handleFormChange} className="w-full p-2 border rounded" rows={2}></textarea></div>
-                                    <div><label className="block text-sm font-medium">حالة القضية</label><select name="status" value={formData.status || 'active'} onChange={handleFormChange} className="w-full p-2 border rounded"><option value="active">نشطة</option><option value="closed">مغلقة</option><option value="on_hold">معلقة</option></select></div>
-                                    {!modal.isEditing && (
-                                        <div className="border-t pt-4 mt-4 space-y-4">
-                                            <h3 className="font-semibold">إضافة مرحلة وجلسة أولى (اختياري)</h3>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div><label className="block text-sm font-medium">المحكمة</label><input name="court" onChange={handleFormChange} className="w-full p-2 border rounded"/></div>
-                                                <div><label className="block text-sm font-medium">رقم الأساس</label><input name="caseNumber" onChange={handleFormChange} className="w-full p-2 border rounded"/></div>
-                                                <div><label className="block text-sm font-medium">تاريخ أول جلسة</label><input type="date" name="firstSessionDate" onChange={handleFormChange} className="w-full p-2 border rounded"/></div>
-                                                <div><label className="block text-sm font-medium">سبب أول جلسة</label><input name="firstSessionReason" onChange={handleFormChange} className="w-full p-2 border rounded"/></div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="mt-6 flex justify-end gap-4"><button type="button" onClick={handleCloseModal} className="px-4 py-2 bg-gray-200 rounded">إلغاء</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">حفظ</button></div>
-                            </form>
-                        )}
-                        {modal.type === 'stage' && (
-                             <form onSubmit={handleSubmit}>
-                                <h2 className="text-xl font-bold mb-4">{modal.isEditing ? 'تعديل مرحلة' : 'إضافة مرحلة جديدة'}</h2>
-                                <div className="space-y-4">
-                                    <div><label className="block text-sm font-medium">المحكمة</label><input name="court" value={formData.court || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
-                                    <div><label className="block text-sm font-medium">رقم الأساس</label><input name="caseNumber" value={formData.caseNumber || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
-                                     {!modal.isEditing && (
-                                        <div className="border-t pt-4 mt-4 space-y-4">
-                                            <h3 className="font-semibold">إضافة جلسة أولى (اختياري)</h3>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div><label className="block text-sm font-medium">تاريخ أول جلسة</label><input type="date" name="firstSessionDate" onChange={handleFormChange} className="w-full p-2 border rounded"/></div>
-                                                <div><label className="block text-sm font-medium">سبب أول جلسة</label><input name="firstSessionReason" onChange={handleFormChange} className="w-full p-2 border rounded"/></div>
-                                            </div>
-                                        </div>
-                                    )}
-                                    {modal.isEditing && (
-                                         <div className="border-t pt-4 mt-4 space-y-4">
-                                            <h3 className="font-semibold">معلومات قرار الحسم</h3>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div><label className="block text-sm font-medium">تاريخ الحسم</label><input type="date" name="decisionDate" value={formData.decisionDate || ''} onChange={handleFormChange} className="w-full p-2 border rounded"/></div>
-                                                <div><label className="block text-sm font-medium">رقم القرار</label><input name="decisionNumber" value={formData.decisionNumber || ''} onChange={handleFormChange} className="w-full p-2 border rounded"/></div>
-                                            </div>
-                                             <div><label className="block text-sm font-medium">ملخص القرار</label><textarea name="decisionSummary" value={formData.decisionSummary || ''} onChange={handleFormChange} className="w-full p-2 border rounded" rows={2}></textarea></div>
-                                             <div><label className="block text-sm font-medium">ملاحظات</label><textarea name="decisionNotes" value={formData.decisionNotes || ''} onChange={handleFormChange} className="w-full p-2 border rounded" rows={2}></textarea></div>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="mt-6 flex justify-end gap-4"><button type="button" onClick={handleCloseModal} className="px-4 py-2 bg-gray-200 rounded">إلغاء</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">حفظ</button></div>
-                            </form>
-                        )}
-                         {modal.type === 'session' && (
-                             <form onSubmit={handleSubmit}>
-                                <h2 className="text-xl font-bold mb-4">{modal.isEditing ? 'تعديل جلسة' : 'إضافة جلسة جديدة'}</h2>
-                                <div className="space-y-4">
-                                    <div><label className="block text-sm font-medium">التاريخ</label><input type="date" name="date" value={formData.date || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
-                                    {!modal.isEditing &&
-                                    <div><label className="block text-sm font-medium">المكلف بالحضور</label><select name="assignee" value={formData.assignee || 'بدون تخصيص'} onChange={handleFormChange} className="w-full p-2 border rounded">{assistants.map(a => <option key={a} value={a}>{a}</option>)}</select></div>
-                                    }
-                                    {modal.isEditing && (
-                                        <>
-                                             <div className="flex items-center gap-4">
-                                                <label className="flex items-center gap-2"><input type="checkbox" name="isPostponed" checked={!!formData.isPostponed} onChange={handleFormChange}/> مرحّلة</label>
-                                            </div>
-                                            <div><label className="block text-sm font-medium">سبب التأجيل</label><input name="postponementReason" value={formData.postponementReason || ''} onChange={handleFormChange} className="w-full p-2 border rounded"/></div>
-                                            <div><label className="block text-sm font-medium">تاريخ الجلسة القادمة</label><input type="date" name="nextSessionDate" value={formData.nextSessionDate || ''} onChange={handleFormChange} className="w-full p-2 border rounded"/></div>
-                                            <div><label className="block text-sm font-medium">سبب التأجيل القادم</label><input name="nextPostponementReason" value={formData.nextPostponementReason || ''} onChange={handleFormChange} className="w-full p-2 border rounded"/></div>
-                                        </>
-                                    )}
-                                </div>
-                                <div className="mt-6 flex justify-end gap-4"><button type="button" onClick={handleCloseModal} className="px-4 py-2 bg-gray-200 rounded">إلغاء</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">حفظ</button></div>
-                            </form>
-                        )}
+                        <h2 className="text-xl font-bold mb-4">{getModalTitle()}</h2>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            {modal.type === 'client' && (
+                                <>
+                                <div><label className="block text-sm font-medium">اسم الموكل</label><input type="text" name="name" value={formData.name || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
+                                <div><label className="block text-sm font-medium">معلومات الاتصال</label><input type="text" name="contactInfo" value={formData.contactInfo || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                </>
+                            )}
+                            {modal.type === 'case' && (
+                                <>
+                                <div><label className="block text-sm font-medium">موضوع القضية</label><input type="text" name="subject" value={formData.subject || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
+                                <div><label className="block text-sm font-medium">اسم الخصم</label><input type="text" name="opponentName" value={formData.opponentName || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                <div><label className="block text-sm font-medium">اتفاقية الأتعاب</label><textarea name="feeAgreement" value={formData.feeAgreement || ''} onChange={handleFormChange} className="w-full p-2 border rounded" rows={3}></textarea></div>
+                                <div><label className="block text-sm font-medium">حالة القضية</label><select name="status" value={formData.status || 'active'} onChange={handleFormChange} className="w-full p-2 border rounded"><option value="active">نشطة</option><option value="closed">مغلقة</option><option value="on_hold">معلقة</option></select></div>
+                                {!modal.isEditing && <div className="p-4 bg-gray-50 border rounded-lg space-y-4"><h3 className="font-semibold text-gray-700">إضافة المرحلة الأولى (اختياري)</h3><div><label className="block text-xs font-medium">المحكمة</label><input type="text" name="court" value={formData.court || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-medium">رقم الأساس</label><input type="text" name="caseNumber" value={formData.caseNumber || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div><div><label className="block text-xs font-medium">تاريخ أول جلسة</label><input type="date" name="firstSessionDate" value={formData.firstSessionDate || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div></div><div><label className="block text-xs font-medium">سبب التأجيل (إن وجد)</label><input type="text" name="firstSessionReason" value={formData.firstSessionReason || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div></div>}
+                                </>
+                            )}
+                            {modal.type === 'stage' && (
+                                <>
+                                <div><label className="block text-sm font-medium">المحكمة</label><input type="text" name="court" value={formData.court || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required/></div>
+                                <div><label className="block text-sm font-medium">رقم الأساس</label><input type="text" name="caseNumber" value={formData.caseNumber || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>
+                                {!modal.isEditing && <div><label className="block text-sm font-medium">تاريخ أول جلسة (اختياري)</label><input type="date" name="firstSessionDate" value={formData.firstSessionDate || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>}
+                                {!modal.isEditing && <div><label className="block text-sm font-medium">سبب التأجيل الأول (إن وجد)</label><input type="text" name="firstSessionReason" value={formData.firstSessionReason || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>}
+                                {modal.isEditing && <div className="p-4 bg-gray-50 border rounded-lg space-y-4"><h3 className="font-semibold">قرار الحسم (إن وجد)</h3><div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-medium">تاريخ الحسم</label><input type="date" name="decisionDate" value={formData.decisionDate || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div><div><label className="block text-xs font-medium">رقم القرار</label><input type="text" name="decisionNumber" value={formData.decisionNumber || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div></div><div><label className="block text-xs font-medium">ملخص القرار</label><textarea name="decisionSummary" value={formData.decisionSummary || ''} onChange={handleFormChange} className="w-full p-2 border rounded" rows={2}></textarea></div><div><label className="block text-xs font-medium">ملاحظات</label><textarea name="decisionNotes" value={formData.decisionNotes || ''} onChange={handleFormChange} className="w-full p-2 border rounded" rows={2}></textarea></div></div>}
+                                </>
+                            )}
+                            {modal.type === 'session' && (
+                                <>
+                                <div><label className="block text-sm font-medium">تاريخ الجلسة</label><input type="date" name="date" value={formData.date || ''} onChange={handleFormChange} className="w-full p-2 border rounded" required /></div>
+                                {modal.isEditing && <div><label className="block text-sm font-medium">سبب التأجيل (السابق)</label><input type="text" name="postponementReason" value={formData.postponementReason || ''} onChange={handleFormChange} className="w-full p-2 border rounded" /></div>}
+                                <div><label className="block text-sm font-medium">المكلف بالحضور</label><select name="assignee" value={formData.assignee || 'بدون تخصيص'} onChange={handleFormChange} className="w-full p-2 border rounded">{assistants.map(a => <option key={a} value={a}>{a}</option>)}</select></div>
+                                </>
+                            )}
+                            <div className="mt-6 flex justify-end gap-4"><button type="button" onClick={handleCloseModal} className="px-4 py-2 bg-gray-200 rounded-lg">إلغاء</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg">حفظ</button></div>
+                        </form>
                     </div>
                 </div>
             )}
             
-            {isDeleteClientModalOpen && clientToDelete && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={() => setIsDeleteClientModalOpen(false)}>
-                     <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-                        <div className="text-center">
-                            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4"><ExclamationTriangleIcon className="h-8 w-8 text-red-600" /></div>
-                            <h3 className="text-2xl font-bold">تأكيد حذف الموكل</h3>
-                            <p className="my-4">هل أنت متأكد من حذف الموكل "{clientToDelete.name}"؟ سيتم حذف جميع القضايا والجلسات المتعلقة به.</p>
-                        </div>
-                        <div className="mt-6 flex justify-center gap-4"><button className="px-6 py-2 bg-gray-200 rounded" onClick={() => setIsDeleteClientModalOpen(false)}>إلغاء</button><button className="px-6 py-2 bg-red-600 text-white rounded" onClick={handleConfirmDeleteClient}>نعم، قم بالحذف</button></div>
-                    </div>
-                </div>
-            )}
-            
-            {isDeleteCaseModalOpen && caseToDelete && (
-                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={() => setIsDeleteCaseModalOpen(false)}>
-                     <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-                        <div className="text-center">
-                            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4"><ExclamationTriangleIcon className="h-8 w-8 text-red-600" /></div>
-                            <h3 className="text-2xl font-bold">تأكيد حذف القضية</h3>
-                            <p className="my-4">هل أنت متأكد من حذف قضية "{caseToDelete.caseSubject}"؟ سيتم حذف جميع المراحل والجلسات المتعلقة بها.</p>
-                        </div>
-                        <div className="mt-6 flex justify-center gap-4"><button className="px-6 py-2 bg-gray-200 rounded" onClick={() => setIsDeleteCaseModalOpen(false)}>إلغاء</button><button className="px-6 py-2 bg-red-600 text-white rounded" onClick={handleConfirmDeleteCase}>نعم، قم بالحذف</button></div>
-                    </div>
-                </div>
-            )}
-            
-            {isDeleteStageModalOpen && stageToDelete && (
-                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={() => setIsDeleteStageModalOpen(false)}>
-                     <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-                        <div className="text-center">
-                            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4"><ExclamationTriangleIcon className="h-8 w-8 text-red-600" /></div>
-                            <h3 className="text-2xl font-bold">تأكيد حذف المرحلة</h3>
-                            <p className="my-4">هل أنت متأكد من حذف المرحلة "{stageToDelete.stageInfo}"؟ سيتم حذف جميع الجلسات المتعلقة بها.</p>
-                        </div>
-                        <div className="mt-6 flex justify-center gap-4"><button className="px-6 py-2 bg-gray-200 rounded" onClick={() => setIsDeleteStageModalOpen(false)}>إلغاء</button><button className="px-6 py-2 bg-red-600 text-white rounded" onClick={handleConfirmDeleteStage}>نعم، قم بالحذف</button></div>
-                    </div>
-                </div>
-            )}
-            
-            {isDeleteSessionModalOpen && sessionToDelete && (
-                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={() => setIsDeleteSessionModalOpen(false)}>
-                     <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-                        <div className="text-center">
-                            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4"><ExclamationTriangleIcon className="h-8 w-8 text-red-600" /></div>
-                            <h3 className="text-2xl font-bold">تأكيد حذف الجلسة</h3>
-                            <p className="my-4">هل أنت متأكد من حذف "{sessionToDelete.message}"؟</p>
-                        </div>
-                        <div className="mt-6 flex justify-center gap-4"><button className="px-6 py-2 bg-gray-200 rounded" onClick={() => setIsDeleteSessionModalOpen(false)}>إلغاء</button><button className="px-6 py-2 bg-red-600 text-white rounded" onClick={handleConfirmDeleteSession}>نعم، قم بالحذف</button></div>
-                    </div>
-                </div>
-            )}
-
-             {isPrintChoiceModalOpen && clientForPrintChoice && (
-                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={() => setIsPrintChoiceModalOpen(false)}>
+            {isDeleteClientModalOpen && clientToDelete && (<div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={() => setIsDeleteClientModalOpen(false)}><div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}><div className="text-center"><div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4"><ExclamationTriangleIcon className="h-8 w-8 text-red-600" /></div><h3 className="text-2xl font-bold">تأكيد حذف الموكل</h3><p className="my-4">هل أنت متأكد من حذف الموكل "{clientToDelete.name}"؟ سيتم حذف جميع القضايا والبيانات المرتبطة به بشكل نهائي.</p></div><div className="mt-6 flex justify-center gap-4"><button className="px-6 py-2 bg-gray-200 rounded-lg" onClick={() => setIsDeleteClientModalOpen(false)}>إلغاء</button><button className="px-6 py-2 bg-red-600 text-white rounded-lg" onClick={handleConfirmDeleteClient}>نعم، قم بالحذف</button></div></div></div>)}
+            {isDeleteCaseModalOpen && caseToDelete && (<div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={() => setIsDeleteCaseModalOpen(false)}><div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}><div className="text-center"><div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4"><ExclamationTriangleIcon className="h-8 w-8 text-red-600" /></div><h3 className="text-2xl font-bold">تأكيد حذف القضية</h3><p className="my-4">هل أنت متأكد من حذف قضية "{caseToDelete.caseSubject}"؟</p></div><div className="mt-6 flex justify-center gap-4"><button className="px-6 py-2 bg-gray-200 rounded-lg" onClick={() => setIsDeleteCaseModalOpen(false)}>إلغاء</button><button className="px-6 py-2 bg-red-600 text-white rounded-lg" onClick={handleConfirmDeleteCase}>نعم، قم بالحذف</button></div></div></div>)}
+            {isDeleteStageModalOpen && stageToDelete && (<div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={() => setIsDeleteStageModalOpen(false)}><div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}><div className="text-center"><div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4"><ExclamationTriangleIcon className="h-8 w-8 text-red-600" /></div><h3 className="text-2xl font-bold">تأكيد حذف المرحلة</h3><p className="my-4">هل أنت متأكد من حذف مرحلة "{stageToDelete.stageInfo}"؟</p></div><div className="mt-6 flex justify-center gap-4"><button className="px-6 py-2 bg-gray-200 rounded-lg" onClick={() => setIsDeleteStageModalOpen(false)}>إلغاء</button><button className="px-6 py-2 bg-red-600 text-white rounded-lg" onClick={handleConfirmDeleteStage}>نعم، قم بالحذف</button></div></div></div>)}
+            {isDeleteSessionModalOpen && sessionToDelete && (<div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={() => setIsDeleteSessionModalOpen(false)}><div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}><div className="text-center"><div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4"><ExclamationTriangleIcon className="h-8 w-8 text-red-600" /></div><h3 className="text-2xl font-bold">تأكيد حذف الجلسة</h3><p className="my-4">هل أنت متأكد من حذف "{sessionToDelete.message}"؟</p></div><div className="mt-6 flex justify-center gap-4"><button className="px-6 py-2 bg-gray-200 rounded-lg" onClick={() => setIsDeleteSessionModalOpen(false)}>إلغاء</button><button className="px-6 py-2 bg-red-600 text-white rounded-lg" onClick={handleConfirmDeleteSession}>نعم، قم بالحذف</button></div></div></div>)}
+            {isPrintChoiceModalOpen && clientForPrintChoice && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={() => setIsPrintChoiceModalOpen(false)}>
                     <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
                         <h2 className="text-xl font-bold mb-4 border-b pb-3">اختر كشف الحساب للطباعة</h2>
                         <div className="space-y-3 max-h-80 overflow-y-auto">
-                            <button onClick={() => handlePrintClient(clientForPrintChoice)} className="w-full text-right px-4 py-3 bg-blue-50 text-blue-800 font-semibold rounded-lg hover:bg-blue-100">كشف حساب شامل للموكل</button>
-                            <h3 className="text-md font-semibold text-gray-600 pt-2">أو طباعة كشف لقضية محددة:</h3>
-                            {clientForPrintChoice.cases.map(c => (
-                                <button key={c.id} onClick={() => handlePrintClient(clientForPrintChoice, c)} className="w-full text-right block px-4 py-2 bg-gray-50 text-gray-800 rounded-md hover:bg-gray-100">{c.subject}</button>
-                            ))}
+                            <button onClick={() => handleGeneratePrintData(clientForPrintChoice)} className="w-full text-right px-4 py-3 bg-blue-50 text-blue-800 font-semibold rounded-lg hover:bg-blue-100">كشف حساب شامل للموكل</button>
+                            {clientForPrintChoice.cases.map(c => <button key={c.id} onClick={() => handleGeneratePrintData(clientForPrintChoice, c)} className="w-full text-right block px-4 py-2 bg-gray-50 text-gray-800 rounded-md hover:bg-gray-100">كشف حساب قضية: {c.subject}</button>)}
                         </div>
-                         <div className="mt-6 flex justify-end"><button onClick={() => setIsPrintChoiceModalOpen(false)} className="px-4 py-2 bg-gray-200 rounded">إغلاق</button></div>
                     </div>
                 </div>
             )}
-            
             {isPrintModalOpen && printData && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] no-print" onClick={() => setIsPrintModalOpen(false)}>
                     <div className="bg-white p-2 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="overflow-y-auto" ref={printClientReportRef}><PrintableClientReport {...printData} /></div>
-                        <div className="mt-4 flex justify-end gap-4 border-t p-4"><button onClick={() => setIsPrintModalOpen(false)} className="px-6 py-2 bg-gray-200 rounded">إغلاق</button><button onClick={() => printElement(printClientReportRef.current)} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded"><PrintIcon className="w-5 h-5"/>طباعة</button></div>
+                        <div className="overflow-y-auto" ref={printClientReportRef}><PrintableClientReport client={printData.client} caseData={printData.caseData} entries={printData.entries} totals={printData.totals} /></div>
+                        <div className="mt-4 flex justify-end gap-4 border-t p-4"><button onClick={() => setIsPrintModalOpen(false)} className="px-6 py-2 bg-gray-200 rounded-lg">إغلاق</button><button onClick={() => printElement(printClientReportRef.current)} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg"><PrintIcon className="w-5 h-5"/>طباعة</button></div>
                     </div>
                 </div>
             )}
-            
-            {decideModal.isOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={handleCloseDecideModal}>
+            {decideModal.isOpen && decideModal.session && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={handleCloseDecideModal}>
                     <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                        <h2 className="text-xl font-bold mb-4">تسجيل قرار الحسم</h2>
+                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><GavelIcon className="w-6 h-6"/> تسجيل قرار الحسم</h2>
                         <form onSubmit={handleDecideSubmit} className="space-y-4">
-                            <div><label>تاريخ الحسم</label><input type="date" value={toInputDateString(decideModal.session?.date)} readOnly className="w-full p-2 border rounded bg-gray-100" /></div>
-                            <div><label>رقم القرار</label><input type="text" value={decideFormData.decisionNumber} onChange={e => setDecideFormData(p => ({...p, decisionNumber: e.target.value}))} className="w-full p-2 border rounded" /></div>
-                            <div><label>ملخص القرار</label><textarea value={decideFormData.decisionSummary} onChange={e => setDecideFormData(p => ({...p, decisionSummary: e.target.value}))} className="w-full p-2 border rounded" rows={3}></textarea></div>
-                            <div><label>ملاحظات</label><textarea value={decideFormData.decisionNotes} onChange={e => setDecideFormData(p => ({...p, decisionNotes: e.target.value}))} className="w-full p-2 border rounded" rows={2}></textarea></div>
-                            <div className="mt-6 flex justify-end gap-4"><button type="button" onClick={handleCloseDecideModal} className="px-4 py-2 bg-gray-200 rounded">إلغاء</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">حفظ</button></div>
+                            <div><label className="block text-sm font-medium">تاريخ الحسم</label><input type="date" value={toInputDateString(decideModal.session.date)} readOnly className="w-full p-2 border rounded bg-gray-100" /></div>
+                            <div><label className="block text-sm font-medium">رقم القرار</label><input type="text" value={decideFormData.decisionNumber} onChange={e => setDecideFormData(p => ({...p, decisionNumber: e.target.value}))} className="w-full p-2 border rounded" /></div>
+                            <div><label className="block text-sm font-medium">ملخص القرار</label><textarea value={decideFormData.decisionSummary} onChange={e => setDecideFormData(p => ({...p, decisionSummary: e.target.value}))} className="w-full p-2 border rounded" rows={3}></textarea></div>
+                            <div><label className="block text-sm font-medium">ملاحظات</label><textarea value={decideFormData.decisionNotes} onChange={e => setDecideFormData(p => ({...p, decisionNotes: e.target.value}))} className="w-full p-2 border rounded" rows={2}></textarea></div>
+                            <div className="mt-6 flex justify-end gap-4"><button type="button" onClick={handleCloseDecideModal} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">إلغاء</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">حفظ القرار</button></div>
                         </form>
                     </div>
                 </div>
@@ -869,5 +720,4 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
         </div>
     );
 };
-
 export default ClientsPage;

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { AccountingEntry, Client, Invoice, InvoiceItem, Case, Stage, Session } from '../types';
 import { formatDate, toInputDateString, parseInputDateString } from '../utils/dateUtils';
 import { PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, PrintIcon } from '../components/icons';
-import { useData } from '../App';
+import { useData } from '../context/DataContext';
 import PrintableInvoice from '../components/PrintableInvoice';
 import { printElement } from '../utils/printUtils';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';

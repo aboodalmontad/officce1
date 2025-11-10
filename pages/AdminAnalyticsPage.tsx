@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useData } from '../App';
+import { useData } from '../context/DataContext';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { UserGroupIcon, ChartBarIcon, ClockIcon } from '../components/icons';
 

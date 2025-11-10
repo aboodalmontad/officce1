@@ -4,7 +4,7 @@ import { SiteFinancialEntry, Profile } from '../types';
 import { formatDate, toInputDateString } from '../utils/dateUtils';
 import { PlusIcon, PencilIcon, TrashIcon, ExclamationTriangleIcon } from '../components/icons';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { useData } from '../App';
+import { useData } from '../context/DataContext';
 
 const StatCard: React.FC<{ title: string; value: string; className?: string }> = ({ title, value, className = '' }) => (
     <div className={`p-6 rounded-lg shadow ${className}`}>

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { TrashIcon, ExclamationTriangleIcon, CloudArrowUpIcon, ArrowPathIcon, PlusIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ShieldCheckIcon } from '../components/icons';
 import { Client, AdminTask, Appointment, AccountingEntry } from '../types';
 import { APP_DATA_KEY } from '../hooks/useSupabaseData';
-import { useData } from '../App';
+import { useData } from '../context/DataContext';
 import { openDB } from 'idb';
 
 interface SettingsPageProps {}

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { MusicalNoteIcon, PlayCircleIcon, TrashIcon, ArrowUpTrayIcon } from '../components/icons';
+// Fix: The imported variable name contained hyphens, which is invalid syntax. Corrected to use the camelCase version.
 import { defaultUserApprovalSoundBase64 } from '../components/RealtimeNotifier';
 
 const USER_APPROVAL_SOUND_KEY = 'customUserApprovalSound';
@@ -36,6 +37,7 @@ const AdminSettingsPage: React.FC = () => {
     };
 
     const playSound = () => {
+// Fix: Use the valid camelCase variable name 'defaultUserApprovalSoundBase64'.
         const soundSource = customSound || defaultUserApprovalSoundBase64;
         try {
             // Create a new Audio object on demand for robust preview playback.

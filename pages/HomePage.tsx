@@ -8,7 +8,7 @@ import PrintableReport from '../components/PrintableReport';
 import { printElement } from '../utils/printUtils';
 import { MenuItem } from '../components/ContextMenu';
 import { useDebounce } from '../hooks/useDebounce';
-import { useData } from '../App';
+import { useData } from '../context/DataContext';
 
 const importanceMap: { [key: string]: { text: string, className: string } } = {
     normal: { text: 'عادي', className: 'bg-gray-100 text-gray-800' },
@@ -1090,7 +1090,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                         {adminTasksLayout === 'vertical' ? (
                                             <div className="flex flex-row gap-4 pt-4">
                                                 {locationOrder.length > 0 && (
-                                                    <nav className="flex flex-col gap-2 w-28 flex-shrink-0 md:w-1/4 lg:w-1/5 pb-2" aria-label="Location Tabs">
+                                                    <nav className="flex flex-col gap-2 w-28 flex-shrink-0" aria-label="Location Tabs">
                                                         {locationOrder.map(location => (
                                                             <button
                                                                 key={location}

@@ -3,7 +3,7 @@ import { getSupabaseClient } from '../supabaseClient';
 import { Profile } from '../types';
 import { formatDate, toInputDateString } from '../utils/dateUtils';
 import { CheckCircleIcon, NoSymbolIcon, PencilIcon, TrashIcon, ExclamationTriangleIcon } from '../components/icons';
-import { useData } from '../App';
+import { useData } from '../context/DataContext';
 import UserDetailsModal from '../components/UserDetailsModal';
 
 /**
