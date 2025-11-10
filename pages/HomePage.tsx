@@ -116,9 +116,20 @@ const AppointmentsTable: React.FC<{ appointments: Appointment[], onAddAppointmen
 interface HomePageProps {
     onOpenAdminTaskModal: (initialData?: any) => void;
     showContextMenu: (event: React.MouseEvent, menuItems: MenuItem[]) => void;
+    mainView: 'agenda' | 'adminTasks';
+    setMainView: (view: 'agenda' | 'adminTasks') => void;
+    selectedDate: Date;
+    setSelectedDate: (date: Date) => void;
 }
 
-const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMenu }) => {
+const HomePage: React.FC<HomePageProps> = ({ 
+    onOpenAdminTaskModal, 
+    showContextMenu,
+    mainView,
+    setMainView,
+    selectedDate,
+    setSelectedDate 
+}) => {
     const { 
         appointments, 
         allSessions, 
@@ -136,8 +147,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
         setAdminTasksLayout,
     } = useData();
 
-    const [selectedDate, setSelectedDate] = React.useState(new Date());
-    const [calendarViewDate, setCalendarViewDate] = React.useState(new Date());
+    const [calendarViewDate, setCalendarViewDate] = React.useState(selectedDate);
     type ViewMode = 'daily' | 'unpostponed' | 'upcoming';
     const [viewMode, setViewMode] = React.useState<ViewMode>('daily');
     const [isAppointmentModalOpen, setIsAppointmentModalOpen] = React.useState(false);
@@ -152,11 +162,6 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
     const [appointmentToDelete, setAppointmentToDelete] = React.useState<Appointment | null>(null);
     const [isDeleteTaskModalOpen, setIsDeleteTaskModalOpen] = React.useState(false);
     const [taskToDelete, setTaskToDelete] = React.useState<AdminTask | null>(null);
-    const [isPrintModalOpen, setIsPrintModalOpen] = React.useState(false);
-    const [isPrintAssigneeModalOpen, setIsPrintAssigneeModalOpen] = React.useState(false);
-    const [isShareAssigneeModalOpen, setIsShareAssigneeModalOpen] = React.useState(false);
-    const [printableReportData, setPrintableReportData] = React.useState<any | null>(null);
-    const printReportRef = React.useRef<HTMLDivElement>(null);
     
     // State for drag-and-drop of tasks
     const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
@@ -172,23 +177,11 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
     // State for Decide Session Modal
     const [decideModal, setDecideModal] = React.useState<{ isOpen: boolean; session?: Session, stage?: Stage }>({ isOpen: false });
     const [decideFormData, setDecideFormData] = React.useState({ decisionNumber: '', decisionSummary: '', decisionNotes: '' });
-
-    // New state for main page view
-    const [mainView, setMainView] = React.useState<'agenda' | 'adminTasks'>('agenda');
-    const [isActionsMenuOpen, setIsActionsMenuOpen] = React.useState(false);
-    const actionsMenuRef = React.useRef<HTMLDivElement>(null);
-
+    
     React.useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (actionsMenuRef.current && !actionsMenuRef.current.contains(event.target as Node)) {
-                setIsActionsMenuOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, []);
+        setCalendarViewDate(selectedDate);
+    }, [selectedDate]);
+
 
     // Appointment Handlers
     const handleOpenAddAppointmentModal = () => {
@@ -341,730 +334,64 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
     };
 
     // --- Drag and Drop Handlers ---
-
-    const handleDragStart = (e: React.DragEvent, type: 'task' | 'group', id: string) => {
-        e.stopPropagation();
-        document.body.classList.add('grabbing');
-        if (type === 'task') {
-            e.dataTransfer.setData('application/lawyer-app-task-id', id);
-            e.dataTransfer.effectAllowed = 'move';
-            setDraggedTaskId(id);
-        } else {
-            e.dataTransfer.setData('application/lawyer-app-group-location', id);
-            e.dataTransfer.effectAllowed = 'move';
-            setDraggedGroupLocation(id);
-        }
-    };
-
-    const handleDragEnd = () => {
-        document.body.classList.remove('grabbing');
-        setDraggedTaskId(null);
-        setDraggedGroupLocation(null);
-    };
-
-    const handleTaskDrop = (targetTaskId: string | null, targetLocation: string, position: 'before' | 'after') => {
-        if (!draggedTaskId) return;
-
-        setAdminTasks(currentTasks => {
-            const taskToMoveIndex = currentTasks.findIndex(t => t.id === draggedTaskId);
-            if (taskToMoveIndex === -1) return currentTasks;
-            
-            const taskToMove = { ...currentTasks[taskToMoveIndex], location: targetLocation, updated_at: new Date() };
-
-            const remainingTasks = currentTasks.filter(t => t.id !== draggedTaskId);
-
-            let targetIndex: number;
-
-            if (targetTaskId) {
-                const initialTargetIndex = remainingTasks.findIndex(t => t.id === targetTaskId);
-                targetIndex = position === 'before' ? initialTargetIndex : initialTargetIndex + 1;
-            } else {
-                const tasksInTargetLocation = remainingTasks.filter(t => t.location === targetLocation);
-                targetIndex = tasksInTargetLocation.length > 0
-                    ? remainingTasks.indexOf(tasksInTargetLocation[tasksInTargetLocation.length - 1]) + 1
-                    : remainingTasks.length;
-            }
-            
-            remainingTasks.splice(targetIndex, 0, taskToMove);
-
-            return remainingTasks;
-        });
-    };
-    
-    const handleGroupDragOver = (e: React.DragEvent) => {
-        e.preventDefault();
-    };
-    
-    const handleGroupDrop = (e: React.DragEvent, targetLocation: string) => {
-        e.preventDefault();
-        const taskId = e.dataTransfer.getData('application/lawyer-app-task-id');
-        const sourceGroupLocation = e.dataTransfer.getData('application/lawyer-app-group-location');
-
-        if (taskId) {
-            handleTaskDrop(null, targetLocation, 'after');
-        } else if (sourceGroupLocation && sourceGroupLocation !== targetLocation) {
-             setLocationOrder(currentOrder => {
-                const sourceIndex = currentOrder.indexOf(sourceGroupLocation);
-                const targetIndex = currentOrder.indexOf(targetLocation);
-                
-                if (sourceIndex === -1 || targetIndex === -1) return currentOrder;
-        
-                const newOrder = Array.from(currentOrder);
-                const [movedGroup] = newOrder.splice(sourceIndex, 1);
-                newOrder.splice(targetIndex, 0, movedGroup);
-        
-                return newOrder;
-            });
-        }
-    };
-
-    // Printing Logic
-    const handleGenerateAssigneeReport = (assignee: string | null) => {
-        const dailyAppointments = appointments
-            .filter(a => isSameDay(a.date, selectedDate))
-            .sort((a, b) => a.time.localeCompare(b.time));
-    
-        const dailySessions = allSessions.filter(s => isSameDay(s.date, selectedDate));
-    
-        // Filter, group, and sort admin tasks to match the main page display
-        const allUncompletedTasks = adminTasks.filter(t => !t.completed);
-        const filteredForAssigneeTasks = assignee ? allUncompletedTasks.filter(t => t.assignee === assignee) : allUncompletedTasks;
-    
-        const groupedAndSortedTasks = filteredForAssigneeTasks.reduce((acc, task) => {
-            const location = task.location || 'غير محدد';
-            if (!acc[location]) {
-                acc[location] = [];
-            }
-            acc[location].push(task);
-            return acc;
-        }, {} as Record<string, AdminTask[]>);
-    
-        const importanceOrder = { 'urgent': 3, 'important': 2, 'normal': 1 };
-    
-        for (const location in groupedAndSortedTasks) {
-            groupedAndSortedTasks[location].sort((a, b) => {
-                const importanceA = importanceOrder[a.importance];
-                const importanceB = importanceOrder[b.importance];
-                if (importanceA !== importanceB) return importanceB - importanceA;
-    
-                const dateA = new Date(a.dueDate).getTime();
-                const dateB = new Date(b.dueDate).getTime();
-                if (dateA !== dateB) return dateA - dateB;
-    
-                return a.task.localeCompare(b.task, 'ar');
-            });
-        }
-    
-        const filteredAppointments = assignee ? dailyAppointments.filter(a => a.assignee === assignee) : dailyAppointments;
-        const filteredSessions = assignee ? dailySessions.filter(s => s.assignee === assignee) : dailySessions;
-    
-        setPrintableReportData({
-            assignee: assignee || 'جدول الأعمال العام',
-            date: selectedDate,
-            appointments: filteredAppointments,
-            sessions: filteredSessions,
-            adminTasks: groupedAndSortedTasks,
-        });
-    
-        setIsPrintAssigneeModalOpen(false);
-        setIsPrintModalOpen(true);
-    };
-
-    // WhatsApp Sharing Logic
-    const handleShareAssigneeReport = (assignee: string | null) => {
-        const dailyAppointments = appointments
-            .filter(a => isSameDay(a.date, selectedDate))
-            .sort((a, b) => a.time.localeCompare(b.time));
-
-        const dailySessions = allSessions.filter(s => isSameDay(s.date, selectedDate));
-
-        const allUncompletedTasks = adminTasks.filter(t => !t.completed);
-        const filteredForAssigneeTasks = assignee ? allUncompletedTasks.filter(t => t.assignee === assignee) : allUncompletedTasks;
-
-        const groupedAndSortedTasks = filteredForAssigneeTasks.reduce((acc, task) => {
-            const location = task.location || 'غير محدد';
-            if (!acc[location]) acc[location] = [];
-            acc[location].push(task);
-            return acc;
-        }, {} as Record<string, AdminTask[]>);
-        
-        const importanceOrder = { 'urgent': 3, 'important': 2, 'normal': 1 };
-        for (const location in groupedAndSortedTasks) {
-            groupedAndSortedTasks[location].sort((a, b) => {
-                const importanceA = importanceOrder[a.importance];
-                const importanceB = importanceOrder[b.importance];
-                if (importanceA !== importanceB) return importanceB - importanceA;
-                const dateA = new Date(a.dueDate).getTime();
-                const dateB = new Date(b.dueDate).getTime();
-                if (dateA !== dateB) return dateA - dateB;
-                return a.task.localeCompare(b.task, 'ar');
-            });
-        }
-
-        const filteredAppointments = assignee ? dailyAppointments.filter(a => a.assignee === assignee) : dailyAppointments;
-        const filteredSessions = assignee ? dailySessions.filter(s => s.assignee === assignee) : dailySessions;
-
-        // --- Start Formatting the message ---
-        let message = `*جدول أعمال مكتب المحامي*\n`;
-        message += `*التاريخ:* ${formatDate(selectedDate)}\n`;
-        message += `*لـِ:* ${assignee || 'الجميع'}\n\n`;
-
-        if (filteredSessions.length > 0) {
-            message += `*القسم الأول: الجلسات (${filteredSessions.length})*\n`;
-            filteredSessions.forEach(s => {
-                message += `- (${s.court}) قضية ${s.clientName} ضد ${s.opponentName} (أساس: ${s.caseNumber}).\n`;
-                if (s.postponementReason) {
-                    message += `  سبب التأجيل السابق: ${s.postponementReason}\n`;
-                }
-            });
-            message += `\n`;
-        }
-
-        if (filteredAppointments.length > 0) {
-            message += `*القسم الثاني: المواعيد (${filteredAppointments.length})*\n`;
-            filteredAppointments.forEach(a => {
-                message += `- (${formatTime(a.time)}) ${a.title}`;
-                if (a.importance !== 'normal') {
-                    message += ` (${importanceMap[a.importance]?.text})`;
-                }
-                message += `\n`;
-            });
-            message += `\n`;
-        }
-        
-        const taskLocations = Object.keys(groupedAndSortedTasks);
-        if (taskLocations.length > 0) {
-            message += `*القسم الثالث: المهام الإدارية (غير منجزة)*\n`;
-            taskLocations.forEach(location => {
-                const tasks = groupedAndSortedTasks[location];
-                if (tasks.length > 0) {
-                    message += `*المكان: ${location}*\n`;
-                    tasks.forEach(t => {
-                        let importanceText = '';
-                        if (t.importance === 'urgent') importanceText = '[عاجل] ';
-                        if (t.importance === 'important') importanceText = '[مهم] ';
-                        message += `- ${importanceText}${t.task} - تاريخ الاستحقاق: ${formatDate(t.dueDate)}\n`;
-                    });
-                }
-            });
-        }
-
-        if (filteredSessions.length === 0 && filteredAppointments.length === 0 && taskLocations.length === 0) {
-            message += "لا توجد بنود في جدول الأعمال لهذا اليوم.";
-        }
-        // --- End Formatting ---
-        
-        const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-        window.open(whatsappUrl, '_blank');
-
-        setIsShareAssigneeModalOpen(false);
-    };
+    const handleDragStart = (e: React.DragEvent, type: 'task' | 'group', id: string) => { e.stopPropagation(); document.body.classList.add('grabbing'); if (type === 'task') { e.dataTransfer.setData('application/lawyer-app-task-id', id); e.dataTransfer.effectAllowed = 'move'; setDraggedTaskId(id); } else { e.dataTransfer.setData('application/lawyer-app-group-location', id); e.dataTransfer.effectAllowed = 'move'; setDraggedGroupLocation(id); } };
+    const handleDragEnd = () => { document.body.classList.remove('grabbing'); setDraggedTaskId(null); setDraggedGroupLocation(null); };
+    const handleTaskDrop = (targetTaskId: string | null, targetLocation: string, position: 'before' | 'after') => { if (!draggedTaskId) return; setAdminTasks(currentTasks => { const taskToMoveIndex = currentTasks.findIndex(t => t.id === draggedTaskId); if (taskToMoveIndex === -1) return currentTasks; const taskToMove = { ...currentTasks[taskToMoveIndex], location: targetLocation, updated_at: new Date() }; const remainingTasks = currentTasks.filter(t => t.id !== draggedTaskId); let targetIndex: number; if (targetTaskId) { const initialTargetIndex = remainingTasks.findIndex(t => t.id === targetTaskId); targetIndex = position === 'before' ? initialTargetIndex : initialTargetIndex + 1; } else { const tasksInTargetLocation = remainingTasks.filter(t => t.location === targetLocation); targetIndex = tasksInTargetLocation.length > 0 ? remainingTasks.indexOf(tasksInTargetLocation[tasksInTargetLocation.length - 1]) + 1 : remainingTasks.length; } remainingTasks.splice(targetIndex, 0, taskToMove); return remainingTasks; }); };
+    const handleGroupDragOver = (e: React.DragEvent) => { e.preventDefault(); };
+    const handleGroupDrop = (e: React.DragEvent, targetLocation: string) => { e.preventDefault(); const taskId = e.dataTransfer.getData('application/lawyer-app-task-id'); const sourceGroupLocation = e.dataTransfer.getData('application/lawyer-app-group-location'); if (taskId) { handleTaskDrop(null, targetLocation, 'after'); } else if (sourceGroupLocation && sourceGroupLocation !== targetLocation) { setLocationOrder(currentOrder => { const sourceIndex = currentOrder.indexOf(sourceGroupLocation); const targetIndex = currentOrder.indexOf(targetLocation); if (sourceIndex === -1 || targetIndex === -1) return currentOrder; const newOrder = Array.from(currentOrder); const [movedGroup] = newOrder.splice(sourceIndex, 1); newOrder.splice(targetIndex, 0, movedGroup); return newOrder; }); } };
 
     // Session Handlers
-    const handlePostponeSession = (sessionId: string, newDate: Date, newReason: string) => {
-        postponeSession(sessionId, newDate, newReason);
-    };
-    
-    const handleUpdateSession = (sessionId: string, updatedFields: Partial<Session>) => {
-        setClients(currentClients => {
-            return currentClients.map(client => ({
-                ...client,
-                updated_at: new Date(),
-                cases: client.cases.map(caseItem => ({
-                    ...caseItem,
-                    updated_at: new Date(),
-                    stages: caseItem.stages.map(stage => {
-                        const sessionIndex = stage.sessions.findIndex(s => s.id === sessionId);
-                        if (sessionIndex === -1) {
-                            return stage;
-                        }
-
-                        const updatedSessions = [...stage.sessions];
-                        updatedSessions[sessionIndex] = {
-                            ...updatedSessions[sessionIndex],
-                            ...updatedFields,
-                            updated_at: new Date(),
-                        };
-
-                        return {
-                            ...stage,
-                            sessions: updatedSessions,
-                            updated_at: new Date(),
-                        };
-                    }),
-                })),
-            }));
-        });
-    };
-
-    const handleOpenDecideModal = (session: Session) => {
-        if (!session.stageId) {
-            console.error("Cannot decide session: stageId is missing.", session);
-            return;
-        }
-
-        let foundStage: Stage | null = null;
-        for (const client of clients) {
-            for (const caseItem of client.cases) {
-                const stage = caseItem.stages.find(st => st.id === session.stageId);
-                if (stage) {
-                    foundStage = stage;
-                    break;
-                }
-            }
-            if (foundStage) break;
-        }
-
-        if (!foundStage) {
-            console.error("Cannot decide session: Corresponding stage not found for stageId:", session.stageId);
-            return;
-        }
-
-        setDecideFormData({ decisionNumber: '', decisionSummary: '', decisionNotes: '' });
-        setDecideModal({ isOpen: true, session, stage: foundStage });
-    };
-
-
-    const handleCloseDecideModal = () => {
-        setDecideModal({ isOpen: false });
-    };
-    
-    const handleDecideSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        const { session, stage } = decideModal;
-        if (!session || !stage) return;
-
-        setClients(currentClients => currentClients.map(client => ({
-            ...client,
-            updated_at: new Date(),
-            cases: client.cases.map(c => ({
-                ...c,
-                updated_at: new Date(),
-                stages: c.stages.map(st => {
-                    if (st.id === stage.id) {
-                        return {
-                            ...st,
-                            decisionDate: session.date,
-                            decisionNumber: decideFormData.decisionNumber,
-                            decisionSummary: decideFormData.decisionSummary,
-                            decisionNotes: decideFormData.decisionNotes,
-                            updated_at: new Date(),
-                        };
-                    }
-                    return st;
-                })
-            }))
-        })));
-        
-        handleCloseDecideModal();
-    };
+    const handlePostponeSession = (sessionId: string, newDate: Date, newReason: string) => { postponeSession(sessionId, newDate, newReason); };
+    const handleUpdateSession = (sessionId: string, updatedFields: Partial<Session>) => { setClients(currentClients => { return currentClients.map(client => ({ ...client, updated_at: new Date(), cases: client.cases.map(caseItem => ({ ...caseItem, updated_at: new Date(), stages: caseItem.stages.map(stage => { const sessionIndex = stage.sessions.findIndex(s => s.id === sessionId); if (sessionIndex === -1) { return stage; } const updatedSessions = [...stage.sessions]; updatedSessions[sessionIndex] = { ...updatedSessions[sessionIndex], ...updatedFields, updated_at: new Date(), }; return { ...stage, sessions: updatedSessions, updated_at: new Date(), }; }), })), })); }); };
+    const handleOpenDecideModal = (session: Session) => { if (!session.stageId) { console.error("Cannot decide session: stageId is missing.", session); return; } let foundStage: Stage | null = null; for (const client of clients) { for (const caseItem of client.cases) { const stage = caseItem.stages.find(st => st.id === session.stageId); if (stage) { foundStage = stage; break; } } if (foundStage) break; } if (!foundStage) { console.error("Cannot decide session: Corresponding stage not found for stageId:", session.stageId); return; } setDecideFormData({ decisionNumber: '', decisionSummary: '', decisionNotes: '' }); setDecideModal({ isOpen: true, session, stage: foundStage }); };
+    const handleCloseDecideModal = () => { setDecideModal({ isOpen: false }); };
+    const handleDecideSubmit = (e: React.FormEvent) => { e.preventDefault(); const { session, stage } = decideModal; if (!session || !stage) return; setClients(currentClients => currentClients.map(client => ({ ...client, updated_at: new Date(), cases: client.cases.map(c => ({ ...c, updated_at: new Date(), stages: c.stages.map(st => { if (st.id === stage.id) { return { ...st, decisionDate: session.date, decisionNumber: decideFormData.decisionNumber, decisionSummary: decideFormData.decisionSummary, decisionNotes: decideFormData.decisionNotes, updated_at: new Date(), }; } return st; }) })) }))); handleCloseDecideModal(); };
 
     // Memos
-    const dailyData = React.useMemo(() => {
-        const dailySessions = allSessions.filter(s => isSameDay(s.date, selectedDate));
-        const dailyAppointments = appointments.filter(a => isSameDay(a.date, selectedDate));
-        return { dailySessions, dailyAppointments };
-    }, [selectedDate, allSessions, appointments]);
-
-    const upcomingSessions = React.useMemo(() => {
-        const tomorrow = new Date(selectedDate);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        tomorrow.setHours(0, 0, 0, 0);
-
-        return allSessions
-            .filter(s => new Date(s.date) >= tomorrow)
-            .sort((a, b) => a.date.getTime() - b.date.getTime());
-    }, [allSessions, selectedDate]);
-
-    const groupedTasks: Record<string, AdminTask[]> = React.useMemo(() => {
-        const isCompleted = activeTaskTab === 'completed';
-        const filtered = adminTasks.filter(task => {
-            const searchLower = debouncedAdminTaskSearch.toLowerCase();
-            const matchesSearch = searchLower === '' ||
-                task.task.toLowerCase().includes(searchLower) ||
-                (task.assignee && task.assignee.toLowerCase().includes(searchLower)) ||
-                (task.location && task.location.toLowerCase().includes(searchLower));
-            return task.completed === isCompleted && matchesSearch;
-        });
+    const dailyData = React.useMemo(() => ({ dailySessions: allSessions.filter(s => isSameDay(s.date, selectedDate)), dailyAppointments: appointments.filter(a => isSameDay(a.date, selectedDate)) }), [selectedDate, allSessions, appointments]);
+    const upcomingSessions = React.useMemo(() => { const tomorrow = new Date(selectedDate); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(0, 0, 0, 0); return allSessions.filter(s => new Date(s.date) >= tomorrow).sort((a, b) => a.date.getTime() - b.date.getTime()); }, [allSessions, selectedDate]);
+    const groupedTasks: Record<string, AdminTask[]> = React.useMemo(() => { const isCompleted = activeTaskTab === 'completed'; const filtered = adminTasks.filter(task => { const searchLower = debouncedAdminTaskSearch.toLowerCase(); const matchesSearch = searchLower === '' || task.task.toLowerCase().includes(searchLower) || (task.assignee && task.assignee.toLowerCase().includes(searchLower)) || (task.location && task.location.toLowerCase().includes(searchLower)); return task.completed === isCompleted && matchesSearch; }); const importanceOrder = { 'urgent': 3, 'important': 2, 'normal': 1 }; if (activeTaskTab === 'pending') { filtered.sort((a, b) => { const importanceA = importanceOrder[a.importance]; const importanceB = importanceOrder[b.importance]; if (importanceA !== importanceB) return importanceB - importanceA; const dateA = new Date(a.dueDate).getTime(); const dateB = new Date(b.dueDate).getTime(); if (dateA !== dateB) return dateA - dateB; return a.task.localeCompare(b.task, 'ar'); }); } return filtered.reduce((acc, task) => { const location = task.location || 'غير محدد'; if (!acc[location]) { acc[location] = []; } acc[location].push(task); return acc; }, {} as Record<string, AdminTask[]>); }, [adminTasks, activeTaskTab, debouncedAdminTaskSearch]);
     
-        const importanceOrder = { 'urgent': 3, 'important': 2, 'normal': 1 };
-        
-        if (activeTaskTab === 'pending') {
-            filtered.sort((a, b) => {
-                const importanceA = importanceOrder[a.importance];
-                const importanceB = importanceOrder[b.importance];
-                if (importanceA !== importanceB) return importanceB - importanceA;
-                
-                const dateA = new Date(a.dueDate).getTime();
-                const dateB = new Date(b.dueDate).getTime();
-                if (dateA !== dateB) return dateA - dateB;
-                
-                return a.task.localeCompare(b.task, 'ar');
-            });
-        }
-        
-        return filtered.reduce((acc, task) => {
-            const location = task.location || 'غير محدد';
-            if (!acc[location]) {
-                acc[location] = [];
-            }
-            acc[location].push(task);
-            return acc;
-        }, {} as Record<string, AdminTask[]>);
+    React.useEffect(() => { const newLocations = Object.keys(groupedTasks); setLocationOrder(currentOrder => { const currentOrderSet = new Set(currentOrder); const newLocationsSet = new Set(newLocations); const updatedOrder = currentOrder.filter(loc => newLocationsSet.has(loc)); const newlyAddedLocations = newLocations.filter(loc => !currentOrderSet.has(loc)); return [...updatedOrder, ...newlyAddedLocations]; }); }, [groupedTasks]);
+    React.useEffect(() => { if (activeLocationTab && locationOrder.includes(activeLocationTab)) { return; } if (locationOrder.length > 0) { setActiveLocationTab(locationOrder[0]); } else { setActiveLocationTab(''); } }, [locationOrder, activeLocationTab]);
+
+    const handleDateSelect = (date: Date) => { setSelectedDate(date); setViewMode('daily'); };
+    const handleShowTodaysAgenda = () => { const today = new Date(); setSelectedDate(today); setCalendarViewDate(today); setViewMode('daily'); };
+    const getTitle = () => { switch(viewMode) { case 'unpostponed': return "الجلسات غير المرحلة"; case 'upcoming': return `الجلسات القادمة (بعد ${formatDate(selectedDate)})`; case 'daily': default: return `جدول أعمال يوم: ${formatDate(selectedDate)}`; } };
     
-    }, [adminTasks, activeTaskTab, debouncedAdminTaskSearch]);
-    
-    React.useEffect(() => {
-        const newLocations = Object.keys(groupedTasks);
-        setLocationOrder(currentOrder => {
-            const currentOrderSet = new Set(currentOrder);
-            const newLocationsSet = new Set(newLocations);
-            
-            const updatedOrder = currentOrder.filter(loc => newLocationsSet.has(loc));
-            const newlyAddedLocations = newLocations.filter(loc => !currentOrderSet.has(loc));
-            
-            return [...updatedOrder, ...newlyAddedLocations];
-        });
-    }, [groupedTasks]);
+    // Context Menu Handlers
+    const handleAppointmentContextMenu = (event: React.MouseEvent, appointment: Appointment) => { const menuItems: MenuItem[] = [ { label: 'إرسال إلى المهام الإدارية', icon: <BuildingLibraryIcon className="w-4 h-4" />, onClick: () => { const description = `متابعة موعد "${appointment.title}" يوم ${formatDate(appointment.date)} الساعة ${formatTime(appointment.time)}.\nالمكلف: ${appointment.assignee || 'غير محدد'}.\nالأهمية: ${importanceMap[appointment.importance]?.text}.`; onOpenAdminTaskModal({ task: description, assignee: appointment.assignee, importance: appointment.importance, }); } }, { label: 'مشاركة عبر واتساب', icon: <ShareIcon className="w-4 h-4" />, onClick: () => { const message = [ `*موعد:* ${appointment.title}`, `*التاريخ:* ${formatDate(appointment.date)}`, `*الوقت:* ${formatTime(appointment.time)}`, `*المسؤول:* ${appointment.assignee || 'غير محدد'}`, `*الأهمية:* ${importanceMap[appointment.importance]?.text}` ].join('\n'); const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`; window.open(whatsappUrl, '_blank'); } } ]; showContextMenu(event, menuItems); }
+    const handleSessionContextMenu = (event: React.MouseEvent, session: Session) => { let client, caseItem, stage; for (const c of clients) { for (const cs of c.cases) { const s = cs.stages.find(st => st.id === session.stageId); if (s) { client = c; caseItem = cs; stage = s; break; } } if (stage) break; } let description = ''; let message = ''; if (client && caseItem && stage) { const details = [ `*الموكل:* ${client.name}`, `*الخصم:* ${caseItem.opponentName}`, `*القضية:* ${caseItem.subject}`, `*المحكمة:* ${stage.court}`, `*رقم الأساس:* ${stage.caseNumber}`, `*تاريخ الجلسة:* ${formatDate(session.date)}`, `*المكلف بالحضور:* ${session.assignee || 'غير محدد'}`, `*سبب التأجيل السابق:* ${session.postponementReason || 'لا يوجد'}` ]; if (session.stageDecisionDate) { details.push('---'); details.push(`*تم حسم المرحلة:*`); details.push(`*تاريخ الحسم:* ${formatDate(new Date(session.stageDecisionDate))}`); if (stage.decisionNumber) details.push(`*رقم القرار:* ${stage.decisionNumber}`); if (stage.decisionSummary) details.push(`*ملخص القرار:* ${stage.decisionSummary}`); } description = `متابعة جلسة قضائية:\n- ${details.join('\n- ')}`; message = `*ملخص جلسة قضائية:*\n${details.join('\n')}`; } else { description = `متابعة جلسة قضية (${session.clientName} ضد ${session.opponentName}) يوم ${formatDate(session.date)} في محكمة ${session.court} (أساس: ${session.caseNumber}).\nسبب التأجيل السابق: ${session.postponementReason || 'لا يوجد'}.\nالمكلف بالحضور: ${session.assignee}.`; message = [ `*جلسة قضائية:*`, `*القضية:* ${session.clientName} ضد ${session.opponentName}`, `*المحكمة:* ${session.court} (أساس: ${session.caseNumber})`, `*التاريخ:* ${formatDate(session.date)}`, `*المسؤول:* ${session.assignee || 'غير محدد'}`, `*سبب التأجيل السابق:* ${session.postponementReason || 'لا يوجد'}` ].join('\n'); } const menuItems: MenuItem[] = [ { label: 'إرسال إلى المهام الإدارية', icon: <BuildingLibraryIcon className="w-4 h-4" />, onClick: () => { onOpenAdminTaskModal({ task: description, assignee: session.assignee, }); } }, { label: 'مشاركة عبر واتساب', icon: <ShareIcon className="w-4 h-4" />, onClick: () => { const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`; window.open(whatsappUrl, '_blank'); } } ]; showContextMenu(event, menuItems); }
+    const handleAdminTaskContextMenu = (event: React.MouseEvent, task: AdminTask) => { const menuItems: MenuItem[] = [ { label: 'مشاركة عبر واتساب', icon: <ShareIcon className="w-4 h-4" />, onClick: () => handleShareTask(task), }, ]; showContextMenu(event, menuItems); };
 
-    React.useEffect(() => {
-        if (activeLocationTab && locationOrder.includes(activeLocationTab)) {
-            return;
-        }
-        if (locationOrder.length > 0) {
-            setActiveLocationTab(locationOrder[0]);
-        } else {
-            setActiveLocationTab('');
-        }
-    }, [locationOrder, activeLocationTab]);
-
-    const handleDateSelect = (date: Date) => {
-        setSelectedDate(date);
-        setViewMode('daily');
-    };
-
-    const handleShowTodaysAgenda = () => {
-        const today = new Date();
-        setSelectedDate(today);
-        setCalendarViewDate(today);
-        setViewMode('daily');
-    };
-
-    const getTitle = () => {
-        switch(viewMode) {
-            case 'unpostponed': return "الجلسات غير المرحلة";
-            case 'upcoming': return `الجلسات القادمة (بعد ${formatDate(selectedDate)})`;
-            case 'daily':
-            default:
-                return `جدول أعمال يوم: ${formatDate(selectedDate)}`;
-        }
-    };
-    
-    // --- Context Menu Handlers ---
-    const handleAppointmentContextMenu = (event: React.MouseEvent, appointment: Appointment) => {
-        const menuItems: MenuItem[] = [
-            {
-                label: 'إرسال إلى المهام الإدارية',
-                icon: <BuildingLibraryIcon className="w-4 h-4" />,
-                onClick: () => {
-                    const description = `متابعة موعد "${appointment.title}" يوم ${formatDate(appointment.date)} الساعة ${formatTime(appointment.time)}.\nالمكلف: ${appointment.assignee || 'غير محدد'}.\nالأهمية: ${importanceMap[appointment.importance]?.text}.`;
-                    onOpenAdminTaskModal({
-                        task: description,
-                        assignee: appointment.assignee,
-                        importance: appointment.importance,
-                    });
-                }
-            },
-            {
-                label: 'مشاركة عبر واتساب',
-                icon: <ShareIcon className="w-4 h-4" />,
-                onClick: () => {
-                    const message = [
-                        `*موعد:* ${appointment.title}`,
-                        `*التاريخ:* ${formatDate(appointment.date)}`,
-                        `*الوقت:* ${formatTime(appointment.time)}`,
-                        `*المسؤول:* ${appointment.assignee || 'غير محدد'}`,
-                        `*الأهمية:* ${importanceMap[appointment.importance]?.text}`
-                    ].join('\n');
-                    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-                    window.open(whatsappUrl, '_blank');
-                }
-            }
-        ];
-        showContextMenu(event, menuItems);
-    }
-
-    const handleSessionContextMenu = (event: React.MouseEvent, session: Session) => {
-        // Find the full context for the session
-        let client, caseItem, stage;
-        for (const c of clients) {
-            for (const cs of c.cases) {
-                const s = cs.stages.find(st => st.id === session.stageId);
-                if (s) {
-                    client = c;
-                    caseItem = cs;
-                    stage = s;
-                    break;
-                }
-            }
-            if (stage) break;
-        }
-
-        let description = '';
-        let message = '';
-
-        if (client && caseItem && stage) {
-            const details = [
-                `*الموكل:* ${client.name}`,
-                `*الخصم:* ${caseItem.opponentName}`,
-                `*القضية:* ${caseItem.subject}`,
-                `*المحكمة:* ${stage.court}`,
-                `*رقم الأساس:* ${stage.caseNumber}`,
-                `*تاريخ الجلسة:* ${formatDate(session.date)}`,
-                `*المكلف بالحضور:* ${session.assignee || 'غير محدد'}`,
-                `*سبب التأجيل السابق:* ${session.postponementReason || 'لا يوجد'}`
-            ];
-            
-            if (session.stageDecisionDate) {
-                details.push('---');
-                details.push(`*تم حسم المرحلة:*`);
-                details.push(`*تاريخ الحسم:* ${formatDate(new Date(session.stageDecisionDate))}`);
-                if (stage.decisionNumber) details.push(`*رقم القرار:* ${stage.decisionNumber}`);
-                if (stage.decisionSummary) details.push(`*ملخص القرار:* ${stage.decisionSummary}`);
-            }
-
-            description = `متابعة جلسة قضائية:\n- ${details.join('\n- ')}`;
-            message = `*ملخص جلسة قضائية:*\n${details.join('\n')}`;
-
-        } else {
-            // Fallback to the old, less detailed message
-            description = `متابعة جلسة قضية (${session.clientName} ضد ${session.opponentName}) يوم ${formatDate(session.date)} في محكمة ${session.court} (أساس: ${session.caseNumber}).\nسبب التأجيل السابق: ${session.postponementReason || 'لا يوجد'}.\nالمكلف بالحضور: ${session.assignee}.`;
-            message = [
-                `*جلسة قضائية:*`,
-                `*القضية:* ${session.clientName} ضد ${session.opponentName}`,
-                `*المحكمة:* ${session.court} (أساس: ${session.caseNumber})`,
-                `*التاريخ:* ${formatDate(session.date)}`,
-                `*المسؤول:* ${session.assignee || 'غير محدد'}`,
-                `*سبب التأجيل السابق:* ${session.postponementReason || 'لا يوجد'}`
-            ].join('\n');
-        }
-
-         const menuItems: MenuItem[] = [
-            {
-                label: 'إرسال إلى المهام الإدارية',
-                icon: <BuildingLibraryIcon className="w-4 h-4" />,
-                onClick: () => {
-                    onOpenAdminTaskModal({
-                        task: description,
-                        assignee: session.assignee,
-                    });
-                }
-            },
-            {
-                label: 'مشاركة عبر واتساب',
-                icon: <ShareIcon className="w-4 h-4" />,
-                onClick: () => {
-                    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-                    window.open(whatsappUrl, '_blank');
-                }
-            }
-        ];
-        showContextMenu(event, menuItems);
-    }
-
-    const handleAdminTaskContextMenu = (event: React.MouseEvent, task: AdminTask) => {
-        const menuItems: MenuItem[] = [
-            {
-                label: 'مشاركة عبر واتساب',
-                icon: <ShareIcon className="w-4 h-4" />,
-                onClick: () => handleShareTask(task),
-            },
-        ];
-        showContextMenu(event, menuItems);
-    };
-
-    // --- Long Press Handlers for Admin Tasks ---
     const adminTaskLongPressTimer = React.useRef<number | null>(null);
+    const handleAdminTaskTouchStart = (e: React.TouchEvent, task: AdminTask) => { adminTaskLongPressTimer.current = window.setTimeout(() => { const touch = e.touches[0]; const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY }; handleAdminTaskContextMenu(mockEvent as any, task); }, 500); };
+    const handleAdminTaskTouchEnd = () => { if (adminTaskLongPressTimer.current !== null) { window.clearTimeout(adminTaskLongPressTimer.current); adminTaskLongPressTimer.current = null; } };
 
-    const handleAdminTaskTouchStart = (e: React.TouchEvent, task: AdminTask) => {
-        adminTaskLongPressTimer.current = window.setTimeout(() => {
-            const touch = e.touches[0];
-            const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY };
-            handleAdminTaskContextMenu(mockEvent as any, task);
-        }, 500);
-    };
-
-    const handleAdminTaskTouchEnd = () => {
-        if (adminTaskLongPressTimer.current !== null) {
-            window.clearTimeout(adminTaskLongPressTimer.current);
-            adminTaskLongPressTimer.current = null;
-        }
-    };
-
-    const renderTaskItem = (task: AdminTask, location: string) => (
-         <div 
-            key={task.id}
-            draggable={activeTaskTab === 'pending'}
-            onDragStart={e => handleDragStart(e, 'task', task.id)}
-            onDragEnd={handleDragEnd}
-            onDragOver={e => {
-                if (activeTaskTab !== 'pending' || !draggedTaskId || draggedTaskId === task.id) return;
-                e.preventDefault();
-            }}
-            onDrop={e => {
-                if (activeTaskTab !== 'pending') return;
-                e.preventDefault();
-                e.stopPropagation(); // Prevent group drop from firing
-                const rect = e.currentTarget.getBoundingClientRect();
-                const midpoint = rect.top + rect.height / 2;
-                const position = e.clientY < midpoint ? 'before' : 'after';
-                handleTaskDrop(task.id, location, position);
-            }}
-            onContextMenu={(e) => handleAdminTaskContextMenu(e, task)}
-            onTouchStart={(e) => handleAdminTaskTouchStart(e, task)}
-            onTouchEnd={handleAdminTaskTouchEnd}
-            onTouchMove={handleAdminTaskTouchEnd}
-            className={`p-3 border rounded-lg transition-all duration-150 ${draggedTaskId === task.id ? 'opacity-40 scale-95' : 'opacity-100 scale-100'} ${task.completed ? 'bg-green-50/70 border-green-200' : 'bg-white border-gray-200 hover:bg-gray-50 hover:shadow-sm'} ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`}
-        >
-            <div className="flex items-start gap-3">
-                {/* Checkbox */}
-                <div className="flex-shrink-0 pt-1">
-                    <input
-                        type="checkbox"
-                        checked={task.completed}
-                        onChange={() => handleToggleTaskComplete(task.id)}
-                        className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-                    />
-                </div>
-
-                {/* Task Details */}
-                <div className="flex-grow min-w-0">
-                    <p className={`font-medium text-base whitespace-pre-wrap ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
-                        {task.task}
-                    </p>
-                    
-                    <div className="mt-2 flex items-center gap-x-4 gap-y-2 text-sm text-gray-600">
-                        {/* Assignee */}
-                        <div className="flex items-center gap-1.5" onClick={() => activeTaskTab === 'pending' && setEditingAssigneeTaskId(task.id)}>
-                            <UserIcon className="w-4 h-4 text-gray-400" />
-                            {editingAssigneeTaskId === task.id ? (
-                                <select
-                                    value={task.assignee}
-                                    onChange={(e) => handleAssigneeChange(task.id, e.target.value)}
-                                    onBlur={() => setEditingAssigneeTaskId(null)}
-                                    className="p-1 border rounded bg-white text-sm focus:ring-blue-500 focus:border-blue-500"
-                                    autoFocus
-                                >
-                                    {assistants.map(name => (
-                                        <option key={name} value={name}>
-                                            {name}
-                                        </option>
-                                    ))}
-                                </select>
-                            ) : (
-                                <span className={activeTaskTab === 'pending' ? 'cursor-pointer hover:text-blue-600' : ''}>
-                                    {task.assignee || '-'}
-                                </span>
-                            )}
-                        </div>
-
-                        {/* Due Date */}
-                        <div className="flex items-center gap-1.5">
-                            <CalendarIcon className="w-4 h-4 text-gray-400" />
-                            <span>{formatDate(task.dueDate)}</span>
-                        </div>
-
-                        {/* Importance */}
-                        <div className="flex items-center gap-1.5">
-                                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${importanceMapAdminTasks[task.importance]?.className}`}>
-                                {importanceMapAdminTasks[task.importance]?.text}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex flex-col sm:flex-row items-center gap-0 sm:gap-1 flex-shrink-0">
-                    <button onClick={() => handleShareTask(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-green-600 rounded-full" title="مشاركة عبر واتساب"><ShareIcon className="w-4 h-4" /></button>
-                    <button onClick={() => onOpenAdminTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-blue-600 rounded-full"><PencilIcon className="w-4 h-4" /></button>
-                    <button onClick={() => openDeleteTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-red-600 rounded-full"><TrashIcon className="w-4 h-4" /></button>
-                </div>
-            </div>
-        </div>
-    );
-
-    const ChevronDownIcon: React.FC<{className?: string}> = ({ className }) => (
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className || "w-4 h-4"}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-        </svg>
-    );
+    const renderTaskItem = (task: AdminTask, location: string) => ( <div key={task.id} draggable={activeTaskTab === 'pending'} onDragStart={e => handleDragStart(e, 'task', task.id)} onDragEnd={handleDragEnd} onDragOver={e => { if (activeTaskTab !== 'pending' || !draggedTaskId || draggedTaskId === task.id) return; e.preventDefault(); }} onDrop={e => { if (activeTaskTab !== 'pending') return; e.preventDefault(); e.stopPropagation(); const rect = e.currentTarget.getBoundingClientRect(); const midpoint = rect.top + rect.height / 2; const position = e.clientY < midpoint ? 'before' : 'after'; handleTaskDrop(task.id, location, position); }} onContextMenu={(e) => handleAdminTaskContextMenu(e, task)} onTouchStart={(e) => handleAdminTaskTouchStart(e, task)} onTouchEnd={handleAdminTaskTouchEnd} onTouchMove={handleAdminTaskTouchEnd} className={`p-3 border rounded-lg transition-all duration-150 ${draggedTaskId === task.id ? 'opacity-40 scale-95' : 'opacity-100 scale-100'} ${task.completed ? 'bg-green-50/70 border-green-200' : 'bg-white border-gray-200 hover:bg-gray-50 hover:shadow-sm'} ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`} > <div className="flex items-start gap-3"> <div className="flex-shrink-0 pt-1"> <input type="checkbox" checked={task.completed} onChange={() => handleToggleTaskComplete(task.id)} className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500" /> </div> <div className="flex-grow min-w-0"> <p className={`font-medium text-base whitespace-pre-wrap ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>{task.task}</p> <div className="mt-2 flex items-center gap-x-4 gap-y-2 text-sm text-gray-600"> <div className="flex items-center gap-1.5" onClick={() => activeTaskTab === 'pending' && setEditingAssigneeTaskId(task.id)}> <UserIcon className="w-4 h-4 text-gray-400" /> {editingAssigneeTaskId === task.id ? ( <select value={task.assignee} onChange={(e) => handleAssigneeChange(task.id, e.target.value)} onBlur={() => setEditingAssigneeTaskId(null)} className="p-1 border rounded bg-white text-sm focus:ring-blue-500 focus:border-blue-500" autoFocus> {assistants.map(name => ( <option key={name} value={name}> {name} </option> ))} </select> ) : ( <span className={activeTaskTab === 'pending' ? 'cursor-pointer hover:text-blue-600' : ''}> {task.assignee || '-'} </span> )} </div> <div className="flex items-center gap-1.5"> <CalendarIcon className="w-4 h-4 text-gray-400" /> <span>{formatDate(task.dueDate)}</span> </div> <div className="flex items-center gap-1.5"> <span className={`px-2 py-1 text-xs font-semibold rounded-full ${importanceMapAdminTasks[task.importance]?.className}`}> {importanceMapAdminTasks[task.importance]?.text} </span> </div> </div> </div> <div className="flex flex-col sm:flex-row items-center gap-0 sm:gap-1 flex-shrink-0"> <button onClick={() => handleShareTask(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-green-600 rounded-full" title="مشاركة عبر واتساب"><ShareIcon className="w-4 h-4" /></button> <button onClick={() => onOpenAdminTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-blue-600 rounded-full"><PencilIcon className="w-4 h-4" /></button> <button onClick={() => openDeleteTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-red-600 rounded-full"><TrashIcon className="w-4 h-4" /></button> </div> </div> </div> );
 
     return (
         <div className="space-y-6">
-            <div className="no-print flex flex-col sm:flex-row justify-between items-center gap-4">
-                <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
-                    <HomeIcon className="w-8 h-8"/>
-                    <span>الرئيسية</span>
-                </h1>
-                <div className="flex items-center gap-4">
-                    {/* View Switcher as distinct buttons */}
-                    <div className="flex items-center gap-2">
+            <div className="no-print pb-2 -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 px-4 sm:px-6 mb-6">
+                <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
                         <button
                             onClick={() => setMainView('agenda')}
-                            className={`flex items-center gap-2 px-4 py-2 font-semibold text-sm rounded-lg transition-colors ${
-                                mainView === 'agenda' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                            className={`flex-1 sm:flex-initial sm:w-40 text-center px-4 py-2 font-semibold text-sm rounded-lg transition-colors ${
+                                mainView === 'agenda' ? 'bg-blue-600 text-white shadow' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
                             }`}
                         >
-                            <ClipboardDocumentCheckIcon className="w-5 h-5" />
-                            <span>المفكرة</span>
+                            المفكرة
                         </button>
                         <button
                             onClick={() => setMainView('adminTasks')}
-                            className={`flex items-center gap-2 px-4 py-2 font-semibold text-sm rounded-lg transition-colors ${
-                                mainView === 'adminTasks' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                            className={`flex-1 sm:flex-initial sm:w-40 text-center px-4 py-2 font-semibold text-sm rounded-lg transition-colors ${
+                                mainView === 'adminTasks' ? 'bg-blue-600 text-white shadow' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
                             }`}
                         >
-                            <BuildingLibraryIcon className="w-5 h-5" />
-                            <span>المهام الإدارية</span>
+                            المهام الإدارية
                         </button>
                     </div>
-
-                    {/* Printer Icon Dropdown */}
-                    {mainView === 'agenda' && (
-                        <div ref={actionsMenuRef} className="relative">
-                            <button
-                                onClick={() => setIsActionsMenuOpen(prev => !prev)}
-                                className="p-3 bg-white text-gray-700 rounded-full hover:bg-gray-100 border border-gray-300 shadow-sm transition-colors"
-                                aria-label="إجراءات جدول الأعمال"
-                                aria-haspopup="true"
-                                aria-expanded={isActionsMenuOpen}
-                            >
-                                <PrintIcon className="w-5 h-5" />
-                            </button>
-                            {isActionsMenuOpen && (
-                                <div className="absolute left-0 mt-2 w-56 origin-top-left bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-20">
-                                    <div className="py-1" role="menu" aria-orientation="vertical">
-                                        <button
-                                            onClick={() => { setIsPrintAssigneeModalOpen(true); setIsActionsMenuOpen(false); }}
-                                            className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                            role="menuitem"
-                                        >
-                                            <PrintIcon className="w-5 h-5 text-gray-500" />
-                                            <span>طباعة جدول الأعمال</span>
-                                        </button>
-                                        <button
-                                            onClick={() => { setIsShareAssigneeModalOpen(true); setIsActionsMenuOpen(false); }}
-                                            className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                            role="menuitem"
-                                        >
-                                            <ShareIcon className="w-5 h-5 text-gray-500" />
-                                            <span>إرسال عبر واتساب</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
                 </div>
             </div>
             
@@ -1472,91 +799,6 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">حفظ القرار</button>
                             </div>
                         </form>
-                    </div>
-                </div>
-            )}
-
-            {isPrintAssigneeModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={() => setIsPrintAssigneeModalOpen(false)}>
-                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                        <h2 className="text-xl font-bold mb-4 border-b pb-3">اختر الشخص لطباعة جدول أعماله</h2>
-                        <div className="space-y-3 max-h-80 overflow-y-auto">
-                            <button
-                                onClick={() => handleGenerateAssigneeReport(null)}
-                                className="w-full text-right px-4 py-3 bg-blue-50 text-blue-800 font-semibold rounded-lg hover:bg-blue-100 transition-colors"
-                            >
-                                طباعة جدول الأعمال العام (لكل المهام اليومية)
-                            </button>
-                            <h3 className="text-md font-semibold text-gray-600 pt-2">أو طباعة لشخص محدد:</h3>
-                            {assistants.map(name => (
-                                <button
-                                    key={name}
-                                    onClick={() => handleGenerateAssigneeReport(name)}
-                                    className="w-full text-right block px-4 py-2 bg-gray-50 text-gray-800 rounded-md hover:bg-gray-100 transition-colors"
-                                >
-                                    {name}
-                                </button>
-                            ))}
-                        </div>
-                        <div className="mt-6 flex justify-end">
-                            <button type="button" onClick={() => setIsPrintAssigneeModalOpen(false)} className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors">إغلاق</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-            
-            {isShareAssigneeModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={() => setIsShareAssigneeModalOpen(false)}>
-                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                        <h2 className="text-xl font-bold mb-4 border-b pb-3">اختر الشخص لإرسال جدول أعماله عبر واتساب</h2>
-                        <div className="space-y-3 max-h-80 overflow-y-auto">
-                            <button
-                                onClick={() => handleShareAssigneeReport(null)}
-                                className="w-full text-right px-4 py-3 bg-green-50 text-green-800 font-semibold rounded-lg hover:bg-green-100 transition-colors"
-                            >
-                                إرسال جدول الأعمال العام (لكل المهام اليومية)
-                            </button>
-                            <h3 className="text-md font-semibold text-gray-600 pt-2">أو إرسال لشخص محدد:</h3>
-                            {assistants.map(name => (
-                                <button
-                                    key={name}
-                                    onClick={() => handleShareAssigneeReport(name)}
-                                    className="w-full text-right block px-4 py-2 bg-gray-50 text-gray-800 rounded-md hover:bg-gray-100 transition-colors"
-                                >
-                                    {name}
-                                </button>
-                            ))}
-                        </div>
-                        <div className="mt-6 flex justify-end">
-                            <button type="button" onClick={() => setIsShareAssigneeModalOpen(false)} className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors">إغلاق</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {isPrintModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setIsPrintModalOpen(false)}>
-                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="overflow-y-auto" ref={printReportRef}>
-                            <PrintableReport reportData={printableReportData} />
-                        </div>
-                        <div className="mt-6 flex justify-end gap-4 border-t pt-4 no-print">
-                            <button
-                                type="button"
-                                className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
-                                onClick={() => setIsPrintModalOpen(false)}
-                            >
-                                إغلاق
-                            </button>
-                            <button
-                                type="button"
-                                className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-                                onClick={() => printElement(printReportRef.current)}
-                            >
-                                <PrintIcon className="w-5 h-5" />
-                                <span>طباعة</span>
-                            </button>
-                        </div>
                     </div>
                 </div>
             )}

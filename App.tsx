@@ -16,7 +16,7 @@ import SubscriptionExpiredPage from './pages/SubscriptionExpiredPage.tsx';
 
 import ConfigurationModal from './components/ConfigurationModal';
 import { useSupabaseData, SyncStatus } from './hooks/useSupabaseData';
-import { UserIcon, CalculatorIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, ExclamationTriangleIcon, PowerIcon, HomeIcon } from './components/icons';
+import { UserIcon, CalculatorIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, ExclamationTriangleIcon, PowerIcon, HomeIcon, PrintIcon, ShareIcon } from './components/icons';
 import ContextMenu, { MenuItem } from './components/ContextMenu';
 import AdminTaskModal from './components/AdminTaskModal';
 import { AdminTask, Profile, Session, Client, Appointment, AccountingEntry, Invoice, CaseDocument, AppData, SiteFinancialEntry } from './types';
@@ -25,6 +25,9 @@ import { useOnlineStatus } from './hooks/useOnlineStatus';
 import UnpostponedSessionsModal from './components/UnpostponedSessionsModal';
 import NotificationCenter, { RealtimeAlert } from './components/RealtimeNotifier';
 import { IDataContext, DataProvider } from './context/DataContext';
+import PrintableReport from './components/PrintableReport';
+import { printElement } from './utils/printUtils';
+import { formatDate, isSameDay } from './utils/dateUtils';
 
 
 type Page = 'home' | 'clients' | 'accounting' | 'settings';
@@ -120,7 +123,8 @@ const Navbar: React.FC<{
     onManualSync: () => void;
     profile: Profile | null;
     isAutoSyncEnabled: boolean;
-}> = ({ currentPage, onNavigate, onLogout, syncStatus, lastSyncError, isDirty, isOnline, onManualSync, profile, isAutoSyncEnabled }) => {
+    homePageActions?: React.ReactNode;
+}> = ({ currentPage, onNavigate, onLogout, syncStatus, lastSyncError, isDirty, isOnline, onManualSync, profile, isAutoSyncEnabled, homePageActions }) => {
     
     const navItems = [
         { id: 'home', label: 'الرئيسية', icon: HomeIcon },
@@ -150,6 +154,7 @@ const Navbar: React.FC<{
                             <span className="hidden sm:inline">{item.label}</span>
                         </button>
                     ))}
+                    {currentPage === 'home' && homePageActions}
                 </div>
             </nav>
             <div className="flex items-center gap-2 sm:gap-4">
@@ -236,6 +241,18 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const [contextMenu, setContextMenu] = React.useState<{ isOpen: boolean; position: { x: number; y: number }; menuItems: MenuItem[] }>({ isOpen: false, position: { x: 0, y: 0 }, menuItems: [] });
     const [initialInvoiceData, setInitialInvoiceData] = React.useState<{ clientId: string; caseId?: string } | undefined>();
     
+    // State lifted from HomePage for printing
+    const [isPrintModalOpen, setIsPrintModalOpen] = React.useState(false);
+    const [isPrintAssigneeModalOpen, setIsPrintAssigneeModalOpen] = React.useState(false);
+    const [isShareAssigneeModalOpen, setIsShareAssigneeModalOpen] = React.useState(false);
+    const [printableReportData, setPrintableReportData] = React.useState<any | null>(null);
+    const [isActionsMenuOpen, setIsActionsMenuOpen] = React.useState(false);
+    const [mainView, setMainView] = React.useState<'agenda' | 'adminTasks'>('agenda');
+    const [selectedDate, setSelectedDate] = React.useState(new Date());
+
+    const printReportRef = React.useRef<HTMLDivElement>(null);
+    const actionsMenuRef = React.useRef<HTMLDivElement>(null);
+
     const supabase = getSupabaseClient();
     const isOnline = useOnlineStatus();
 
@@ -284,6 +301,17 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         }
 
     }, [session, data.profiles, data.unpostponedSessions, data.setShowUnpostponedSessionsModal]);
+
+    // Close actions menu on outside click
+    React.useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (actionsMenuRef.current && !actionsMenuRef.current.contains(event.target as Node)) {
+                setIsActionsMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
     
     const handleLogout = async () => {
         await supabase!.auth.signOut();
@@ -330,6 +358,111 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const handleCreateInvoice = (clientId: string, caseId?: string) => {
         setInitialInvoiceData({ clientId, caseId });
         setCurrentPage('accounting');
+    };
+
+    // --- Print/Share Logic (Lifted from HomePage) ---
+    const handleGenerateAssigneeReport = (assignee: string | null) => {
+        const dailyAppointments = data.appointments
+            .filter(a => isSameDay(a.date, selectedDate))
+            .sort((a, b) => a.time.localeCompare(b.time));
+    
+        const dailySessions = data.allSessions.filter(s => isSameDay(s.date, selectedDate));
+    
+        const allUncompletedTasks = data.adminTasks.filter(t => !t.completed);
+        const filteredForAssigneeTasks = assignee ? allUncompletedTasks.filter(t => t.assignee === assignee) : allUncompletedTasks;
+    
+        const groupedAndSortedTasks = filteredForAssigneeTasks.reduce((acc, task) => {
+            const location = task.location || 'غير محدد';
+            if (!acc[location]) acc[location] = [];
+            acc[location].push(task);
+            return acc;
+        }, {} as Record<string, AdminTask[]>);
+    
+        const importanceOrder = { 'urgent': 3, 'important': 2, 'normal': 1 };
+    
+        for (const location in groupedAndSortedTasks) {
+            groupedAndSortedTasks[location].sort((a, b) => {
+                const importanceA = importanceOrder[a.importance];
+                const importanceB = importanceOrder[b.importance];
+                if (importanceA !== importanceB) return importanceB - importanceA;
+                const dateA = new Date(a.dueDate).getTime();
+                const dateB = new Date(b.dueDate).getTime();
+                if (dateA !== dateB) return dateA - dateB;
+                return a.task.localeCompare(b.task, 'ar');
+            });
+        }
+    
+        const filteredAppointments = assignee ? dailyAppointments.filter(a => a.assignee === assignee) : dailyAppointments;
+        const filteredSessions = assignee ? dailySessions.filter(s => s.assignee === assignee) : dailySessions;
+    
+        setPrintableReportData({
+            assignee: assignee || 'جدول الأعمال العام',
+            date: selectedDate,
+            appointments: filteredAppointments,
+            sessions: filteredSessions,
+            adminTasks: groupedAndSortedTasks,
+        });
+    
+        setIsPrintAssigneeModalOpen(false);
+        setIsPrintModalOpen(true);
+    };
+
+    const handleShareAssigneeReport = (assignee: string | null) => {
+        const dailyAppointments = data.appointments.filter(a => isSameDay(a.date, selectedDate)).sort((a, b) => a.time.localeCompare(b.time));
+        const dailySessions = data.allSessions.filter(s => isSameDay(s.date, selectedDate));
+        const allUncompletedTasks = data.adminTasks.filter(t => !t.completed);
+        const filteredForAssigneeTasks = assignee ? allUncompletedTasks.filter(t => t.assignee === assignee) : allUncompletedTasks;
+        const groupedAndSortedTasks = filteredForAssigneeTasks.reduce((acc, task) => {
+            const location = task.location || 'غير محدد';
+            if (!acc[location]) acc[location] = [];
+            acc[location].push(task);
+            return acc;
+        }, {} as Record<string, AdminTask[]>);
+        
+        const importanceOrder = { 'urgent': 3, 'important': 2, 'normal': 1 };
+        for (const location in groupedAndSortedTasks) {
+            groupedAndSortedTasks[location].sort((a, b) => {
+                const importanceA = importanceOrder[a.importance];
+                const importanceB = importanceOrder[b.importance];
+                if (importanceA !== importanceB) return importanceB - importanceA;
+                const dateA = new Date(a.dueDate).getTime();
+                const dateB = new Date(b.dueDate).getTime();
+                if (dateA !== dateB) return dateA - dateB;
+                return a.task.localeCompare(b.task, 'ar');
+            });
+        }
+        const filteredAppointments = assignee ? dailyAppointments.filter(a => a.assignee === assignee) : dailyAppointments;
+        const filteredSessions = assignee ? dailySessions.filter(s => s.assignee === assignee) : dailySessions;
+
+        let message = `*جدول أعمال مكتب المحامي*\n*التاريخ:* ${formatDate(selectedDate)}\n*لـِ:* ${assignee || 'الجميع'}\n\n`;
+        if (filteredSessions.length > 0) {
+            message += `*القسم الأول: الجلسات (${filteredSessions.length})*\n`;
+            filteredSessions.forEach(s => { message += `- (${s.court}) قضية ${s.clientName} ضد ${s.opponentName} (أساس: ${s.caseNumber}).\n`; if (s.postponementReason) message += `  سبب التأجيل السابق: ${s.postponementReason}\n`; });
+            message += `\n`;
+        }
+        if (filteredAppointments.length > 0) {
+             const formatTime = (time: string) => { if (!time) return ''; let [hours, minutes] = time.split(':'); let hh = parseInt(hours, 10); const ampm = hh >= 12 ? 'مساءً' : 'صباحًا'; hh = hh % 12; hh = hh ? hh : 12; const finalHours = hh.toString().padStart(2, '0'); return `${finalHours}:${minutes} ${ampm}`; };
+             const importanceMap: { [key: string]: { text: string } } = { normal: { text: 'عادي' }, important: { text: 'مهم' }, urgent: { text: 'عاجل' } };
+            message += `*القسم الثاني: المواعيد (${filteredAppointments.length})*\n`;
+            filteredAppointments.forEach(a => { message += `- (${formatTime(a.time)}) ${a.title}`; if (a.importance !== 'normal') message += ` (${importanceMap[a.importance]?.text})`; message += `\n`; });
+            message += `\n`;
+        }
+        const taskLocations = Object.keys(groupedAndSortedTasks);
+        if (taskLocations.length > 0) {
+            message += `*القسم الثالث: المهام الإدارية (غير منجزة)*\n`;
+            taskLocations.forEach(location => {
+                const tasks = groupedAndSortedTasks[location];
+                if (tasks.length > 0) {
+                    message += `*المكان: ${location}*\n`;
+                    tasks.forEach(t => { let importanceText = ''; if (t.importance === 'urgent') importanceText = '[عاجل] '; if (t.importance === 'important') importanceText = '[مهم] '; message += `- ${importanceText}${t.task} - تاريخ الاستحقاق: ${formatDate(t.dueDate)}\n`; });
+                }
+            });
+        }
+        if (filteredSessions.length === 0 && filteredAppointments.length === 0 && taskLocations.length === 0) message += "لا توجد بنود في جدول الأعمال لهذا اليوم.";
+        
+        const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+        window.open(whatsappUrl, '_blank');
+        setIsShareAssigneeModalOpen(false);
     };
 
     // --- Render Logic ---
@@ -395,9 +528,37 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                 return <SettingsPage />;
             case 'home':
             default:
-                return <HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} />;
+                return <HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} mainView={mainView} setMainView={setMainView} selectedDate={selectedDate} setSelectedDate={setSelectedDate} />;
         }
     };
+    
+    const homePageActions = (
+        <div ref={actionsMenuRef} className="relative">
+            <button
+                onClick={() => setIsActionsMenuOpen(prev => !prev)}
+                className="p-2 text-gray-600 rounded-full hover:bg-gray-100 transition-colors"
+                aria-label="إجراءات جدول الأعمال"
+                aria-haspopup="true"
+                aria-expanded={isActionsMenuOpen}
+            >
+                <PrintIcon className="w-5 h-5" />
+            </button>
+            {isActionsMenuOpen && (
+                <div className="absolute left-0 mt-2 w-56 origin-top-left bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-20">
+                    <div className="py-1" role="menu" aria-orientation="vertical">
+                        <button onClick={() => { setIsPrintAssigneeModalOpen(true); setIsActionsMenuOpen(false); }} className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem">
+                            <PrintIcon className="w-5 h-5 text-gray-500" />
+                            <span>طباعة جدول الأعمال</span>
+                        </button>
+                        <button onClick={() => { setIsShareAssigneeModalOpen(true); setIsActionsMenuOpen(false); }} className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem">
+                            <ShareIcon className="w-5 h-5 text-gray-500" />
+                            <span>إرسال عبر واتساب</span>
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
 
     return (
         <DataProvider value={data}>
@@ -413,6 +574,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     onManualSync={data.manualSync}
                     profile={profile}
                     isAutoSyncEnabled={data.isAutoSyncEnabled}
+                    homePageActions={homePageActions}
                 />
                 <OfflineBanner />
                 <main className="flex-grow p-4 sm:p-6 overflow-y-auto">
@@ -450,6 +612,89 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     dismissRealtimeAlert={data.dismissRealtimeAlert}
                     dismissUserApprovalAlert={data.dismissUserApprovalAlert}
                 />
+
+                 {/* Modals lifted from HomePage */}
+                {isPrintAssigneeModalOpen && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={() => setIsPrintAssigneeModalOpen(false)}>
+                        <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+                            <h2 className="text-xl font-bold mb-4 border-b pb-3">اختر الشخص لطباعة جدول أعماله</h2>
+                            <div className="space-y-3 max-h-80 overflow-y-auto">
+                                <button onClick={() => handleGenerateAssigneeReport(null)} className="w-full text-right px-4 py-3 bg-blue-50 text-blue-800 font-semibold rounded-lg hover:bg-blue-100 transition-colors">
+                                    طباعة جدول الأعمال العام (لكل المهام اليومية)
+                                </button>
+                                <h3 className="text-md font-semibold text-gray-600 pt-2">أو طباعة لشخص محدد:</h3>
+                                {data.assistants.map(name => (
+                                    <button
+                                        key={name}
+                                        onClick={() => handleGenerateAssigneeReport(name)}
+                                        className="w-full text-right block px-4 py-2 bg-gray-50 text-gray-800 rounded-md hover:bg-gray-100 transition-colors"
+                                    >
+                                        {name}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="mt-6 flex justify-end">
+                                <button type="button" onClick={() => setIsPrintAssigneeModalOpen(false)} className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors">إغلاق</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
+                {isShareAssigneeModalOpen && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={() => setIsShareAssigneeModalOpen(false)}>
+                        <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+                            <h2 className="text-xl font-bold mb-4 border-b pb-3">اختر الشخص لإرسال جدول أعماله عبر واتساب</h2>
+                            <div className="space-y-3 max-h-80 overflow-y-auto">
+                                <button
+                                    onClick={() => handleShareAssigneeReport(null)}
+                                    className="w-full text-right px-4 py-3 bg-green-50 text-green-800 font-semibold rounded-lg hover:bg-green-100 transition-colors"
+                                >
+                                    إرسال جدول الأعمال العام (لكل المهام اليومية)
+                                </button>
+                                <h3 className="text-md font-semibold text-gray-600 pt-2">أو إرسال لشخص محدد:</h3>
+                                {data.assistants.map(name => (
+                                    <button
+                                        key={name}
+                                        onClick={() => handleShareAssigneeReport(name)}
+                                        className="w-full text-right block px-4 py-2 bg-gray-50 text-gray-800 rounded-md hover:bg-gray-100 transition-colors"
+                                    >
+                                        {name}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="mt-6 flex justify-end">
+                                <button type="button" onClick={() => setIsShareAssigneeModalOpen(false)} className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors">إغلاق</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {isPrintModalOpen && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setIsPrintModalOpen(false)}>
+                        <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                            <div className="overflow-y-auto" ref={printReportRef}>
+                                <PrintableReport reportData={printableReportData} />
+                            </div>
+                            <div className="mt-6 flex justify-end gap-4 border-t pt-4 no-print">
+                                <button
+                                    type="button"
+                                    className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
+                                    onClick={() => setIsPrintModalOpen(false)}
+                                >
+                                    إغلاق
+                                </button>
+                                <button
+                                    type="button"
+                                    className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={() => printElement(printReportRef.current)}
+                                >
+                                    <PrintIcon className="w-5 h-5" />
+                                    <span>طباعة</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </DataProvider>
     );
