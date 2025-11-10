@@ -922,25 +922,9 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
 
                 {/* Task Details */}
                 <div className="flex-grow min-w-0">
-                    {adminTasksLayout === 'vertical' ? (
-                        <p
-                            title={task.task}
-                            className={`font-medium text-base ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}
-                            style={{
-                                display: '-webkit-box',
-                                WebkitLineClamp: 3,
-                                WebkitBoxOrient: 'vertical',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                            }}
-                        >
-                            {task.task}
-                        </p>
-                    ) : (
-                        <p className={`font-medium text-base whitespace-pre-wrap ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
-                            {task.task}
-                        </p>
-                    )}
+                    <p className={`font-medium text-base whitespace-pre-wrap ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
+                        {task.task}
+                    </p>
                     
                     <div className="mt-2 flex items-center gap-x-4 gap-y-2 text-sm text-gray-600">
                         {/* Assignee */}
