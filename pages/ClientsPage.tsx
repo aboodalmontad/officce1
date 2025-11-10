@@ -1,8 +1,7 @@
 import * as React from 'react';
-import { GoogleGenAI, Type } from '@google/genai';
 import ClientsTreeView from '../components/ClientsTreeView';
 import ClientsListView from '../components/ClientsListView';
-import { PlusIcon, SearchIcon, ListBulletIcon, ViewColumnsIcon, ExclamationTriangleIcon, PrintIcon, ScaleIcon, FolderOpenIcon, SparklesIcon, ArrowPathIcon, GavelIcon } from '../components/icons';
+import { PlusIcon, SearchIcon, ListBulletIcon, ViewColumnsIcon, ExclamationTriangleIcon, PrintIcon, ScaleIcon, FolderOpenIcon, GavelIcon } from '../components/icons';
 import { Client, Case, Stage, Session, AccountingEntry } from '../types';
 import { formatDate, toInputDateString, parseInputDateString } from '../utils/dateUtils';
 import PrintableClientReport from '../components/PrintableClientReport';
@@ -10,7 +9,6 @@ import { printElement } from '../utils/printUtils';
 import { MenuItem } from '../components/ContextMenu';
 import { useDebounce } from '../hooks/useDebounce';
 import { useData } from '../context/DataContext';
-import { useOnlineStatus } from '../hooks/useOnlineStatus';
 
 interface ClientsPageProps {
     onOpenAdminTaskModal: (initialData?: any) => void;
@@ -56,11 +54,6 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
     // State for Decide Session Modal
     const [decideModal, setDecideModal] = React.useState<{ isOpen: boolean; session?: Session, stage?: Stage }>({ isOpen: false });
     const [decideFormData, setDecideFormData] = React.useState({ decisionNumber: '', decisionSummary: '', decisionNotes: '' });
-    
-    // State for AI data generation
-    const [isGenerating, setIsGenerating] = React.useState(false);
-    const [aiError, setAiError] = React.useState<string | null>(null);
-    const isOnline = useOnlineStatus();
 
 
     const filteredClients = React.useMemo(() => {
@@ -507,83 +500,6 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
         handleCloseDecideModal();
     };
     
-    // AI data generation logic
-    const handleGenerateData = async () => {
-        if (!isOnline) {
-            alert("لا يمكن استخدام هذه الميزة إلا عند وجود اتصال بالإنترنت.");
-            return;
-        }
-        if (!confirm("سيقوم الذكاء الاصطناعي بإنشاء بيانات تجريبية (3 موكلين مع قضاياهم). سيتم استبدال جميع البيانات الحالية. هل تريد المتابعة؟")) {
-            return;
-        }
-        setIsGenerating(true);
-        setAiError(null);
-        try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: "Generate mock data for a lawyer's app. Provide 3 clients. Each client should have 1-2 cases. Each case should have 1-2 stages. Each stage should have 1-3 sessions. Include all fields as per the provided schema. The data must be realistic for a Syrian lawyer, with Arabic names and realistic case subjects. Respond ONLY with a JSON object { clients: Client[] } matching the provided TypeScript types. Do not include any other text or markdown.",
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.OBJECT,
-                        properties: {
-                            clients: {
-                                type: Type.ARRAY,
-                                items: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        id: { type: Type.STRING }, name: { type: Type.STRING }, contactInfo: { type: Type.STRING },
-                                        cases: {
-                                            type: Type.ARRAY,
-                                            items: {
-                                                type: Type.OBJECT,
-                                                properties: {
-                                                    id: { type: Type.STRING }, subject: { type: Type.STRING }, clientName: { type: Type.STRING }, opponentName: { type: Type.STRING }, feeAgreement: { type: Type.STRING }, status: { type: Type.STRING },
-                                                    stages: {
-                                                        type: Type.ARRAY,
-                                                        items: {
-                                                            type: Type.OBJECT,
-                                                            properties: {
-                                                                id: { type: Type.STRING }, court: { type: Type.STRING }, caseNumber: { type: Type.STRING }, firstSessionDate: { type: Type.STRING }, decisionDate: { type: Type.STRING },
-                                                                sessions: {
-                                                                    type: Type.ARRAY,
-                                                                    items: {
-                                                                        type: Type.OBJECT,
-                                                                        properties: {
-                                                                            id: { type: Type.STRING }, court: { type: Type.STRING }, caseNumber: { type: Type.STRING }, date: { type: Type.STRING }, clientName: { type: Type.STRING }, opponentName: { type: Type.STRING }, isPostponed: { type: Type.BOOLEAN }, postponementReason: { type: Type.STRING }, nextSessionDate: { type: Type.STRING }, nextPostponementReason: { type: Type.STRING }, assignee: { type: Type.STRING },
-                                                                        }
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-            const jsonStr = response.text.trim();
-            const generatedData = JSON.parse(jsonStr);
-            
-            if (generatedData && Array.isArray(generatedData.clients)) {
-                setFullData({ clients: generatedData.clients, adminTasks: [], appointments: [], accountingEntries: [], invoices: [], assistants: ['أحمد', 'فاطمة', 'بدون تخصيص'], documents: [], profiles: [], siteFinances: [] });
-            } else {
-                throw new Error("Invalid data format received from AI.");
-            }
-        } catch (e: any) {
-            console.error("AI data generation failed:", e);
-            setAiError("فشل في إنشاء البيانات. " + e.message);
-        } finally {
-            setIsGenerating(false);
-        }
-    };
-    
     const getModalTitle = () => {
         const { type, isEditing } = modal;
         if (!type) return '';
@@ -606,15 +522,9 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                         <PlusIcon className="w-5 h-5" />
                         <span>إضافة موكل</span>
                     </button>
-                    <button onClick={handleGenerateData} disabled={isGenerating || !isOnline} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-colors disabled:bg-purple-300">
-                        {isGenerating ? <ArrowPathIcon className="w-5 h-5 animate-spin" /> : <SparklesIcon className="w-5 h-5" />}
-                        <span>{isGenerating ? 'جاري الإنشاء...' : 'إنشاء بيانات تجريبية (AI)'}</span>
-                    </button>
                  </div>
             </div>
             
-            {aiError && <div className="p-4 text-red-700 bg-red-100 rounded-md">{aiError}</div>}
-
             <div className="bg-white p-4 rounded-lg shadow space-y-4">
                  <div className="flex justify-between items-center flex-wrap gap-4">
                     <div className="relative flex-grow">
