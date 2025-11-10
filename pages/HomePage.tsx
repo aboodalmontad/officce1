@@ -1088,9 +1088,9 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                         </div>
 
                                         {adminTasksLayout === 'vertical' ? (
-                                            <div className="flex flex-col md:flex-row gap-6 pt-4">
+                                            <div className="flex flex-row gap-4 pt-4">
                                                 {locationOrder.length > 0 && (
-                                                    <nav className="flex flex-row md:flex-col gap-2 md:w-1/4 lg:w-1/5 overflow-x-auto md:overflow-x-visible pb-2 md:pb-0" aria-label="Location Tabs">
+                                                    <nav className="flex flex-col gap-2 w-28 flex-shrink-0 md:w-1/4 lg:w-1/5 pb-2" aria-label="Location Tabs">
                                                         {locationOrder.map(location => (
                                                             <button
                                                                 key={location}
@@ -1114,7 +1114,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                                                         return newOrder;
                                                                     });
                                                                 }}
-                                                                className={`whitespace-nowrap w-full text-right px-4 py-2 border-r-4 font-medium text-sm transition-colors duration-150 focus:outline-none ${activeTaskTab === 'pending' ? 'cursor-grab' : ''} ${
+                                                                className={`whitespace-normal break-words w-full text-right px-2 py-2 border-r-4 font-medium text-sm transition-colors duration-150 focus:outline-none ${activeTaskTab === 'pending' ? 'cursor-grab' : ''} ${
                                                                     activeLocationTab === location
                                                                         ? 'border-blue-500 bg-blue-50 text-blue-600 font-semibold'
                                                                         : 'border-transparent text-gray-600 hover:bg-gray-100'
@@ -1127,7 +1127,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                                         ))}
                                                     </nav>
                                                 )}
-                                                <div className="flex-grow md:w-3/4 lg:w-4/5">
+                                                <div className="flex-grow min-w-0">
                                                      {locationOrder.length > 0 && activeLocationTab ? (
                                                         <div 
                                                             onDragOver={handleGroupDragOver}
