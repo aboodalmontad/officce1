@@ -437,6 +437,39 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         fetchAndSetProfile();
     }, [session, isOnline, supabase]);
 
+    // Effect to unlock audio/vibration on first user interaction to bypass browser autoplay restrictions.
+    React.useEffect(() => {
+        const unlockAudioAndVibration = () => {
+            // A minimal, silent audio file to unlock the AudioContext.
+            const silentAudio = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+            silentAudio.play().catch(() => {}); // Play and ignore errors; the goal is just to register a user gesture.
+
+            // A minimal vibration to "wake up" the vibration API.
+            if ('vibrate' in navigator && typeof navigator.vibrate === 'function') {
+                navigator.vibrate(0);
+            }
+
+            // Clean up listeners immediately after the first interaction to ensure it only runs once.
+            document.body.removeEventListener('click', unlockAudioAndVibration);
+            document.body.removeEventListener('touchstart', unlockAudioAndVibration);
+            document.body.removeEventListener('keydown', unlockAudioAndVibration);
+            console.log('Audio and Vibration APIs unlocked by user interaction.');
+        };
+
+        // Attach listeners for various types of user interactions for better coverage.
+        document.body.addEventListener('click', unlockAudioAndVibration);
+        document.body.addEventListener('touchstart', unlockAudioAndVibration);
+        document.body.addEventListener('keydown', unlockAudioAndVibration);
+
+        // Cleanup function for when the component unmounts.
+        return () => {
+            document.body.removeEventListener('click', unlockAudioAndVibration);
+            document.body.removeEventListener('touchstart', unlockAudioAndVibration);
+            document.body.removeEventListener('keydown', unlockAudioAndVibration);
+        };
+    }, []); // The empty dependency array ensures this effect runs only once on mount.
+
+
     const handleLogout = async () => {
         setCurrentPage('home');
         if (supabase) {
