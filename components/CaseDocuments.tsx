@@ -288,63 +288,101 @@ const PreviewModal: React.FC<{ doc: CaseDocument; onClose: () => void }> = ({ do
 };
 
 
-const CameraModal: React.FC<{ onClose: () => void; onCapture: (file: File) => void }> = ({ onClose, onCapture }) => {
+const DocumentScannerModal: React.FC<{ onClose: () => void; onCapture: (file: File) => void }> = ({ onClose, onCapture }) => {
     const videoRef = React.useRef<HTMLVideoElement>(null);
     const canvasRef = React.useRef<HTMLCanvasElement>(null);
+    const streamRef = React.useRef<MediaStream | null>(null);
     const [error, setError] = React.useState<string | null>(null);
+    const [isLoading, setIsLoading] = React.useState(true);
 
     React.useEffect(() => {
-        let stream: MediaStream | null = null;
-        
         const startCamera = async () => {
+            setIsLoading(true);
+            setError(null);
             try {
-                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                const constraints = { video: { facingMode: 'environment', width: { ideal: 4096 }, height: { ideal: 2160 } } };
+                streamRef.current = await navigator.mediaDevices.getUserMedia(constraints);
                 if (videoRef.current) {
-                    videoRef.current.srcObject = stream;
+                    videoRef.current.srcObject = streamRef.current;
                 }
             } catch (err) {
-                console.error("Error accessing camera:", err);
-                setError('لم يتمكن من الوصول إلى الكاميرا. يرجى التحقق من الأذونات.');
+                console.warn("High-res camera request failed, trying default:", err);
+                try {
+                    streamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                    if (videoRef.current) {
+                        videoRef.current.srcObject = streamRef.current;
+                    }
+                } catch (fallbackErr) {
+                     console.error("Error accessing camera:", fallbackErr);
+                     setError('لم يتمكن من الوصول إلى الكاميرا. يرجى التحقق من الأذونات وتحديث الصفحة.');
+                }
+            } finally {
+                setIsLoading(false);
             }
         };
+
         startCamera();
 
         return () => {
-            stream?.getTracks().forEach(track => track.stop());
+            streamRef.current?.getTracks().forEach(track => track.stop());
         };
     }, []);
 
     const handleCapture = () => {
-        if (videoRef.current && canvasRef.current) {
+        if (videoRef.current && canvasRef.current && !isLoading) {
             const video = videoRef.current;
             const canvas = canvasRef.current;
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
-            const context = canvas.getContext('2d');
-            context?.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+            const context = canvas.getContext('2d', { willReadFrequently: true });
+            if (!context) return;
+            
+            // Apply a simple contrast filter for better document readability
+            context.filter = 'contrast(1.2) brightness(1.05)';
+            context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
             
             canvas.toBlob(blob => {
                 if (blob) {
-                    const fileName = `capture-${new Date().toISOString()}.jpeg`;
+                    const fileName = `document-${new Date().toISOString()}.jpeg`;
                     const file = new File([blob], fileName, { type: 'image/jpeg' });
                     onCapture(file);
                 }
-            }, 'image/jpeg', 0.95);
+            }, 'image/jpeg', 0.95); // High quality JPEG
         }
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center z-50" onClick={onClose}>
-            <div className="relative w-full max-w-4xl aspect-video bg-black" onClick={e => e.stopPropagation()}>
-                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-contain"></video>
+        <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center" onClick={onClose}>
+            <div className="relative w-full h-full" onClick={e => e.stopPropagation()}>
+                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>
                 <canvas ref={canvasRef} className="hidden"></canvas>
-                {error && <div className="absolute inset-0 flex items-center justify-center text-white bg-black/50 p-4">{error}</div>}
-            </div>
-            <div className="flex items-center gap-8 mt-4" onClick={e => e.stopPropagation()}>
-                <button onClick={onClose} className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">إلغاء</button>
-                <button onClick={handleCapture} className="p-4 bg-white rounded-full shadow-lg" aria-label="التقاط صورة">
-                    <div className="w-12 h-12 rounded-full bg-blue-600 ring-4 ring-white"></div>
+                
+                {/* Overlay for alignment */}
+                <div className="absolute inset-0 pointer-events-none border-[1rem] sm:border-[2rem] border-black/50">
+                    <div className="absolute top-4 left-4 sm:top-8 sm:left-8 border-t-4 border-l-4 border-white h-12 w-12 sm:h-16 sm:w-16 opacity-75 rounded-tl-lg"></div>
+                    <div className="absolute top-4 right-4 sm:top-8 sm:right-8 border-t-4 border-r-4 border-white h-12 w-12 sm:h-16 sm:w-16 opacity-75 rounded-tr-lg"></div>
+                    <div className="absolute bottom-4 left-4 sm:bottom-8 sm:left-8 border-b-4 border-l-4 border-white h-12 w-12 sm:h-16 sm:w-16 opacity-75 rounded-bl-lg"></div>
+                    <div className="absolute bottom-4 right-4 sm:bottom-8 sm:right-8 border-b-4 border-r-4 border-white h-12 w-12 sm:h-16 sm:w-16 opacity-75 rounded-br-lg"></div>
+                </div>
+
+                {(isLoading || error) && 
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+                        {isLoading && <ArrowPathIcon className="w-12 h-12 text-white animate-spin" />}
+                        {error && <p className="text-white text-center p-8 max-w-sm">{error}</p>}
+                    </div>
+                }
+                
+                {/* Close Button */}
+                <button onClick={onClose} className="absolute top-4 right-4 p-3 bg-black/50 rounded-full text-white hover:bg-black/75 transition-colors">
+                    <XMarkIcon className="w-6 h-6" />
                 </button>
+
+                {/* Capture Button */}
+                <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent flex justify-center">
+                     <button onClick={handleCapture} disabled={isLoading} className="w-20 h-20 rounded-full bg-white flex items-center justify-center p-1 ring-4 ring-black/30 disabled:opacity-50" aria-label="التقاط صورة">
+                        <div className="w-full h-full rounded-full bg-white border-2 border-black"></div>
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -446,7 +484,7 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
                     className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
                 >
                     <CameraIcon className="w-10 h-10 text-gray-400 mb-2" />
-                    <span className="font-semibold text-gray-700">التقاط صورة</span>
+                    <span className="font-semibold text-gray-700">التقاط وثيقة</span>
                     <p className="text-xs text-gray-500">استخدم كاميرا جهازك</p>
                 </button>
             </div>
@@ -480,7 +518,7 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
             )}
             
             {previewDoc && <PreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />}
-            {isCameraOpen && <CameraModal onClose={() => setIsCameraOpen(false)} onCapture={handlePhotoCapture} />}
+            {isCameraOpen && <DocumentScannerModal onClose={() => setIsCameraOpen(false)} onCapture={handlePhotoCapture} />}
         </div>
     );
 };
