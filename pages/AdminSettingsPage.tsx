@@ -8,16 +8,6 @@ const USER_APPROVAL_SOUND_KEY = 'customUserApprovalSound';
 const AdminSettingsPage: React.FC = () => {
     const [customSound, setCustomSound] = useLocalStorage<string | null>(USER_APPROVAL_SOUND_KEY, null);
     const [feedback, setFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
-    const audioRef = React.useRef<HTMLAudioElement | null>(null);
-    
-    const soundToPlay = customSound || defaultUserApprovalSoundBase64;
-
-    React.useEffect(() => {
-        if (audioRef.current) {
-            audioRef.current.src = soundToPlay;
-            audioRef.current.load();
-        }
-    }, [soundToPlay]);
 
     const showFeedback = (message: string, type: 'success' | 'error') => {
         setFeedback({ message, type });
@@ -46,12 +36,17 @@ const AdminSettingsPage: React.FC = () => {
     };
 
     const playSound = () => {
-        if (audioRef.current) {
-            audioRef.current.currentTime = 0;
-            audioRef.current.play().catch(e => {
-                console.error("Audio playback failed:", e);
-                showFeedback('فشل تشغيل الصوت.', 'error');
+        const soundSource = customSound || defaultUserApprovalSoundBase64;
+        try {
+            // Create a new Audio object on demand for robust preview playback.
+            const audio = new Audio(soundSource);
+            audio.play().catch(e => {
+                console.error("Audio preview playback failed:", e);
+                showFeedback('فشل تشغيل الصوت. قد يكون الملف تالفًا أو غير مدعوم.', 'error');
             });
+        } catch (e) {
+            console.error("Error creating Audio object for preview:", e);
+            showFeedback('فشل تهيئة الصوت. قد يكون الملف تالفًا.', 'error');
         }
     };
 
@@ -115,7 +110,6 @@ const AdminSettingsPage: React.FC = () => {
                                 <span>استعادة الافتراضي</span>
                             </button>
                         )}
-                         <audio ref={audioRef} preload="auto" className="hidden" />
                     </div>
                      {customSound ? <p className="text-xs text-gray-500 mt-2">تم تعيين صوت مخصص.</p> : <p className="text-xs text-gray-500 mt-2">يتم استخدام الصوت الافتراضي حالياً.</p>}
                 </div>
