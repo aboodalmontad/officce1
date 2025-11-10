@@ -920,46 +920,48 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                     />
                 </div>
 
-                {/* Task Details */}
-                <div className="flex-grow">
-                    <p className={`font-medium text-base ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>{task.task}</p>
-                    
-                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-gray-600">
-                        {/* Assignee */}
-                        <div className="flex items-center gap-1.5" onClick={() => activeTaskTab === 'pending' && setEditingAssigneeTaskId(task.id)}>
-                            <UserIcon className="w-4 h-4 text-gray-400" />
-                            {editingAssigneeTaskId === task.id ? (
-                                <select
-                                    value={task.assignee}
-                                    onChange={(e) => handleAssigneeChange(task.id, e.target.value)}
-                                    onBlur={() => setEditingAssigneeTaskId(null)}
-                                    className="p-1 border rounded bg-white text-sm focus:ring-blue-500 focus:border-blue-500"
-                                    autoFocus
-                                >
-                                    {assistants.map(name => (
-                                        <option key={name} value={name}>
-                                            {name}
-                                        </option>
-                                    ))}
-                                </select>
-                            ) : (
-                                <span className={activeTaskTab === 'pending' ? 'cursor-pointer hover:text-blue-600' : ''}>
-                                    {task.assignee || '-'}
+                {/* Scrollable Task Details */}
+                <div className="flex-grow min-w-0 overflow-x-auto">
+                    <div className="min-w-max">
+                        <p className={`font-medium text-base whitespace-nowrap ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>{task.task}</p>
+                        
+                        <div className="mt-2 flex items-center gap-x-4 gap-y-2 text-sm text-gray-600">
+                            {/* Assignee */}
+                            <div className="flex items-center gap-1.5" onClick={() => activeTaskTab === 'pending' && setEditingAssigneeTaskId(task.id)}>
+                                <UserIcon className="w-4 h-4 text-gray-400" />
+                                {editingAssigneeTaskId === task.id ? (
+                                    <select
+                                        value={task.assignee}
+                                        onChange={(e) => handleAssigneeChange(task.id, e.target.value)}
+                                        onBlur={() => setEditingAssigneeTaskId(null)}
+                                        className="p-1 border rounded bg-white text-sm focus:ring-blue-500 focus:border-blue-500"
+                                        autoFocus
+                                    >
+                                        {assistants.map(name => (
+                                            <option key={name} value={name}>
+                                                {name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <span className={activeTaskTab === 'pending' ? 'cursor-pointer hover:text-blue-600' : ''}>
+                                        {task.assignee || '-'}
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Due Date */}
+                            <div className="flex items-center gap-1.5">
+                                <CalendarIcon className="w-4 h-4 text-gray-400" />
+                                <span>{formatDate(task.dueDate)}</span>
+                            </div>
+
+                            {/* Importance */}
+                            <div className="flex items-center gap-1.5">
+                                 <span className={`px-2 py-1 text-xs font-semibold rounded-full ${importanceMapAdminTasks[task.importance]?.className}`}>
+                                    {importanceMapAdminTasks[task.importance]?.text}
                                 </span>
-                            )}
-                        </div>
-
-                        {/* Due Date */}
-                        <div className="flex items-center gap-1.5">
-                            <CalendarIcon className="w-4 h-4 text-gray-400" />
-                            <span>{formatDate(task.dueDate)}</span>
-                        </div>
-
-                        {/* Importance */}
-                        <div className="flex items-center gap-1.5">
-                             <span className={`px-2 py-1 text-xs font-semibold rounded-full ${importanceMapAdminTasks[task.importance]?.className}`}>
-                                {importanceMapAdminTasks[task.importance]?.text}
-                            </span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1132,10 +1134,12 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                                         <div 
                                                             onDragOver={handleGroupDragOver}
                                                             onDrop={e => handleGroupDrop(e, activeLocationTab)}
-                                                            className="bg-gray-50 p-2 sm:p-4 space-y-3 border border-gray-200 rounded-lg min-h-[200px]"
+                                                            className="bg-gray-50 p-2 border border-gray-200 rounded-lg min-h-[200px]"
                                                         >
                                                             {(groupedTasks[activeLocationTab] || []).length > 0 ? (
-                                                                (groupedTasks[activeLocationTab] || []).map(task => renderTaskItem(task, activeLocationTab))
+                                                                <div className="space-y-3">
+                                                                    {(groupedTasks[activeLocationTab] || []).map(task => renderTaskItem(task, activeLocationTab))}
+                                                                </div>
                                                             ) : (
                                                                 <p className="text-center text-gray-500 py-8">لا توجد مهام في هذا المكان.</p>
                                                             )}
