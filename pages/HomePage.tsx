@@ -1001,69 +1001,71 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
 
     return (
         <div className="space-y-6">
-            <div className="no-print flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="no-print flex flex-col sm:flex-row justify-between items-center gap-4">
                 <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
                     <HomeIcon className="w-8 h-8"/>
                     <span>الرئيسية</span>
                 </h1>
-                <div ref={actionsMenuRef} className="relative">
-                    <button 
-                        onClick={() => setIsActionsMenuOpen(prev => !prev)} 
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                        aria-haspopup="true"
-                        aria-expanded={isActionsMenuOpen}
-                    >
-                        <span>إجراءات جدول الأعمال</span>
-                        <ChevronDownIcon className={`w-4 h-4 transition-transform ${isActionsMenuOpen ? 'rotate-180' : ''}`} />
-                    </button>
-                    {isActionsMenuOpen && (
-                        <div className="absolute left-0 mt-2 w-56 origin-top-left bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-20">
-                            <div className="py-1" role="menu" aria-orientation="vertical">
-                                <button
-                                    onClick={() => { setIsPrintAssigneeModalOpen(true); setIsActionsMenuOpen(false); }}
-                                    className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                    role="menuitem"
-                                >
-                                    <PrintIcon className="w-5 h-5 text-gray-500" />
-                                    <span>طباعة جدول الأعمال</span>
-                                </button>
-                                <button
-                                    onClick={() => { setIsShareAssigneeModalOpen(true); setIsActionsMenuOpen(false); }}
-                                    className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                    role="menuitem"
-                                >
-                                    <ShareIcon className="w-5 h-5 text-gray-500" />
-                                    <span>إرسال عبر واتساب</span>
-                                </button>
-                            </div>
+                <div className="flex items-center gap-4">
+                    {/* View Switcher as distinct buttons */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setMainView('agenda')}
+                            className={`flex items-center gap-2 px-4 py-2 font-semibold text-sm rounded-lg transition-colors ${
+                                mainView === 'agenda' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                            }`}
+                        >
+                            <ClipboardDocumentCheckIcon className="w-5 h-5" />
+                            <span>المفكرة</span>
+                        </button>
+                        <button
+                            onClick={() => setMainView('adminTasks')}
+                            className={`flex items-center gap-2 px-4 py-2 font-semibold text-sm rounded-lg transition-colors ${
+                                mainView === 'adminTasks' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                            }`}
+                        >
+                            <BuildingLibraryIcon className="w-5 h-5" />
+                            <span>المهام الإدارية</span>
+                        </button>
+                    </div>
+
+                    {/* Printer Icon Dropdown */}
+                    {mainView === 'agenda' && (
+                        <div ref={actionsMenuRef} className="relative">
+                            <button
+                                onClick={() => setIsActionsMenuOpen(prev => !prev)}
+                                className="p-3 bg-white text-gray-700 rounded-full hover:bg-gray-100 border border-gray-300 shadow-sm transition-colors"
+                                aria-label="إجراءات جدول الأعمال"
+                                aria-haspopup="true"
+                                aria-expanded={isActionsMenuOpen}
+                            >
+                                <PrintIcon className="w-5 h-5" />
+                            </button>
+                            {isActionsMenuOpen && (
+                                <div className="absolute left-0 mt-2 w-56 origin-top-left bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-20">
+                                    <div className="py-1" role="menu" aria-orientation="vertical">
+                                        <button
+                                            onClick={() => { setIsPrintAssigneeModalOpen(true); setIsActionsMenuOpen(false); }}
+                                            className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                            role="menuitem"
+                                        >
+                                            <PrintIcon className="w-5 h-5 text-gray-500" />
+                                            <span>طباعة جدول الأعمال</span>
+                                        </button>
+                                        <button
+                                            onClick={() => { setIsShareAssigneeModalOpen(true); setIsActionsMenuOpen(false); }}
+                                            className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                            role="menuitem"
+                                        >
+                                            <ShareIcon className="w-5 h-5 text-gray-500" />
+                                            <span>إرسال عبر واتساب</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
-            </div>
-            
-            <div className="no-print flex items-center border-b border-gray-200">
-                <button
-                    onClick={() => setMainView('agenda')}
-                    className={`flex items-center gap-2 py-3 px-4 font-medium text-sm transition-colors ${
-                        mainView === 'agenda'
-                            ? 'border-b-2 border-blue-600 text-blue-600'
-                            : 'border-b-2 border-transparent text-gray-500 hover:text-gray-700'
-                    }`}
-                >
-                    <ClipboardDocumentCheckIcon className="w-5 h-5" />
-                    <span>المفكرة (التقويم والجلسات)</span>
-                </button>
-                <button
-                    onClick={() => setMainView('adminTasks')}
-                    className={`flex items-center gap-2 py-3 px-4 font-medium text-sm transition-colors ${
-                        mainView === 'adminTasks'
-                            ? 'border-b-2 border-blue-600 text-blue-600'
-                            : 'border-b-2 border-transparent text-gray-500 hover:text-gray-700'
-                    }`}
-                >
-                    <BuildingLibraryIcon className="w-5 h-5" />
-                    <span>المهام الإدارية</span>
-                </button>
             </div>
             
             {mainView === 'agenda' && (
