@@ -172,6 +172,22 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
     const [decideModal, setDecideModal] = React.useState<{ isOpen: boolean; session?: Session, stage?: Stage }>({ isOpen: false });
     const [decideFormData, setDecideFormData] = React.useState({ decisionNumber: '', decisionSummary: '', decisionNotes: '' });
 
+    // New state for main page view
+    const [mainView, setMainView] = React.useState<'agenda' | 'adminTasks'>('agenda');
+    const [isActionsMenuOpen, setIsActionsMenuOpen] = React.useState(false);
+    const actionsMenuRef = React.useRef<HTMLDivElement>(null);
+
+    React.useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (actionsMenuRef.current && !actionsMenuRef.current.contains(event.target as Node)) {
+                setIsActionsMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
 
     // Appointment Handlers
     const handleOpenAddAppointmentModal = () => {
@@ -976,6 +992,11 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
         </div>
     );
 
+    const ChevronDownIcon: React.FC<{className?: string}> = ({ className }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className || "w-4 h-4"}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+        </svg>
+    );
 
     return (
         <div className="space-y-6">
@@ -984,253 +1005,306 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                     <HomeIcon className="w-8 h-8"/>
                     <span>الرئيسية</span>
                 </h1>
-                 <div className="flex items-center gap-2">
-                    <button onClick={() => setIsPrintAssigneeModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                        <PrintIcon className="w-5 h-5" />
-                        <span>طباعة جدول الأعمال</span>
+                <div ref={actionsMenuRef} className="relative">
+                    <button 
+                        onClick={() => setIsActionsMenuOpen(prev => !prev)} 
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        aria-haspopup="true"
+                        aria-expanded={isActionsMenuOpen}
+                    >
+                        <span>إجراءات جدول الأعمال</span>
+                        <ChevronDownIcon className={`w-4 h-4 transition-transform ${isActionsMenuOpen ? 'rotate-180' : ''}`} />
                     </button>
-                    <button onClick={() => setIsShareAssigneeModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
-                        <ShareIcon className="w-5 h-5" />
-                        <span>إرسال عبر واتساب</span>
-                    </button>
+                    {isActionsMenuOpen && (
+                        <div className="absolute left-0 mt-2 w-56 origin-top-left bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-20">
+                            <div className="py-1" role="menu" aria-orientation="vertical">
+                                <button
+                                    onClick={() => { setIsPrintAssigneeModalOpen(true); setIsActionsMenuOpen(false); }}
+                                    className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                    role="menuitem"
+                                >
+                                    <PrintIcon className="w-5 h-5 text-gray-500" />
+                                    <span>طباعة جدول الأعمال</span>
+                                </button>
+                                <button
+                                    onClick={() => { setIsShareAssigneeModalOpen(true); setIsActionsMenuOpen(false); }}
+                                    className="w-full text-right flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                    role="menuitem"
+                                >
+                                    <ShareIcon className="w-5 h-5 text-gray-500" />
+                                    <span>إرسال عبر واتساب</span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
             
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-1 bg-white p-4 rounded-lg shadow space-y-4 no-print">
-                    <Calendar 
-                        onDateSelect={handleDateSelect} 
-                        selectedDate={selectedDate} 
-                        sessions={allSessions} 
-                        appointments={appointments}
-                        currentDate={calendarViewDate}
-                        setCurrentDate={setCalendarViewDate}
-                    />
-                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <div className="relative">
+            <div className="no-print flex items-center border-b border-gray-200">
+                <button
+                    onClick={() => setMainView('agenda')}
+                    className={`flex items-center gap-2 py-3 px-4 font-medium text-sm transition-colors ${
+                        mainView === 'agenda'
+                            ? 'border-b-2 border-blue-600 text-blue-600'
+                            : 'border-b-2 border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                    <ClipboardDocumentCheckIcon className="w-5 h-5" />
+                    <span>المفكرة (التقويم والجلسات)</span>
+                </button>
+                <button
+                    onClick={() => setMainView('adminTasks')}
+                    className={`flex items-center gap-2 py-3 px-4 font-medium text-sm transition-colors ${
+                        mainView === 'adminTasks'
+                            ? 'border-b-2 border-blue-600 text-blue-600'
+                            : 'border-b-2 border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                    <BuildingLibraryIcon className="w-5 h-5" />
+                    <span>المهام الإدارية</span>
+                </button>
+            </div>
+            
+            {mainView === 'agenda' && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
+                    <div className="lg:col-span-1 bg-white p-4 rounded-lg shadow space-y-4 no-print">
+                        <Calendar 
+                            onDateSelect={handleDateSelect} 
+                            selectedDate={selectedDate} 
+                            sessions={allSessions} 
+                            appointments={appointments}
+                            currentDate={calendarViewDate}
+                            setCurrentDate={setCalendarViewDate}
+                        />
+                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <div className="relative">
+                                <button
+                                    onClick={() => setViewMode('unpostponed')}
+                                    className={`w-full flex items-center justify-center gap-2 px-4 py-2 text-white rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 text-sm font-semibold ${viewMode === 'unpostponed' ? 'bg-red-700' : 'bg-red-600 hover:bg-red-700'}`}
+                                >
+                                    <ExclamationTriangleIcon className="w-5 h-5" />
+                                    <span>غير المرحلة</span>
+                                </button>
+                                {unpostponedSessions.length > 0 && (
+                                     <span className="absolute -top-2 -start-2 flex h-5 w-5 items-center justify-center rounded-full bg-yellow-400 text-black text-xs font-bold ring-2 ring-white animate-pulse" title={`${unpostponedSessions.length} جلسات غير مرحلة`}>
+                                        {unpostponedSessions.length}
+                                    </span>
+                                )}
+                            </div>
                             <button
-                                onClick={() => setViewMode('unpostponed')}
-                                className={`w-full flex items-center justify-center gap-2 px-4 py-2 text-white rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 text-sm font-semibold ${viewMode === 'unpostponed' ? 'bg-red-700' : 'bg-red-600 hover:bg-red-700'}`}
+                                onClick={handleShowTodaysAgenda}
+                                className={`w-full flex items-center justify-center gap-2 px-4 py-2 text-white rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 text-sm font-semibold ${viewMode === 'daily' ? 'bg-blue-700' : 'bg-blue-600 hover:bg-blue-700'}`}
                             >
-                                <ExclamationTriangleIcon className="w-5 h-5" />
-                                <span>غير المرحلة</span>
+                                <CalendarIcon className="w-5 h-5" />
+                                <span>أجندة اليوم</span>
                             </button>
-                            {unpostponedSessions.length > 0 && (
-                                 <span className="absolute -top-2 -start-2 flex h-5 w-5 items-center justify-center rounded-full bg-yellow-400 text-black text-xs font-bold ring-2 ring-white animate-pulse" title={`${unpostponedSessions.length} جلسات غير مرحلة`}>
-                                    {unpostponedSessions.length}
-                                </span>
-                            )}
+                            <button
+                                onClick={() => setViewMode('upcoming')}
+                                className={`w-full flex items-center justify-center gap-2 px-4 py-2 text-white rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 text-sm font-semibold ${viewMode === 'upcoming' ? 'bg-green-700' : 'bg-green-600 hover:bg-green-700'}`}
+                            >
+                                <ChevronLeftIcon className="w-5 h-5" />
+                                <span>القادمة</span>
+                            </button>
                         </div>
-                        <button
-                            onClick={handleShowTodaysAgenda}
-                            className={`w-full flex items-center justify-center gap-2 px-4 py-2 text-white rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 text-sm font-semibold ${viewMode === 'daily' ? 'bg-blue-700' : 'bg-blue-600 hover:bg-blue-700'}`}
-                        >
-                            <CalendarIcon className="w-5 h-5" />
-                            <span>أجندة اليوم</span>
-                        </button>
-                        <button
-                            onClick={() => setViewMode('upcoming')}
-                            className={`w-full flex items-center justify-center gap-2 px-4 py-2 text-white rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 text-sm font-semibold ${viewMode === 'upcoming' ? 'bg-green-700' : 'bg-green-600 hover:bg-green-700'}`}
-                        >
-                            <ChevronLeftIcon className="w-5 h-5" />
-                            <span>القادمة</span>
-                        </button>
+                    </div>
+
+                    <div className="lg:col-span-2 space-y-6">
+                         <div id="print-section">
+                            <div className="mb-4">
+                                <h2 className="text-2xl font-semibold">{getTitle()}</h2>
+                            </div>
+                            <div className="space-y-6">
+                                {viewMode === 'daily' && (
+                                    <>
+                                        <div className="bg-white rounded-lg shadow overflow-hidden">
+                                            <h3 className="text-lg font-bold p-4 bg-gray-50 border-b">جدول الجلسات</h3>
+                                            <SessionsTable sessions={dailyData.dailySessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} allowPostponingPastSessions={true} onContextMenu={handleSessionContextMenu} />
+                                        </div>
+                                        <AppointmentsTable appointments={dailyData.dailyAppointments} onAddAppointment={handleOpenAddAppointmentModal} onEdit={handleOpenEditAppointmentModal} onDelete={openDeleteAppointmentModal} onContextMenu={handleAppointmentContextMenu} onToggleComplete={handleToggleAppointmentComplete} />
+                                    </>
+                                )}
+                                {viewMode === 'unpostponed' && (
+                                    <div className="bg-white rounded-lg shadow overflow-hidden">
+                                        <SessionsTable sessions={unpostponedSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} allowPostponingPastSessions={true} showSessionDate={true} onContextMenu={handleSessionContextMenu} />
+                                    </div>
+                                )}
+                                {viewMode === 'upcoming' && (
+                                    <div className="bg-white rounded-lg shadow overflow-hidden">
+                                        <SessionsTable sessions={upcomingSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} showSessionDate={true} onContextMenu={handleSessionContextMenu} />
+                                    </div>
+                                )}
+                            </div>
+                         </div>
                     </div>
                 </div>
-
-                <div className="lg:col-span-2 space-y-6">
-                     <div id="print-section">
-                        <div className="mb-4">
-                            <h2 className="text-2xl font-semibold">{getTitle()}</h2>
+            )}
+            
+            {mainView === 'adminTasks' && (
+                <div className="bg-white p-4 sm:p-6 rounded-lg shadow space-y-4 no-print animate-fade-in">
+                    <div className="flex justify-between items-center flex-wrap gap-4 border-b pb-3">
+                        <div className="flex items-center gap-4">
+                            <h2 className="text-2xl font-semibold">المهام الإدارية</h2>
+                            <button onClick={() => onOpenAdminTaskModal()} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors text-sm">
+                                <PlusIcon className="w-5 h-5" />
+                                <span>مهمة جديدة</span>
+                            </button>
                         </div>
-                        <div className="space-y-6">
-                            {viewMode === 'daily' && (
-                                <>
-                                    <div className="bg-white rounded-lg shadow overflow-hidden">
-                                        <h3 className="text-lg font-bold p-4 bg-gray-50 border-b">جدول الجلسات</h3>
-                                        <SessionsTable sessions={dailyData.dailySessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} allowPostponingPastSessions={true} onContextMenu={handleSessionContextMenu} />
-                                    </div>
-                                    <div className="bg-white p-4 sm:p-6 rounded-lg shadow space-y-4 no-print">
-                                        <div className="flex justify-between items-center flex-wrap gap-4 border-b pb-3">
-                                            <div className="flex items-center gap-4">
-                                                <h2 className="text-2xl font-semibold">المهام الإدارية</h2>
-                                                <button onClick={() => onOpenAdminTaskModal()} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors text-sm">
-                                                    <PlusIcon className="w-5 h-5" />
-                                                    <span>مهمة جديدة</span>
-                                                </button>
-                                            </div>
-                                            <div className="relative">
-                                                <input 
-                                                    type="search" 
-                                                    placeholder="ابحث عن مهمة..." 
-                                                    value={adminTaskSearch}
-                                                    onChange={(e) => setAdminTaskSearch(e.target.value)}
-                                                    className="w-full sm:w-64 p-2 ps-10 text-sm border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500" 
-                                                />
-                                                <div className="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
-                                                    <SearchIcon className="w-4 h-4 text-gray-500" />
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="border-b border-gray-200">
-                                            <nav className="-mb-px flex space-x-4" aria-label="Tabs">
-                                                <button
-                                                    onClick={() => setActiveTaskTab('pending')}
-                                                    className={`whitespace-nowrap py-3 px-4 border-b-2 font-medium text-sm ${activeTaskTab === 'pending' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-                                                >
-                                                    المهام المعلقة
-                                                </button>
-                                                <button
-                                                    onClick={() => setActiveTaskTab('completed')}
-                                                    className={`whitespace-nowrap py-3 px-4 border-b-2 font-medium text-sm ${activeTaskTab === 'completed' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-                                                >
-                                                    المهام المنجزة
-                                                </button>
-                                            </nav>
-                                        </div>
+                        <div className="relative">
+                            <input 
+                                type="search" 
+                                placeholder="ابحث عن مهمة..." 
+                                value={adminTaskSearch}
+                                onChange={(e) => setAdminTaskSearch(e.target.value)}
+                                className="w-full sm:w-64 p-2 ps-10 text-sm border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500" 
+                            />
+                            <div className="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
+                                <SearchIcon className="w-4 h-4 text-gray-500" />
+                            </div>
+                        </div>
+                    </div>
+                    <div className="border-b border-gray-200">
+                        <nav className="-mb-px flex space-x-4" aria-label="Tabs">
+                            <button
+                                onClick={() => setActiveTaskTab('pending')}
+                                className={`whitespace-nowrap py-3 px-4 border-b-2 font-medium text-sm ${activeTaskTab === 'pending' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                            >
+                                المهام المعلقة
+                            </button>
+                            <button
+                                onClick={() => setActiveTaskTab('completed')}
+                                className={`whitespace-nowrap py-3 px-4 border-b-2 font-medium text-sm ${activeTaskTab === 'completed' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                            >
+                                المهام المنجزة
+                            </button>
+                        </nav>
+                    </div>
 
-                                        {adminTasksLayout === 'vertical' ? (
-                                            <div className="flex flex-row gap-4 pt-4">
-                                                {locationOrder.length > 0 && (
-                                                    <nav className="flex flex-col gap-2 w-28 flex-shrink-0" aria-label="Location Tabs">
-                                                        {locationOrder.map(location => (
-                                                            <button
-                                                                key={location}
-                                                                onClick={() => setActiveLocationTab(location)}
-                                                                draggable={activeTaskTab === 'pending'}
-                                                                onDragStart={e => handleDragStart(e, 'group', location)}
-                                                                onDragEnd={handleDragEnd}
-                                                                onDragOver={e => e.preventDefault()}
-                                                                onDrop={e => {
-                                                                    if (activeTaskTab !== 'pending') return;
-                                                                    e.preventDefault();
-                                                                    e.stopPropagation();
-                                                                    if (!draggedGroupLocation || draggedGroupLocation === location) return;
-                                                                    setLocationOrder(currentOrder => {
-                                                                        const sourceIndex = currentOrder.indexOf(draggedGroupLocation);
-                                                                        const targetIndex = currentOrder.indexOf(location);
-                                                                        if (sourceIndex === -1 || targetIndex === -1) return currentOrder;
-                                                                        const newOrder = [...currentOrder];
-                                                                        const [movedItem] = newOrder.splice(sourceIndex, 1);
-                                                                        newOrder.splice(targetIndex, 0, movedItem);
-                                                                        return newOrder;
-                                                                    });
-                                                                }}
-                                                                className={`whitespace-normal break-words w-full text-right px-2 py-2 border-r-4 font-medium text-sm transition-colors duration-150 focus:outline-none ${activeTaskTab === 'pending' ? 'cursor-grab' : ''} ${
-                                                                    activeLocationTab === location
-                                                                        ? 'border-blue-500 bg-blue-50 text-blue-600 font-semibold'
-                                                                        : 'border-transparent text-gray-600 hover:bg-gray-100'
-                                                                } ${
-                                                                    draggedGroupLocation === location ? 'opacity-30' : 'opacity-100'
-                                                                }`}
-                                                            >
-                                                                {location}
-                                                            </button>
-                                                        ))}
-                                                    </nav>
-                                                )}
-                                                <div className="flex-grow min-w-0">
-                                                     {locationOrder.length > 0 && activeLocationTab ? (
-                                                        <div 
-                                                            onDragOver={handleGroupDragOver}
-                                                            onDrop={e => handleGroupDrop(e, activeLocationTab)}
-                                                            className="bg-gray-50 p-2 border border-gray-200 rounded-lg min-h-[200px]"
-                                                        >
-                                                            {(groupedTasks[activeLocationTab] || []).length > 0 ? (
-                                                                <div className="space-y-3">
-                                                                    {(groupedTasks[activeLocationTab] || []).map(task => renderTaskItem(task, activeLocationTab))}
-                                                                </div>
-                                                            ) : (
-                                                                <p className="text-center text-gray-500 py-8">لا توجد مهام في هذا المكان.</p>
-                                                            )}
-                                                        </div>
-                                                    ) : (
-                                                        <div className="flex items-center justify-center bg-gray-50 border border-dashed rounded-lg min-h-[200px]">
-                                                            <p className="text-center text-gray-500 py-8">
-                                                                {locationOrder.length > 0 ? "اختر مجموعة لعرض المهام" : "لا توجد مهام لعرضها."}
-                                                            </p>
-                                                        </div>
-                                                    )}
-                                                </div>
+                    {adminTasksLayout === 'vertical' ? (
+                        <div className="flex flex-row gap-4 pt-4">
+                            {locationOrder.length > 0 && (
+                                <nav className="flex flex-col gap-2 w-28 flex-shrink-0" aria-label="Location Tabs">
+                                    {locationOrder.map(location => (
+                                        <button
+                                            key={location}
+                                            onClick={() => setActiveLocationTab(location)}
+                                            draggable={activeTaskTab === 'pending'}
+                                            onDragStart={e => handleDragStart(e, 'group', location)}
+                                            onDragEnd={handleDragEnd}
+                                            onDragOver={e => e.preventDefault()}
+                                            onDrop={e => {
+                                                if (activeTaskTab !== 'pending') return;
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                if (!draggedGroupLocation || draggedGroupLocation === location) return;
+                                                setLocationOrder(currentOrder => {
+                                                    const sourceIndex = currentOrder.indexOf(draggedGroupLocation);
+                                                    const targetIndex = currentOrder.indexOf(location);
+                                                    if (sourceIndex === -1 || targetIndex === -1) return currentOrder;
+                                                    const newOrder = [...currentOrder];
+                                                    const [movedItem] = newOrder.splice(sourceIndex, 1);
+                                                    newOrder.splice(targetIndex, 0, movedItem);
+                                                    return newOrder;
+                                                });
+                                            }}
+                                            className={`whitespace-normal break-words w-full text-right px-2 py-2 border-r-4 font-medium text-sm transition-colors duration-150 focus:outline-none ${activeTaskTab === 'pending' ? 'cursor-grab' : ''} ${
+                                                activeLocationTab === location
+                                                    ? 'border-blue-500 bg-blue-50 text-blue-600 font-semibold'
+                                                    : 'border-transparent text-gray-600 hover:bg-gray-100'
+                                            } ${
+                                                draggedGroupLocation === location ? 'opacity-30' : 'opacity-100'
+                                            }`}
+                                        >
+                                            {location}
+                                        </button>
+                                    ))}
+                                </nav>
+                            )}
+                            <div className="flex-grow min-w-0">
+                                 {locationOrder.length > 0 && activeLocationTab ? (
+                                    <div 
+                                        onDragOver={handleGroupDragOver}
+                                        onDrop={e => handleGroupDrop(e, activeLocationTab)}
+                                        className="bg-gray-50 p-2 border border-gray-200 rounded-lg min-h-[200px]"
+                                    >
+                                        {(groupedTasks[activeLocationTab] || []).length > 0 ? (
+                                            <div className="space-y-3">
+                                                {(groupedTasks[activeLocationTab] || []).map(task => renderTaskItem(task, activeLocationTab))}
                                             </div>
                                         ) : (
-                                            <div className="pt-4">
-                                                {locationOrder.length > 0 ? (
-                                                    <div>
-                                                        <nav className="-mb-px flex space-x-2 overflow-x-auto" aria-label="Location Tabs">
-                                                            {locationOrder.map(location => (
-                                                                <button
-                                                                    key={location}
-                                                                    onClick={() => setActiveLocationTab(location)}
-                                                                    draggable={activeTaskTab === 'pending'}
-                                                                    onDragStart={e => handleDragStart(e, 'group', location)}
-                                                                    onDragEnd={handleDragEnd}
-                                                                    onDragOver={e => e.preventDefault()}
-                                                                    onDrop={e => {
-                                                                        if (activeTaskTab !== 'pending') return;
-                                                                        e.preventDefault();
-                                                                        e.stopPropagation();
-                                                                        if (!draggedGroupLocation || draggedGroupLocation === location) return;
-                                                                        setLocationOrder(currentOrder => {
-                                                                            const sourceIndex = currentOrder.indexOf(draggedGroupLocation);
-                                                                            const targetIndex = currentOrder.indexOf(location);
-                                                                            if (sourceIndex === -1 || targetIndex === -1) return currentOrder;
-                                                                            const newOrder = [...currentOrder];
-                                                                            const [movedItem] = newOrder.splice(sourceIndex, 1);
-                                                                            newOrder.splice(targetIndex, 0, movedItem);
-                                                                            return newOrder;
-                                                                        });
-                                                                    }}
-                                                                    className={`whitespace-nowrap py-3 px-4 border font-medium text-sm rounded-t-lg transition-colors duration-150 focus:outline-none ${activeTaskTab === 'pending' ? 'cursor-grab' : ''} ${
-                                                                        activeLocationTab === location
-                                                                            ? 'bg-gray-50 border-gray-200 border-b-gray-50 text-blue-600 font-semibold' // Active tab
-                                                                            : 'bg-white border-transparent border-b-gray-200 text-gray-500 hover:text-gray-700' // Inactive tab
-                                                                    } ${
-                                                                        draggedGroupLocation === location ? 'opacity-30' : ''
-                                                                    }`}
-                                                                >
-                                                                    {location}
-                                                                </button>
-                                                            ))}
-                                                        </nav>
-                                                        <div 
-                                                            onDragOver={handleGroupDragOver}
-                                                            onDrop={e => handleGroupDrop(e, activeLocationTab)}
-                                                            className="bg-gray-50 p-2 sm:p-4 space-y-3 border border-gray-200 rounded-b-lg min-h-[100px]"
-                                                        >
-                                                            {(groupedTasks[activeLocationTab] || []).length > 0 ? (
-                                                                (groupedTasks[activeLocationTab] || []).map(task => renderTaskItem(task, activeLocationTab))
-                                                            ) : (
-                                                                <p className="text-center text-gray-500 py-8">لا توجد مهام في هذا المكان.</p>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex items-center justify-center border border-dashed rounded-lg min-h-[200px]">
-                                                        <p className="text-center text-gray-500 py-8">لا توجد مهام لعرضها.</p>
-                                                    </div>
-                                                )}
-                                            </div>
+                                            <p className="text-center text-gray-500 py-8">لا توجد مهام في هذا المكان.</p>
                                         )}
                                     </div>
-                                    <AppointmentsTable appointments={dailyData.dailyAppointments} onAddAppointment={handleOpenAddAppointmentModal} onEdit={handleOpenEditAppointmentModal} onDelete={openDeleteAppointmentModal} onContextMenu={handleAppointmentContextMenu} onToggleComplete={handleToggleAppointmentComplete} />
-                                </>
-                            )}
-                            {viewMode === 'unpostponed' && (
-                                <div className="bg-white rounded-lg shadow overflow-hidden">
-                                    <SessionsTable sessions={unpostponedSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} allowPostponingPastSessions={true} showSessionDate={true} onContextMenu={handleSessionContextMenu} />
+                                ) : (
+                                    <div className="flex items-center justify-center bg-gray-50 border border-dashed rounded-lg min-h-[200px]">
+                                        <p className="text-center text-gray-500 py-8">
+                                            {locationOrder.length > 0 ? "اختر مجموعة لعرض المهام" : "لا توجد مهام لعرضها."}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="pt-4">
+                            {locationOrder.length > 0 ? (
+                                <div>
+                                    <nav className="-mb-px flex space-x-2 overflow-x-auto" aria-label="Location Tabs">
+                                        {locationOrder.map(location => (
+                                            <button
+                                                key={location}
+                                                onClick={() => setActiveLocationTab(location)}
+                                                draggable={activeTaskTab === 'pending'}
+                                                onDragStart={e => handleDragStart(e, 'group', location)}
+                                                onDragEnd={handleDragEnd}
+                                                onDragOver={e => e.preventDefault()}
+                                                onDrop={e => {
+                                                    if (activeTaskTab !== 'pending') return;
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    if (!draggedGroupLocation || draggedGroupLocation === location) return;
+                                                    setLocationOrder(currentOrder => {
+                                                        const sourceIndex = currentOrder.indexOf(draggedGroupLocation);
+                                                        const targetIndex = currentOrder.indexOf(location);
+                                                        if (sourceIndex === -1 || targetIndex === -1) return currentOrder;
+                                                        const newOrder = [...currentOrder];
+                                                        const [movedItem] = newOrder.splice(sourceIndex, 1);
+                                                        newOrder.splice(targetIndex, 0, movedItem);
+                                                        return newOrder;
+                                                    });
+                                                }}
+                                                className={`whitespace-nowrap py-3 px-4 border font-medium text-sm rounded-t-lg transition-colors duration-150 focus:outline-none ${activeTaskTab === 'pending' ? 'cursor-grab' : ''} ${
+                                                    activeLocationTab === location
+                                                        ? 'bg-gray-50 border-gray-200 border-b-gray-50 text-blue-600 font-semibold' // Active tab
+                                                        : 'bg-white border-transparent border-b-gray-200 text-gray-500 hover:text-gray-700' // Inactive tab
+                                                } ${
+                                                    draggedGroupLocation === location ? 'opacity-30' : ''
+                                                }`}
+                                            >
+                                                {location}
+                                            </button>
+                                        ))}
+                                    </nav>
+                                    <div 
+                                        onDragOver={handleGroupDragOver}
+                                        onDrop={e => handleGroupDrop(e, activeLocationTab)}
+                                        className="bg-gray-50 p-2 sm:p-4 space-y-3 border border-gray-200 rounded-b-lg min-h-[100px]"
+                                    >
+                                        {(groupedTasks[activeLocationTab] || []).length > 0 ? (
+                                            (groupedTasks[activeLocationTab] || []).map(task => renderTaskItem(task, activeLocationTab))
+                                        ) : (
+                                            <p className="text-center text-gray-500 py-8">لا توجد مهام في هذا المكان.</p>
+                                        )}
+                                    </div>
                                 </div>
-                            )}
-                            {viewMode === 'upcoming' && (
-                                <div className="bg-white rounded-lg shadow overflow-hidden">
-                                    <SessionsTable sessions={upcomingSessions} onPostpone={handlePostponeSession} onUpdate={handleUpdateSession} onDecide={handleOpenDecideModal} assistants={assistants} showSessionDate={true} onContextMenu={handleSessionContextMenu} />
+                            ) : (
+                                <div className="flex items-center justify-center border border-dashed rounded-lg min-h-[200px]">
+                                    <p className="text-center text-gray-500 py-8">لا توجد مهام لعرضها.</p>
                                 </div>
                             )}
                         </div>
-                     </div>
+                    )}
                 </div>
-            </div>
-
+            )}
+           
             {isAppointmentModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={handleCloseAppointmentModal}>
                     <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
