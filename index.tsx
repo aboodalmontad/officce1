@@ -38,8 +38,19 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js')
       .then(registration => {
         console.log('ServiceWorker registration successful with scope: ', registration.scope);
-        // Proactively check for an updated service worker on every page load.
-        registration.update();
+        
+        // Function to check for updates
+        const checkForUpdate = () => {
+            console.log('Checking for service worker update...');
+            registration.update();
+        };
+
+        // 1. Proactively check for an updated service worker on every page load.
+        checkForUpdate();
+        
+        // 2. Set up a periodic check for updates (e.g., every hour)
+        // This ensures long-running tabs also get updates.
+        setInterval(checkForUpdate, 60 * 60 * 1000); // 1 hour
       })
       .catch(error => {
         console.log('ServiceWorker registration failed: ', error);
