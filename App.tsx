@@ -154,9 +154,9 @@ const Navbar: React.FC<{
             </nav>
             <div className="flex items-center gap-2 sm:gap-4">
                  {profile && (
-                    <div className="text-right hidden sm:block">
+                    <div className="text-right">
                         <p className="font-semibold text-sm text-gray-800">{profile.full_name}</p>
-                        <p className="text-xs text-gray-500">{profile.role === 'admin' ? 'مدير' : 'مستخدم'}</p>
+                        <p className="text-xs text-gray-500 hidden sm:block">{profile.role === 'admin' ? 'مدير' : 'مستخدم'}</p>
                     </div>
                 )}
                 <SyncStatusIndicator 
