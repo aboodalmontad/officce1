@@ -2,7 +2,7 @@ import * as React from 'react';
 import Calendar from '../components/Calendar';
 import { Session, AdminTask, Appointment, Stage, Client } from '../types';
 import { formatDate, isSameDay, isBeforeToday, toInputDateString } from '../utils/dateUtils';
-import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, CalendarIcon, ChevronLeftIcon, ScaleIcon, BuildingLibraryIcon, ShareIcon, UserIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, HomeIcon } from '../components/icons';
+import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, CalendarIcon, ChevronLeftIcon, ScaleIcon, BuildingLibraryIcon, ShareIcon, UserIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, HomeIcon, ListBulletIcon, ViewColumnsIcon } from '../components/icons';
 import SessionsTable from '../components/SessionsTable';
 import PrintableReport from '../components/PrintableReport';
 import { printElement } from '../utils/printUtils';
@@ -133,6 +133,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
         setClients,
         clients,
         adminTasksLayout,
+        setAdminTasksLayout,
     } = useData();
 
     const [selectedDate, setSelectedDate] = React.useState(new Date());
@@ -1149,16 +1150,26 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenAdminTaskModal, showContextMe
                                 <span>مهمة جديدة</span>
                             </button>
                         </div>
-                        <div className="relative">
-                            <input 
-                                type="search" 
-                                placeholder="ابحث عن مهمة..." 
-                                value={adminTaskSearch}
-                                onChange={(e) => setAdminTaskSearch(e.target.value)}
-                                className="w-full sm:w-64 p-2 ps-10 text-sm border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500" 
-                            />
-                            <div className="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
-                                <SearchIcon className="w-4 h-4 text-gray-500" />
+                        <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-1 p-1 bg-gray-200 rounded-lg">
+                                <button onClick={() => setAdminTasksLayout('horizontal')} className={`p-2 rounded-md transition-colors ${adminTasksLayout === 'horizontal' ? 'bg-white shadow-sm' : 'hover:bg-gray-300'}`} title="عرض أفقي (قائمة)">
+                                    <ListBulletIcon className="w-5 h-5 text-gray-700" />
+                                </button>
+                                <button onClick={() => setAdminTasksLayout('vertical')} className={`p-2 rounded-md transition-colors ${adminTasksLayout === 'vertical' ? 'bg-white shadow-sm' : 'hover:bg-gray-300'}`} title="عرض عمودي (أعمدة)">
+                                    <ViewColumnsIcon className="w-5 h-5 text-gray-700" />
+                                </button>
+                            </div>
+                            <div className="relative">
+                                <input 
+                                    type="search" 
+                                    placeholder="ابحث عن مهمة..." 
+                                    value={adminTaskSearch}
+                                    onChange={(e) => setAdminTaskSearch(e.target.value)}
+                                    className="w-full sm:w-64 p-2 ps-10 text-sm border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500" 
+                                />
+                                <div className="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
+                                    <SearchIcon className="w-4 h-4 text-gray-500" />
+                                </div>
                             </div>
                         </div>
                     </div>
