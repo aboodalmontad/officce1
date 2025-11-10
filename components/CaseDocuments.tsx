@@ -294,6 +294,7 @@ const DocumentScannerModal: React.FC<{ onClose: () => void; onCapture: (file: Fi
     const streamRef = React.useRef<MediaStream | null>(null);
     const [error, setError] = React.useState<string | null>(null);
     const [isLoading, setIsLoading] = React.useState(true);
+    const [isPreview, setIsPreview] = React.useState(false);
 
     React.useEffect(() => {
         const startCamera = async () => {
@@ -337,33 +338,65 @@ const DocumentScannerModal: React.FC<{ onClose: () => void; onCapture: (file: Fi
             const context = canvas.getContext('2d', { willReadFrequently: true });
             if (!context) return;
             
-            // Apply a simple contrast filter for better document readability
-            context.filter = 'contrast(1.2) brightness(1.05)';
+            // Apply scanner-like filters to enhance the document image, remove shadows, and whiten background
+            context.filter = 'grayscale(1) contrast(1.5) brightness(1.15)';
             context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
             
-            canvas.toBlob(blob => {
+            setIsPreview(true); // Switch to preview mode
+        }
+    };
+    
+    const handleSave = () => {
+        if (canvasRef.current) {
+            canvasRef.current.toBlob(blob => {
                 if (blob) {
                     const fileName = `document-${new Date().toISOString()}.jpeg`;
                     const file = new File([blob], fileName, { type: 'image/jpeg' });
                     onCapture(file);
                 }
-            }, 'image/jpeg', 0.95); // High quality JPEG
+            }, 'image/jpeg', 0.92);
         }
+    };
+
+    const handleRetake = () => {
+        const canvas = canvasRef.current;
+        const context = canvas?.getContext('2d');
+        if (canvas && context) {
+            context.filter = 'none'; // Reset filter before clearing
+            context.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        setIsPreview(false); // Go back to camera view
     };
 
     return (
         <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center" onClick={onClose}>
             <div className="relative w-full h-full" onClick={e => e.stopPropagation()}>
-                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>
-                <canvas ref={canvasRef} className="hidden"></canvas>
+                <video ref={videoRef} autoPlay playsInline className={`w-full h-full object-cover ${isPreview ? 'hidden' : ''}`}></video>
+                <canvas ref={canvasRef} className={`w-full h-full object-contain ${isPreview ? '' : 'hidden'}`}></canvas>
                 
-                {/* Overlay for alignment */}
-                <div className="absolute inset-0 pointer-events-none border-[1rem] sm:border-[2rem] border-black/50">
-                    <div className="absolute top-4 left-4 sm:top-8 sm:left-8 border-t-4 border-l-4 border-white h-12 w-12 sm:h-16 sm:w-16 opacity-75 rounded-tl-lg"></div>
-                    <div className="absolute top-4 right-4 sm:top-8 sm:right-8 border-t-4 border-r-4 border-white h-12 w-12 sm:h-16 sm:w-16 opacity-75 rounded-tr-lg"></div>
-                    <div className="absolute bottom-4 left-4 sm:bottom-8 sm:left-8 border-b-4 border-l-4 border-white h-12 w-12 sm:h-16 sm:w-16 opacity-75 rounded-bl-lg"></div>
-                    <div className="absolute bottom-4 right-4 sm:bottom-8 sm:right-8 border-b-4 border-r-4 border-white h-12 w-12 sm:h-16 sm:w-16 opacity-75 rounded-br-lg"></div>
-                </div>
+                {!isPreview && (
+                    <div className="absolute inset-0 flex items-center justify-center p-4 sm:p-8 pointer-events-none">
+                        <div 
+                            className="relative w-auto h-auto"
+                            style={{ 
+                                aspectRatio: '210 / 297', // A4 Portrait
+                                maxWidth: '100%',
+                                maxHeight: '100%',
+                                boxShadow: '0 0 0 9999px rgba(0,0,0,0.6)',
+                            }}
+                        >
+                            <div className="absolute inset-0 border-2 border-dashed border-white/50 rounded-xl"></div>
+                            <div className="absolute top-0 left-0 w-10 h-10 border-t-4 border-l-4 border-white rounded-tl-xl"></div>
+                            <div className="absolute top-0 right-0 w-10 h-10 border-t-4 border-r-4 border-white rounded-tr-xl"></div>
+                            <div className="absolute bottom-0 left-0 w-10 h-10 border-b-4 border-l-4 border-white rounded-bl-xl"></div>
+                            <div className="absolute bottom-0 right-0 w-10 h-10 border-b-4 border-r-4 border-white rounded-br-xl"></div>
+
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white/70 text-center bg-black/30 p-2 rounded-md">
+                                <p>ضع المستند داخل الإطار</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {(isLoading || error) && 
                     <div className="absolute inset-0 flex items-center justify-center bg-black/70">
@@ -373,15 +406,27 @@ const DocumentScannerModal: React.FC<{ onClose: () => void; onCapture: (file: Fi
                 }
                 
                 {/* Close Button */}
-                <button onClick={onClose} className="absolute top-4 right-4 p-3 bg-black/50 rounded-full text-white hover:bg-black/75 transition-colors">
+                <button onClick={onClose} className="absolute top-4 right-4 p-3 bg-black/50 rounded-full text-white hover:bg-black/75 transition-colors z-10">
                     <XMarkIcon className="w-6 h-6" />
                 </button>
 
-                {/* Capture Button */}
-                <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent flex justify-center">
-                     <button onClick={handleCapture} disabled={isLoading} className="w-20 h-20 rounded-full bg-white flex items-center justify-center p-1 ring-4 ring-black/30 disabled:opacity-50" aria-label="التقاط صورة">
-                        <div className="w-full h-full rounded-full bg-white border-2 border-black"></div>
-                    </button>
+                {/* Control Buttons */}
+                <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent flex justify-center items-center">
+                    {isPreview ? (
+                        <div className="flex items-center justify-around w-full max-w-xs">
+                             <button onClick={handleRetake} className="flex flex-col items-center text-white font-semibold p-2 rounded-lg hover:bg-white/10">
+                                <ArrowPathIcon className="w-8 h-8 mb-1"/>
+                                <span>إعادة</span>
+                            </button>
+                             <button onClick={handleSave} className="w-20 h-20 rounded-full bg-blue-500 flex items-center justify-center p-1 ring-4 ring-black/30 hover:bg-blue-600" aria-label="حفظ الصورة">
+                                <CheckCircleIcon className="w-12 h-12 text-white"/>
+                            </button>
+                        </div>
+                    ) : (
+                        <button onClick={handleCapture} disabled={isLoading} className="w-20 h-20 rounded-full bg-white flex items-center justify-center p-1 ring-4 ring-black/30 disabled:opacity-50" aria-label="التقاط صورة">
+                            <div className="w-full h-full rounded-full bg-white border-2 border-black"></div>
+                        </button>
+                    )}
                 </div>
             </div>
         </div>
