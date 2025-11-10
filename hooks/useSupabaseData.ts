@@ -150,11 +150,13 @@ const validateAndFixData = (loadedData: any, user: User | null): AppData => {
     const validatedData: AppData = {
         clients: safeArray(loadedData.clients, (client) => {
             if (!isValidObject(client) || !client.id || !client.name) return undefined;
+            const clientUserId = client.user_id;
             return {
                 id: String(client.id),
                 name: String(client.name),
                 contactInfo: String(client.contactInfo || ''),
                 updated_at: reviveDate(client.updated_at),
+                user_id: clientUserId,
                 cases: safeArray(client.cases, (caseItem) => {
                     if (!isValidObject(caseItem) || !caseItem.id) return undefined;
                     return {
@@ -165,6 +167,7 @@ const validateAndFixData = (loadedData: any, user: User | null): AppData => {
                         feeAgreement: String(caseItem.feeAgreement || ''),
                         status: ['active', 'closed', 'on_hold'].includes(caseItem.status) ? caseItem.status : 'active',
                         updated_at: reviveDate(caseItem.updated_at),
+                        user_id: clientUserId,
                         stages: safeArray(caseItem.stages, (stage) => {
                             if (!isValidObject(stage) || !stage.id) return undefined;
                             return {
@@ -177,6 +180,7 @@ const validateAndFixData = (loadedData: any, user: User | null): AppData => {
                                 decisionSummary: String(stage.decisionSummary || ''),
                                 decisionNotes: String(stage.decisionNotes || ''),
                                 updated_at: reviveDate(stage.updated_at),
+                                user_id: clientUserId,
                                 sessions: safeArray(stage.sessions, (session) => {
                                     if (!isValidObject(session) || !session.id) return undefined;
                                     return {
@@ -194,6 +198,7 @@ const validateAndFixData = (loadedData: any, user: User | null): AppData => {
                                         stageId: session.stageId,
                                         stageDecisionDate: session.stageDecisionDate,
                                         updated_at: reviveDate(session.updated_at),
+                                        user_id: clientUserId,
                                     };
                                 }),
                             };
@@ -482,9 +487,39 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         }
     }, [isOnline, isDirty, isAutoSyncEnabled, syncStatus, manualSync]);
     
+    const exportData = React.useCallback((): boolean => {
+        try {
+            const dataToExport = {
+                ...data,
+                // We don't export profiles or site finances in user backups
+                profiles: undefined,
+                siteFinances: undefined,
+            };
+            const jsonString = JSON.stringify(dataToExport, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            a.download = `lawyer_app_backup_${timestamp}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            return true;
+        } catch (error) {
+            console.error('Failed to export data:', error);
+            return false;
+        }
+    }, [data]);
+    
+    const currentUserProfile = React.useMemo(() => {
+        return data.profiles.find(p => p.id === user?.id);
+    }, [data.profiles, user]);
+
     // Auto backup effect
     React.useEffect(() => {
-        if (isAutoBackupEnabled && !isDataLoading) {
+        if (isAutoBackupEnabled && !isDataLoading && currentUserProfile?.is_approved) {
             const todayStr = toInputDateString(new Date());
             const lastBackupKey = `lastBackupDate_${user?.id}`;
             const lastBackupDate = localStorage.getItem(lastBackupKey);
@@ -496,7 +531,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                  }
             }
         }
-    }, [isAutoBackupEnabled, isDataLoading, user?.id]);
+    }, [isAutoBackupEnabled, isDataLoading, user?.id, currentUserProfile, exportData]);
 
     React.useEffect(() => {
         const checkAppointments = () => {
@@ -553,10 +588,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             channel.unsubscribe();
         };
     }, [isOnline, user, fetchAndRefresh]);
-
-    const currentUserProfile = React.useMemo(() => {
-        return data.profiles.find(p => p.id === user?.id);
-    }, [data.profiles, user]);
 
     React.useEffect(() => {
         if (currentUserProfile?.role !== 'admin' || isDataLoading) {
@@ -673,6 +704,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                                 isPostponed: false,
                                 assignee: oldSession.assignee, // Carry over the assignee
                                 updated_at: new Date(),
+                                user_id: oldSession.user_id, // Propagate user_id
                             };
     
                             // Update the old session to mark it as postponed
@@ -896,32 +928,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         }
         
         return null;
-    };
-    
-    const exportData = (): boolean => {
-        try {
-            const dataToExport = {
-                ...data,
-                // We don't export profiles or site finances in user backups
-                profiles: undefined,
-                siteFinances: undefined,
-            };
-            const jsonString = JSON.stringify(dataToExport, null, 2);
-            const blob = new Blob([jsonString], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            a.download = `lawyer_app_backup_${timestamp}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            return true;
-        } catch (error) {
-            console.error('Failed to export data:', error);
-            return false;
-        }
     };
 
     return {

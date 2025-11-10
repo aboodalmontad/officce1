@@ -344,11 +344,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
                  setClients(prev => prev.map(c => c.id === context.clientId ? {
                     ...c,
                     updated_at: new Date(),
-                    cases: c.cases.map(cs => cs.id === context.caseId ? {
-                        ...cs,
-                        updated_at: new Date(),
-                        stages: cs.stages.map(st => st.id === context.stageId ? { ...st, updated_at: new Date(), sessions: [...st.sessions, newSession] } : st)
-                    } : cs)
+                    cases: c.cases.map(cs => cs.id === context.caseId ? { ...cs, updated_at: new Date(), stages: [...cs.stages, newSession] } : cs)
                 } : c));
             }
         }
@@ -377,7 +373,11 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ showContextMenu, onOpenAdminT
     
     const handleConfirmDeleteCase = async () => {
         if (caseToDelete) {
-            await deleteCase(caseToDelete.caseId, caseToDelete.clientId);
+            try {
+                await deleteCase(caseToDelete.caseId, caseToDelete.clientId);
+            } catch (err: any) {
+                alert(`فشل حذف القضية: ${err.message}`);
+            }
         }
         setIsDeleteCaseModalOpen(false);
         setCaseToDelete(null);

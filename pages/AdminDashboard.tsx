@@ -44,29 +44,48 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     const { profiles, isDataLoading: loading } = useData();
     const [view, setView] = React.useState<AdminView>('analytics');
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
-    // State to manage audio/vibration permission prompt
-    const [audioUnlocked, setAudioUnlocked] = React.useState(false);
 
     const pendingUsersCount = React.useMemo(() => {
         return profiles.filter(p => !p.is_approved && p.role !== 'admin').length;
     }, [profiles]);
 
-    // This function is triggered by an explicit user click to unlock audio and vibration APIs,
-    // which is a more reliable way to handle browser autoplay restrictions.
-    const handleUnlockAudio = () => {
-        // A minimal, silent audio file to unlock the AudioContext.
-        const silentAudio = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
-        silentAudio.play().catch(() => {}); // Play and ignore errors; the goal is just to register a user gesture.
+    // Automatically unlock audio and vibration on component mount.
+    // This is required by modern browsers which restrict autoplay until a user interaction.
+    React.useEffect(() => {
+        const unlockAudioAndVibration = () => {
+            // A minimal, silent audio file to unlock the AudioContext.
+            const silentAudio = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+            
+            const tryVibrate = () => {
+                if ('vibrate' in navigator && typeof navigator.vibrate === 'function') {
+                    // A minimal vibration to "wake up" the vibration API.
+                    navigator.vibrate(0);
+                }
+            };
+            
+            const attemptPlay = () => silentAudio.play();
+            
+            attemptPlay().then(() => {
+                console.log('Audio and Vibration APIs unlocked on mount.');
+                tryVibrate();
+            }).catch(() => {
+                console.warn('Audio autoplay was blocked. It will be enabled after the first user interaction.');
+                const enableOnInteraction = () => {
+                    attemptPlay().catch(() => {}); // Try again, ignore further errors.
+                    tryVibrate();
+                    // Fix: The event listeners are added with the `once: true` option, which automatically
+                    // removes them after they are invoked. Manually calling `removeEventListener` is not
+                    // necessary and was causing an error because it was passed an invalid options object.
+                    console.log('Audio and Vibration APIs unlocked after user interaction.');
+                };
+                // Set up listeners for the first interaction.
+                window.addEventListener('click', enableOnInteraction, { once: true });
+                window.addEventListener('touchend', enableOnInteraction, { once: true });
+            }); 
+        };
 
-        // A minimal vibration to "wake up" the vibration API.
-        if ('vibrate' in navigator && typeof navigator.vibrate === 'function') {
-            navigator.vibrate(0);
-        }
-        
-        // Hide the prompt for the rest of the session.
-        setAudioUnlocked(true);
-        console.log('Audio and Vibration APIs explicitly unlocked by user for this session.');
-    };
+        unlockAudioAndVibration();
+    }, []); // Empty dependency array ensures this runs only once on mount.
 
 
     const renderView = () => {
@@ -158,24 +177,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                     {renderView()}
                 </main>
             </div>
-
-            {/* Audio/Vibration Unlock Prompt */}
-            {!audioUnlocked && (
-                <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-auto z-50 animate-fade-in">
-                    <div className="max-w-md mx-auto bg-gray-800 text-white p-4 rounded-lg shadow-lg flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                            <ExclamationTriangleIcon className="w-6 h-6 text-yellow-400 flex-shrink-0" />
-                            <p className="text-sm font-medium">لتفعيل التنبيهات الصوتية والاهتزاز، يرجى النقر على زر التفعيل.</p>
-                        </div>
-                        <button 
-                            onClick={handleUnlockAudio}
-                            className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition-colors text-sm flex-shrink-0"
-                        >
-                            تفعيل
-                        </button>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

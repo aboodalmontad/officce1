@@ -225,6 +225,7 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
 
                 // Fallback to offline login if online attempt fails due to network issues.
                 if (lowerMsg.includes('failed to fetch') || lowerMsg.includes('networkerror')) {
+                    setInfo("فشل الاتصال بالخادم. جاري محاولة تسجيل الدخول دون اتصال...");
                     console.log("Online login failed due to network error, attempting offline login as fallback.");
                     performOfflineLogin();
                     return;

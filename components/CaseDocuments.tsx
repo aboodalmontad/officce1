@@ -374,27 +374,13 @@ const DocumentScannerModal: React.FC<{ onClose: () => void; onCapture: (file: Fi
                 <video ref={videoRef} autoPlay playsInline className={`w-full h-full object-cover ${isPreview ? 'hidden' : ''}`}></video>
                 <canvas ref={canvasRef} className={`w-full h-full object-contain ${isPreview ? '' : 'hidden'}`}></canvas>
                 
+                {/* Overlay for alignment (only for camera view) */}
                 {!isPreview && (
-                    <div className="absolute inset-0 flex items-center justify-center p-4 sm:p-8 pointer-events-none">
-                        <div 
-                            className="relative w-auto h-auto"
-                            style={{ 
-                                aspectRatio: '210 / 297', // A4 Portrait
-                                maxWidth: '100%',
-                                maxHeight: '100%',
-                                boxShadow: '0 0 0 9999px rgba(0,0,0,0.6)',
-                            }}
-                        >
-                            <div className="absolute inset-0 border-2 border-dashed border-white/50 rounded-xl"></div>
-                            <div className="absolute top-0 left-0 w-10 h-10 border-t-4 border-l-4 border-white rounded-tl-xl"></div>
-                            <div className="absolute top-0 right-0 w-10 h-10 border-t-4 border-r-4 border-white rounded-tr-xl"></div>
-                            <div className="absolute bottom-0 left-0 w-10 h-10 border-b-4 border-l-4 border-white rounded-bl-xl"></div>
-                            <div className="absolute bottom-0 right-0 w-10 h-10 border-b-4 border-r-4 border-white rounded-br-xl"></div>
-
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white/70 text-center bg-black/30 p-2 rounded-md">
-                                <p>ضع المستند داخل الإطار</p>
-                            </div>
-                        </div>
+                    <div className="absolute inset-0 pointer-events-none border-[1rem] sm:border-[2rem] border-black/50">
+                        <div className="absolute top-4 left-4 sm:top-8 sm:left-8 border-t-4 border-l-4 border-white h-12 w-12 sm:h-16 sm:w-16 opacity-75 rounded-tl-lg"></div>
+                        <div className="absolute top-4 right-4 sm:top-8 sm:right-8 border-t-4 border-r-4 border-white h-12 w-12 sm:h-16 sm:w-16 opacity-75 rounded-tr-lg"></div>
+                        <div className="absolute bottom-4 left-4 sm:bottom-8 sm:left-8 border-b-4 border-l-4 border-white h-12 w-12 sm:h-16 sm:w-16 opacity-75 rounded-bl-lg"></div>
+                        <div className="absolute bottom-4 right-4 sm:bottom-8 sm:right-8 border-b-4 border-r-4 border-white h-12 w-12 sm:h-16 sm:w-16 opacity-75 rounded-br-lg"></div>
                     </div>
                 )}
 
@@ -447,9 +433,13 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
         [documents, caseId]
     );
 
-    const handleFileChange = (files: FileList | null) => {
+    const handleFileChange = async (files: FileList | null) => {
         if (files && files.length > 0) {
-            addDocuments(caseId, files);
+            try {
+                await addDocuments(caseId, files);
+            } catch (err: any) {
+                alert(`فشل في إضافة الوثائق: ${err.message}`);
+            }
         }
     };
     
@@ -463,12 +453,12 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
         }
     };
     
-    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragging(false);
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            handleFileChange(e.dataTransfer.files);
+            await handleFileChange(e.dataTransfer.files);
         }
     };
 
@@ -477,18 +467,26 @@ const CaseDocuments: React.FC<CaseDocumentsProps> = ({ caseId }) => {
         setIsDeleteModalOpen(true);
     };
 
-    const confirmDelete = () => {
+    const confirmDelete = async () => {
         if (docToDelete) {
-            deleteDocument(docToDelete);
+            try {
+                await deleteDocument(docToDelete);
+            } catch (err: any) {
+                alert(`فشل في حذف الوثيقة: ${err.message}`);
+            }
         }
         setIsDeleteModalOpen(false);
         setDocToDelete(null);
     };
 
-    const handlePhotoCapture = (file: File) => {
+    const handlePhotoCapture = async (file: File) => {
         const fileList = new DataTransfer();
         fileList.items.add(file);
-        addDocuments(caseId, fileList.files);
+        try {
+            await addDocuments(caseId, fileList.files);
+        } catch (err: any) {
+            alert(`فشل في إضافة الوثيقة الملتقطة: ${err.message}`);
+        }
         setIsCameraOpen(false);
     };
     

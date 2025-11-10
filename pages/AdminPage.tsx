@@ -4,6 +4,7 @@ import { Profile } from '../types';
 import { formatDate, toInputDateString } from '../utils/dateUtils';
 import { CheckCircleIcon, NoSymbolIcon, PencilIcon, TrashIcon, ExclamationTriangleIcon } from '../components/icons';
 import { useData } from '../App';
+import UserDetailsModal from '../components/UserDetailsModal';
 
 /**
  * A robust helper function to format the subscription date range for display.
@@ -66,6 +67,7 @@ const AdminPage: React.FC = () => {
     const [error, setError] = React.useState<string | null>(null);
     const [editingUser, setEditingUser] = React.useState<Profile | null>(null);
     const [userToDelete, setUserToDelete] = React.useState<Profile | null>(null);
+    const [viewingUser, setViewingUser] = React.useState<Profile | null>(null);
     const currentAdminId = userId;
     
     const supabase = getSupabaseClient();
@@ -83,16 +85,29 @@ const AdminPage: React.FC = () => {
 
     const handleConfirmDelete = async () => {
         if (!supabase || !userToDelete) return;
-
-        const { error } = await supabase.rpc('delete_user', {
-            user_id_to_delete: userToDelete.id
-        });
-
-        if (error) {
-            setError("Failed to delete user: " + error.message);
+        const userToDeleteId = userToDelete.id;
+    
+        try {
+            const { error: rpcError } = await supabase.rpc('delete_user', {
+                user_id_to_delete: userToDeleteId
+            });
+    
+            if (rpcError) throw rpcError;
+    
+            // On success, update the local state immediately
+            setUsers(prevUsers => prevUsers.filter(u => u.id !== userToDeleteId));
+            
+        } catch (err: any) {
+            let errorMessage = "فشل حذف المستخدم.";
+            if (String(err.message).toLowerCase().includes('failed to fetch')) {
+                errorMessage += " يرجى التحقق من اتصالك بالإنترنت.";
+            } else {
+                errorMessage += ` السبب: ${err.message}`;
+            }
+            setError(errorMessage);
+        } finally {
+            setUserToDelete(null); // Close modal regardless of outcome
         }
-        // Let realtime handle the UI update for consistency
-        setUserToDelete(null);
     };
     
     // Quick toggle functions
@@ -146,7 +161,12 @@ const AdminPage: React.FC = () => {
                     <tbody>
                         {sortedUsers.map(user => (
                             <tr key={user.id} className={`border-b ${!user.is_approved ? 'bg-yellow-50' : 'bg-white'}`}>
-                                <td className="px-6 py-4 font-medium text-gray-900">{user.full_name} {user.role === 'admin' && <span className="text-xs font-semibold text-blue-600">(مدير)</span>}</td>
+                                <td className="px-6 py-4 font-medium text-gray-900">
+                                    <button onClick={() => setViewingUser(user)} className="text-blue-600 hover:underline">
+                                        {user.full_name}
+                                    </button>
+                                    {user.role === 'admin' && <span className="text-xs font-semibold text-blue-600 ms-2">(مدير)</span>}
+                                </td>
                                 <td className="px-6 py-4">{getDisplayPhoneNumber(user.mobile_number)}</td>
                                 <td className="px-6 py-4">{user.created_at ? formatDate(new Date(user.created_at)) : '-'}</td>
                                 <td className="px-6 py-4">
@@ -212,6 +232,14 @@ const AdminPage: React.FC = () => {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {viewingUser && (
+                <UserDetailsModal 
+                    user={viewingUser} 
+                    onClose={() => setViewingUser(null)}
+                    onEdit={() => setEditingUser(viewingUser)}
+                />
             )}
         </div>
     );

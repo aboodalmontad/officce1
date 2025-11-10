@@ -56,17 +56,25 @@ const SiteFinancesPage: React.FC = () => {
         
         // This part remains to update profiles which is a separate concern from financial entries
         if (isSubscriptionRenewal && formData.user_id && formData.new_subscription_start && formData.new_subscription_end) {
-            const { error: profileError } = await supabase
-                .from('profiles')
-                .update({
-                    subscription_start_date: formData.new_subscription_start,
-                    subscription_end_date: formData.new_subscription_end
-                })
-                .eq('id', formData.user_id);
+            try {
+                const { error: profileError } = await supabase
+                    .from('profiles')
+                    .update({
+                        subscription_start_date: formData.new_subscription_start,
+                        subscription_end_date: formData.new_subscription_end
+                    })
+                    .eq('id', formData.user_id);
 
-            if (profileError) {
-                setError("Failed to update subscription: " + profileError.message);
-                // Optionally revert the financial entry change
+                if (profileError) throw profileError;
+
+            } catch (err: any) {
+                let errorMessage = "فشل تحديث الاشتراك.";
+                if (String(err.message).toLowerCase().includes('failed to fetch')) {
+                    errorMessage += " يرجى التحقق من اتصالك بالإنترنت.";
+                } else {
+                    errorMessage += ` السبب: ${err.message}`;
+                }
+                setError(errorMessage);
             }
         }
         

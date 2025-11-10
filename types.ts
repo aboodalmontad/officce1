@@ -28,6 +28,7 @@ export interface Session {
   stageId?: string;
   stageDecisionDate?: Date;
   updated_at?: Date;
+  user_id?: string;
 }
 
 export interface Stage {
@@ -41,6 +42,7 @@ export interface Stage {
   decisionSummary?: string;
   decisionNotes?: string;
   updated_at?: Date;
+  user_id?: string;
 }
 
 export interface Case {
@@ -52,6 +54,7 @@ export interface Case {
   feeAgreement: string;
   status: 'active' | 'closed' | 'on_hold';
   updated_at?: Date;
+  user_id?: string;
 }
 
 export interface Client {
@@ -60,6 +63,7 @@ export interface Client {
   contactInfo: string;
   cases: Case[];
   updated_at?: Date;
+  user_id?: string;
 }
 
 export interface AdminTask {
