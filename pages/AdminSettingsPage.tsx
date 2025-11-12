@@ -37,7 +37,7 @@ const AdminSettingsPage: React.FC = () => {
     };
 
     const playSound = () => {
-// Fix: Use the valid camelCase variable name 'defaultUserApprovalSoundBase64'.
+        // Fix: Use the valid camelCase variable name 'defaultUserApprovalSoundBase64'.
         const soundSource = customSound || defaultUserApprovalSoundBase64;
         try {
             // Create a new Audio object on demand for robust preview playback.
