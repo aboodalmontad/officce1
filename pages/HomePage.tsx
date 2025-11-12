@@ -1,7 +1,7 @@
 import * as React from 'react';
 import Calendar from '../components/Calendar';
 import { Session, AdminTask, Appointment, Stage, Client } from '../types';
-import { formatDate, isSameDay, isBeforeToday, toInputDateString, parseInputDateString } from '../utils/dateUtils';
+import { formatDate, isSameDay, isBeforeToday, toInputDateString } from '../utils/dateUtils';
 import { PrintIcon, PlusIcon, PencilIcon, TrashIcon, SearchIcon, ExclamationTriangleIcon, CalendarIcon, ChevronLeftIcon, ScaleIcon, BuildingLibraryIcon, ShareIcon, UserIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, HomeIcon, ListBulletIcon, ViewColumnsIcon } from '../components/icons';
 import SessionsTable from '../components/SessionsTable';
 import PrintableReport from '../components/PrintableReport';
@@ -147,8 +147,6 @@ const HomePage: React.FC<HomePageProps> = ({
         setAdminTasksLayout,
         adminTasksLocationOrder,
         setAdminTasksLocationOrder,
-        adminTasksOrder,
-        setAdminTasksOrder,
     } = useData();
 
     const [calendarViewDate, setCalendarViewDate] = React.useState(selectedDate);
@@ -241,16 +239,8 @@ const HomePage: React.FC<HomePageProps> = ({
         e.preventDefault();
         if (!newAppointment.title || !newAppointment.time || !newAppointment.date) return;
         
-        // Fix: Replaced a faulty date calculation that incorrectly combined a string and a number.
-        // The new implementation uses the robust `parseInputDateString` utility function,
-        // which correctly parses a 'YYYY-MM-DD' string into a local Date object, resolving the type error.
-        const appointmentDate = parseInputDateString(newAppointment.date);
-
-        if (!appointmentDate) {
-            console.warn(`Invalid date string provided to handleSaveAppointment: ${newAppointment.date}`);
-            // Optionally, set an error state to inform the user.
-            return;
-        }
+        const [year, month, day] = newAppointment.date.split('-').map(Number);
+        const appointmentDate = new Date(year, month - 1, day);
 
         if (editingAppointment) {
             setAppointments(prev => prev.map(apt => apt.id === editingAppointment.id ? {
@@ -313,7 +303,6 @@ const HomePage: React.FC<HomePageProps> = ({
     const handleConfirmDeleteTask = () => {
         if (taskToDelete) {
             deleteAdminTask(taskToDelete.id);
-            setAdminTasksOrder(prev => prev.filter(id => id !== taskToDelete.id));
             closeDeleteTaskModal();
         }
     };
@@ -348,9 +337,9 @@ const HomePage: React.FC<HomePageProps> = ({
     // --- Drag and Drop Handlers ---
     const handleDragStart = (e: React.DragEvent, type: 'task' | 'group', id: string) => { e.stopPropagation(); document.body.classList.add('grabbing'); if (type === 'task') { e.dataTransfer.setData('application/lawyer-app-task-id', id); e.dataTransfer.effectAllowed = 'move'; setDraggedTaskId(id); } else { e.dataTransfer.setData('application/lawyer-app-group-location', id); e.dataTransfer.effectAllowed = 'move'; setDraggedGroupLocation(id); } };
     const handleDragEnd = () => { document.body.classList.remove('grabbing'); setDraggedTaskId(null); setDraggedGroupLocation(null); };
-    const handleTaskDrop = (targetTaskId: string | null, targetLocation: string, position: 'before' | 'after') => { if (!draggedTaskId) return; setAdminTasks(currentTasks => { const taskToMoveIndex = currentTasks.findIndex(t => t.id === draggedTaskId); if (taskToMoveIndex === -1) return currentTasks; const taskToMove = { ...currentTasks[taskToMoveIndex], location: targetLocation, updated_at: new Date() }; const remainingTasks = currentTasks.filter(t => t.id !== draggedTaskId); let targetIndex: number; if (targetTaskId) { const initialTargetIndex = remainingTasks.findIndex(t => t.id === targetTaskId); targetIndex = position === 'before' ? initialTargetIndex : initialTargetIndex + 1; } else { const tasksInTargetLocation = remainingTasks.filter(t => t.location === targetLocation); targetIndex = tasksInTargetLocation.length > 0 ? remainingTasks.indexOf(tasksInTargetLocation[tasksInTargetLocation.length - 1]) + 1 : remainingTasks.length; } remainingTasks.splice(targetIndex, 0, taskToMove); setAdminTasksOrder(remainingTasks.map(t => t.id)); return remainingTasks; }); };
+    const handleTaskDrop = (targetTaskId: string | null, targetLocation: string, position: 'before' | 'after') => { if (!draggedTaskId) return; setAdminTasks(currentTasks => { const taskToMoveIndex = currentTasks.findIndex(t => t.id === draggedTaskId); if (taskToMoveIndex === -1) return currentTasks; const taskToMove = { ...currentTasks[taskToMoveIndex], location: targetLocation, updated_at: new Date() }; const remainingTasks = currentTasks.filter(t => t.id !== draggedTaskId); let targetIndex: number; if (targetTaskId) { const initialTargetIndex = remainingTasks.findIndex(t => t.id === targetTaskId); targetIndex = position === 'before' ? initialTargetIndex : initialTargetIndex + 1; } else { const tasksInTargetLocation = remainingTasks.filter(t => t.location === targetLocation); targetIndex = tasksInTargetLocation.length > 0 ? remainingTasks.indexOf(tasksInTargetLocation[tasksInTargetLocation.length - 1]) + 1 : remainingTasks.length; } remainingTasks.splice(targetIndex, 0, taskToMove); return remainingTasks; }); };
     const handleGroupDragOver = (e: React.DragEvent) => { e.preventDefault(); };
-    const handleGroupDrop = (e: React.DragEvent, targetLocation: string) => { e.preventDefault(); const taskId = e.dataTransfer.getData('application/lawyer-app-task-id'); const sourceGroupLocation = e.dataTransfer.getData('application/lawyer-app-group-location'); if (taskId) { handleTaskDrop(null, targetLocation, 'after'); } else if (sourceGroupLocation && sourceGroupLocation !== targetLocation) { setAdminTasksLocationOrder(currentOrder => { const sourceIndex = currentOrder.indexOf(sourceGroupLocation); const targetIndex = currentOrder.indexOf(targetLocation); if (sourceIndex === -1 || targetIndex === -1) return currentOrder; const newOrder = Array.from(currentOrder); const [movedGroup] = newOrder.splice(sourceIndex, 1); newOrder.splice(targetIndex, 0, movedGroup); return newOrder; }); } };
+    const handleGroupDrop = (e: React.DragEvent, targetLocation: string) => { e.preventDefault(); const taskId = e.dataTransfer.getData('application/lawyer-app-task-id'); if (taskId) { handleTaskDrop(null, targetLocation, 'after'); } };
 
     // Session Handlers
     const handlePostponeSession = (sessionId: string, newDate: Date, newReason: string) => { postponeSession(sessionId, newDate, newReason); };
@@ -362,36 +351,28 @@ const HomePage: React.FC<HomePageProps> = ({
     // Memos
     const dailyData = React.useMemo(() => ({ dailySessions: allSessions.filter(s => isSameDay(s.date, selectedDate)), dailyAppointments: appointments.filter(a => isSameDay(a.date, selectedDate)) }), [selectedDate, allSessions, appointments]);
     const upcomingSessions = React.useMemo(() => { const tomorrow = new Date(selectedDate); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(0, 0, 0, 0); return allSessions.filter(s => new Date(s.date) >= tomorrow).sort((a, b) => a.date.getTime() - b.date.getTime()); }, [allSessions, selectedDate]);
-    const groupedTasks: Record<string, AdminTask[]> = React.useMemo(() => {
-        const isCompleted = activeTaskTab === 'completed';
-        const filtered = adminTasks.filter(task => {
-            const searchLower = debouncedAdminTaskSearch.toLowerCase();
-            const matchesSearch = searchLower === '' || task.task.toLowerCase().includes(searchLower) || (task.assignee && task.assignee.toLowerCase().includes(searchLower)) || (task.location && task.location.toLowerCase().includes(searchLower));
-            return task.completed === isCompleted && matchesSearch;
-        });
-
-        if (adminTasksOrder && adminTasksOrder.length > 0) {
-            const orderMap = new Map(adminTasksOrder.map((id, index) => [id, index]));
-            filtered.sort((a, b) => {
-                const posA = orderMap.get(a.id);
-                const posB = orderMap.get(b.id);
-                if (posA === undefined && posB === undefined) return 0;
-                if (posA === undefined) return 1;
-                if (posB === undefined) return -1;
-                return posA - posB;
-            });
-        }
-        
-        return filtered.reduce((acc, task) => {
-            const location = task.location || 'غير محدد';
-            if (!acc[location]) { acc[location] = []; }
-            acc[location].push(task);
-            return acc;
-        }, {} as Record<string, AdminTask[]>);
-    }, [adminTasks, activeTaskTab, debouncedAdminTaskSearch, adminTasksOrder]);
+    const groupedTasks: Record<string, AdminTask[]> = React.useMemo(() => { const isCompleted = activeTaskTab === 'completed'; const filtered = adminTasks.filter(task => { const searchLower = debouncedAdminTaskSearch.toLowerCase(); const matchesSearch = searchLower === '' || task.task.toLowerCase().includes(searchLower) || (task.assignee && task.assignee.toLowerCase().includes(searchLower)) || (task.location && task.location.toLowerCase().includes(searchLower)); return task.completed === isCompleted && matchesSearch; }); const importanceOrder = { 'urgent': 3, 'important': 2, 'normal': 1 }; if (activeTaskTab === 'pending') { filtered.sort((a, b) => { const importanceA = importanceOrder[a.importance]; const importanceB = importanceOrder[b.importance]; if (importanceA !== importanceB) return importanceB - importanceA; const dateA = new Date(a.dueDate).getTime(); const dateB = new Date(b.dueDate).getTime(); if (dateA !== dateB) return dateA - dateB; return a.task.localeCompare(b.task, 'ar'); }); } return filtered.reduce((acc, task) => { const location = task.location || 'غير محدد'; if (!acc[location]) { acc[location] = []; } acc[location].push(task); return acc; }, {} as Record<string, AdminTask[]>); }, [adminTasks, activeTaskTab, debouncedAdminTaskSearch]);
     
-    React.useEffect(() => { const newLocations = Object.keys(groupedTasks); setAdminTasksLocationOrder(currentOrder => { const currentOrderSanitized = currentOrder || []; const currentOrderSet = new Set(currentOrderSanitized); const newLocationsSet = new Set(newLocations); const updatedOrder = currentOrderSanitized.filter(loc => newLocationsSet.has(loc)); const newlyAddedLocations = newLocations.filter(loc => !currentOrderSet.has(loc)); return [...updatedOrder, ...newlyAddedLocations]; }); }, [groupedTasks, setAdminTasksLocationOrder]);
-    React.useEffect(() => { const finalLocationOrder = adminTasksLocationOrder || []; if (activeLocationTab && finalLocationOrder.includes(activeLocationTab)) { return; } if (finalLocationOrder.length > 0) { setActiveLocationTab(finalLocationOrder[0]); } else { setActiveLocationTab(''); } }, [adminTasksLocationOrder, activeLocationTab]);
+    const locationOrder = React.useMemo(() => {
+        const allKnownLocations = Object.keys(groupedTasks);
+        const persistedOrder = adminTasksLocationOrder || [];
+        
+        // Filter persisted order to only include locations that still exist
+        const orderedLocations = persistedOrder.filter(loc => allKnownLocations.includes(loc));
+        // Find new locations that are not in the persisted order yet
+        const newLocations = allKnownLocations.filter(loc => !persistedOrder.includes(loc));
+        
+        const finalOrder = [...orderedLocations, ...newLocations];
+
+        // If new locations were added, the orders will be different. Update the persisted order.
+        if (finalOrder.length > persistedOrder.length || !finalOrder.every((loc, i) => loc === persistedOrder[i])) {
+            setTimeout(() => setAdminTasksLocationOrder(finalOrder), 0);
+        }
+
+        return finalOrder;
+    }, [groupedTasks, adminTasksLocationOrder, setAdminTasksLocationOrder]);
+
+    React.useEffect(() => { if (activeLocationTab && locationOrder.includes(activeLocationTab)) { return; } if (locationOrder.length > 0) { setActiveLocationTab(locationOrder[0]); } else { setActiveLocationTab(''); } }, [locationOrder, activeLocationTab]);
 
     const handleDateSelect = (date: Date) => { setSelectedDate(date); setViewMode('daily'); };
     const handleShowTodaysAgenda = () => { const today = new Date(); setSelectedDate(today); setCalendarViewDate(today); setViewMode('daily'); };
@@ -406,7 +387,6 @@ const HomePage: React.FC<HomePageProps> = ({
     const handleAdminTaskTouchStart = (e: React.TouchEvent, task: AdminTask) => { adminTaskLongPressTimer.current = window.setTimeout(() => { const touch = e.touches[0]; const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY }; handleAdminTaskContextMenu(mockEvent as any, task); }, 500); };
     const handleAdminTaskTouchEnd = () => { if (adminTaskLongPressTimer.current !== null) { window.clearTimeout(adminTaskLongPressTimer.current); adminTaskLongPressTimer.current = null; } };
 
-    const finalLocationOrder = adminTasksLocationOrder || [];
     const renderTaskItem = (task: AdminTask, location: string) => ( <div key={task.id} draggable={activeTaskTab === 'pending'} onDragStart={e => handleDragStart(e, 'task', task.id)} onDragEnd={handleDragEnd} onDragOver={e => { if (activeTaskTab !== 'pending' || !draggedTaskId || draggedTaskId === task.id) return; e.preventDefault(); }} onDrop={e => { if (activeTaskTab !== 'pending') return; e.preventDefault(); e.stopPropagation(); const rect = e.currentTarget.getBoundingClientRect(); const midpoint = rect.top + rect.height / 2; const position = e.clientY < midpoint ? 'before' : 'after'; handleTaskDrop(task.id, location, position); }} onContextMenu={(e) => handleAdminTaskContextMenu(e, task)} onTouchStart={(e) => handleAdminTaskTouchStart(e, task)} onTouchEnd={handleAdminTaskTouchEnd} onTouchMove={handleAdminTaskTouchEnd} className={`p-3 border rounded-lg transition-all duration-150 ${draggedTaskId === task.id ? 'opacity-40 scale-95' : 'opacity-100 scale-100'} ${task.completed ? 'bg-green-50/70 border-green-200' : 'bg-white border-gray-200 hover:bg-gray-50 hover:shadow-sm'} ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`} > <div className="flex items-start gap-3"> <div className="flex-shrink-0 pt-1"> <input type="checkbox" checked={task.completed} onChange={() => handleToggleTaskComplete(task.id)} className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500" /> </div> <div className="flex-grow min-w-0"> <p className={`font-medium text-base whitespace-pre-wrap ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>{task.task}</p> <div className="mt-2 flex items-center gap-x-4 gap-y-2 text-sm text-gray-600"> <div className="flex items-center gap-1.5" onClick={() => activeTaskTab === 'pending' && setEditingAssigneeTaskId(task.id)}> <UserIcon className="w-4 h-4 text-gray-400" /> {editingAssigneeTaskId === task.id ? ( <select value={task.assignee} onChange={(e) => handleAssigneeChange(task.id, e.target.value)} onBlur={() => setEditingAssigneeTaskId(null)} className="p-1 border rounded bg-white text-sm focus:ring-blue-500 focus:border-blue-500" autoFocus> {assistants.map(name => ( <option key={name} value={name}> {name} </option> ))} </select> ) : ( <span className={activeTaskTab === 'pending' ? 'cursor-pointer hover:text-blue-600' : ''}> {task.assignee || '-'} </span> )} </div> <div className="flex items-center gap-1.5"> <CalendarIcon className="w-4 h-4 text-gray-400" /> <span>{formatDate(task.dueDate)}</span> </div> <div className="flex items-center gap-1.5"> <span className={`px-2 py-1 text-xs font-semibold rounded-full ${importanceMapAdminTasks[task.importance]?.className}`}> {importanceMapAdminTasks[task.importance]?.text} </span> </div> </div> </div> <div className="flex flex-col sm:flex-row items-center gap-0 sm:gap-1 flex-shrink-0"> <button onClick={() => handleShareTask(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-green-600 rounded-full" title="مشاركة عبر واتساب"><ShareIcon className="w-4 h-4" /></button> <button onClick={() => onOpenAdminTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-blue-600 rounded-full"><PencilIcon className="w-4 h-4" /></button> <button onClick={() => openDeleteTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-red-600 rounded-full"><TrashIcon className="w-4 h-4" /></button> </div> </div> </div> );
 
     return (
@@ -560,9 +540,9 @@ const HomePage: React.FC<HomePageProps> = ({
 
                     {adminTasksLayout === 'vertical' ? (
                         <div className="flex flex-row gap-4 pt-4">
-                            {finalLocationOrder.length > 0 && (
+                            {locationOrder.length > 0 && (
                                 <nav className="flex flex-col gap-2 w-28 flex-shrink-0" aria-label="Location Tabs">
-                                    {finalLocationOrder.map(location => (
+                                    {locationOrder.map(location => (
                                         <button
                                             key={location}
                                             onClick={() => setActiveLocationTab(location)}
@@ -599,7 +579,7 @@ const HomePage: React.FC<HomePageProps> = ({
                                 </nav>
                             )}
                             <div className="flex-grow min-w-0">
-                                 {finalLocationOrder.length > 0 && activeLocationTab ? (
+                                 {locationOrder.length > 0 && activeLocationTab ? (
                                     <div 
                                         onDragOver={handleGroupDragOver}
                                         onDrop={e => handleGroupDrop(e, activeLocationTab)}
@@ -616,7 +596,7 @@ const HomePage: React.FC<HomePageProps> = ({
                                 ) : (
                                     <div className="flex items-center justify-center bg-gray-50 border border-dashed rounded-lg min-h-[200px]">
                                         <p className="text-center text-gray-500 py-8">
-                                            {finalLocationOrder.length > 0 ? "اختر مجموعة لعرض المهام" : "لا توجد مهام لعرضها."}
+                                            {locationOrder.length > 0 ? "اختر مجموعة لعرض المهام" : "لا توجد مهام لعرضها."}
                                         </p>
                                     </div>
                                 )}
@@ -624,10 +604,10 @@ const HomePage: React.FC<HomePageProps> = ({
                         </div>
                     ) : (
                         <div className="pt-4">
-                            {finalLocationOrder.length > 0 ? (
+                            {locationOrder.length > 0 ? (
                                 <div>
                                     <nav className="-mb-px flex space-x-2 overflow-x-auto" aria-label="Location Tabs">
-                                        {finalLocationOrder.map(location => (
+                                        {locationOrder.map(location => (
                                             <button
                                                 key={location}
                                                 onClick={() => setActiveLocationTab(location)}

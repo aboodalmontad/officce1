@@ -20,8 +20,7 @@ interface UserSettings {
     isAutoSyncEnabled: boolean;
     isAutoBackupEnabled: boolean;
     adminTasksLayout: 'horizontal' | 'vertical';
-    adminTasksLocationOrder: string[];
-    adminTasksOrder: string[];
+    adminTasksLocationOrder?: string[];
 }
 
 const defaultSettings: UserSettings = {
@@ -29,7 +28,6 @@ const defaultSettings: UserSettings = {
     isAutoBackupEnabled: true,
     adminTasksLayout: 'horizontal',
     adminTasksLocationOrder: [],
-    adminTasksOrder: [],
 };
 
 
@@ -330,7 +328,10 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
     // --- User Settings State ---
     const [userSettings, setUserSettings] = React.useState<UserSettings>(defaultSettings);
-    const { isAutoSyncEnabled, isAutoBackupEnabled, adminTasksLayout, adminTasksLocationOrder, adminTasksOrder } = userSettings;
+    const isAutoSyncEnabled = userSettings.isAutoSyncEnabled;
+    const isAutoBackupEnabled = userSettings.isAutoBackupEnabled;
+    const adminTasksLayout = userSettings.adminTasksLayout;
+    const adminTasksLocationOrder = userSettings.adminTasksLocationOrder || [];
 
     const userRef = React.useRef(user);
     userRef.current = user;
@@ -351,8 +352,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         try {
             const storedSettings = localStorage.getItem(settingsKey);
             if (storedSettings) {
-                const parsed = JSON.parse(storedSettings);
-                setUserSettings({ ...defaultSettings, ...parsed });
+                setUserSettings(JSON.parse(storedSettings));
             }
         } catch (e) {
             console.error("Failed to load user settings from localStorage", e);
@@ -371,9 +371,13 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const setAutoSyncEnabled = (enabled: boolean) => updateSettings(p => ({ ...p, isAutoSyncEnabled: enabled }));
     const setAutoBackupEnabled = (enabled: boolean) => updateSettings(p => ({ ...p, isAutoBackupEnabled: enabled }));
     const setAdminTasksLayout = (layout: 'horizontal' | 'vertical') => updateSettings(p => ({ ...p, adminTasksLayout: layout }));
-    const setAdminTasksLocationOrder = (order: string[] | ((prev: string[]) => string[])) => updateSettings(p => ({ ...p, adminTasksLocationOrder: typeof order === 'function' ? order(p.adminTasksLocationOrder || []) : order }));
-    const setAdminTasksOrder = (order: string[] | ((prev: string[]) => string[])) => updateSettings(p => ({ ...p, adminTasksOrder: typeof order === 'function' ? order(p.adminTasksOrder || []) : order }));
-
+    const setAdminTasksLocationOrder = (order: string[] | ((prev: string[]) => string[])) => {
+        if (typeof order === 'function') {
+            updateSettings(p => ({...p, adminTasksLocationOrder: order(p.adminTasksLocationOrder || [])}));
+        } else {
+            updateSettings(p => ({ ...p, adminTasksLocationOrder: order }));
+        }
+    };
 
     const handleSyncStatusChange = React.useCallback((status: SyncStatus, error: string | null) => {
         setSyncStatus(status);
@@ -471,7 +475,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 setDeletedIds(storedDeletedIds || getInitialDeletedIds());
                 
                 if (isOnline) {
-                    await manualSync();
+                    await manualSync(true);
                 } else {
                     setSyncStatus('synced'); // Offline but data loaded
                 }
@@ -962,7 +966,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         isAutoBackupEnabled, setAutoBackupEnabled,
         adminTasksLayout, setAdminTasksLayout,
         adminTasksLocationOrder, setAdminTasksLocationOrder,
-        adminTasksOrder, setAdminTasksOrder,
         exportData,
         triggeredAlerts,
         dismissAlert,

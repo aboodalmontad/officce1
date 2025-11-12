@@ -3,14 +3,15 @@ import * as React from 'react';
 import type { Session as AuthSession, User } from '@supabase/supabase-js';
 
 // Statically import ALL page components to fix critical lazy loading/module errors.
-import ClientsPage from './pages/ClientsPage';
-import HomePage from './pages/HomePage';
-import AccountingPage from './pages/AccountingPage';
-import SettingsPage from './pages/SettingsPage';
-import LoginPage from './pages/LoginPage';
-import AdminDashboard from './pages/AdminDashboard';
-import PendingApprovalPage from './pages/PendingApprovalPage';
-import SubscriptionExpiredPage from './pages/SubscriptionExpiredPage';
+// Fix: Added '.tsx' extension to page imports to resolve "no default export" error, likely caused by a strict module resolver configuration in the build setup.
+import ClientsPage from './pages/ClientsPage.tsx';
+import HomePage from './pages/HomePage.tsx';
+import AccountingPage from './pages/AccountingPage.tsx';
+import SettingsPage from './pages/SettingsPage.tsx';
+import LoginPage from './pages/LoginPage.tsx';
+import AdminDashboard from './pages/AdminDashboard.tsx';
+import PendingApprovalPage from './pages/PendingApprovalPage.tsx';
+import SubscriptionExpiredPage from './pages/SubscriptionExpiredPage.tsx';
 
 
 import ConfigurationModal from './components/ConfigurationModal';
@@ -330,15 +331,13 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         if (taskData.id) { // Editing
             data.setAdminTasks(prev => prev.map(t => t.id === taskData.id ? { ...t, ...taskData, updated_at: new Date() } : t));
         } else { // Adding
-            const { id: _, ...taskDataWithoutId } = taskData;
             const newTask: AdminTask = {
                 id: `task-${Date.now()}`,
-                ...taskDataWithoutId,
+                ...taskData,
                 completed: false,
                 updated_at: new Date(),
             };
             data.setAdminTasks(prev => [...prev, newTask]);
-            data.setAdminTasksOrder(prev => [...prev, newTask.id]);
         }
         setIsAdminTaskModalOpen(false);
     };
@@ -645,9 +644,12 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 no-print p-4 overflow-y-auto" onClick={() => setIsShareAssigneeModalOpen(false)}>
                         <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
                             <h2 className="text-xl font-bold mb-4 border-b pb-3">اختر الشخص لإرسال جدول أعماله عبر واتساب</h2>
-                             <div className="space-y-3 max-h-80 overflow-y-auto">
-                                <button onClick={() => handleShareAssigneeReport(null)} className="w-full text-right px-4 py-3 bg-green-50 text-green-800 font-semibold rounded-lg hover:bg-green-100 transition-colors">
-                                    إرسال جدول الأعمال العام (الكل)
+                            <div className="space-y-3 max-h-80 overflow-y-auto">
+                                <button
+                                    onClick={() => handleShareAssigneeReport(null)}
+                                    className="w-full text-right px-4 py-3 bg-green-50 text-green-800 font-semibold rounded-lg hover:bg-green-100 transition-colors"
+                                >
+                                    إرسال جدول الأعمال العام (لكل المهام اليومية)
                                 </button>
                                 <h3 className="text-md font-semibold text-gray-600 pt-2">أو إرسال لشخص محدد:</h3>
                                 {data.assistants.map(name => (
@@ -660,7 +662,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                                     </button>
                                 ))}
                             </div>
-                             <div className="mt-6 flex justify-end">
+                            <div className="mt-6 flex justify-end">
                                 <button type="button" onClick={() => setIsShareAssigneeModalOpen(false)} className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors">إغلاق</button>
                             </div>
                         </div>
@@ -668,15 +670,25 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                 )}
 
                 {isPrintModalOpen && (
-                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-[100] no-print p-4 overflow-y-auto" onClick={() => setIsPrintModalOpen(false)}>
-                        <div className="bg-white p-2 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setIsPrintModalOpen(false)}>
+                        <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                             <div className="overflow-y-auto" ref={printReportRef}>
                                 <PrintableReport reportData={printableReportData} />
                             </div>
-                            <div className="mt-4 flex justify-end gap-4 border-t p-4 flex-shrink-0">
-                                <button type="button" onClick={() => setIsPrintModalOpen(false)} className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors">إغلاق</button>
-                                <button type="button" onClick={() => printElement(printReportRef.current)} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">
-                                    <PrintIcon className="w-5 h-5"/>
+                            <div className="mt-6 flex justify-end gap-4 border-t pt-4 no-print">
+                                <button
+                                    type="button"
+                                    className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
+                                    onClick={() => setIsPrintModalOpen(false)}
+                                >
+                                    إغلاق
+                                </button>
+                                <button
+                                    type="button"
+                                    className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={() => printElement(printReportRef.current)}
+                                >
+                                    <PrintIcon className="w-5 h-5" />
                                     <span>طباعة</span>
                                 </button>
                             </div>
