@@ -3,6 +3,17 @@ import { createRoot } from 'react-dom/client';
 // Fix: Corrected the import path for the App component by removing the `.tsx` extension. This is standard practice and helps module resolvers correctly locate the file, resolving the "no default export" error.
 import App from './App';
 
+// Listen for logout events from other tabs to ensure session state is synchronized.
+window.addEventListener('storage', (event) => {
+  // When the 'lawyerAppLoggedOut' key is set, it indicates another tab has signed out.
+  if (event.key === 'lawyerAppLoggedOut' && event.newValue === 'true') {
+    // Reload the page to clear the local session state and redirect to the login page.
+    // The flag is removed upon a new successful login, preventing reload loops.
+    window.location.reload();
+  }
+});
+
+
 // Register Service Worker for offline capabilities
 if ('serviceWorker' in navigator) {
   // This block handles service worker updates. When a new worker takes control,
