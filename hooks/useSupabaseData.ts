@@ -339,14 +339,31 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     
     const prevProfilesRef = React.useRef<Profile[]>([]);
 
+    // The core function to update state and persist to IndexedDB
+    const updateData = React.useCallback((updater: React.SetStateAction<AppData>) => {
+        if (!userRef.current) return;
+        const userId = userRef.current.id;
+
+        setData(currentData => {
+            const newData = typeof updater === 'function' 
+                ? (updater as (prevState: AppData) => AppData)(currentData) 
+                : updater;
+            
+            // Persist to IndexedDB
+            getDb().then(db => {
+                db.put(DATA_STORE_NAME, newData, userId);
+            });
+
+            setDirty(true);
+            return newData;
+        });
+    }, []);
+
     const setFullData = React.useCallback(async (newData: any) => {
         const validated = validateAndFixData(newData, userRef.current);
-        setData(validated);
-        setDirty(true);
-        const db = await getDb();
-        await db.put(DATA_STORE_NAME, validated, userRef.current!.id);
-        setDirty(true);
-    }, []);
+        updateData(validated);
+    }, [updateData]);
+
 
     React.useEffect(() => {
         const settingsKey = `userSettings_${user?.id}`;
@@ -556,18 +573,17 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                     return [...prev, ...newAlerts];
                 });
 
-                setData(currentData => ({
+                updateData(currentData => ({
                     ...currentData,
                     appointments: currentData.appointments.map(apt =>
                         upcomingAppointments.find(upcoming => upcoming.id === apt.id) ? { ...apt, notified: true, updated_at: new Date() } : apt
                     ),
                 }));
-                setDirty(true);
             }
         };
         const interval = setInterval(checkAppointments, 30000);
         return () => clearInterval(interval);
-    }, [data.appointments]);
+    }, [data.appointments, updateData]);
     
      // Realtime Subscription
     React.useEffect(() => {
@@ -664,15 +680,14 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             }
 
             if (documentsUpdated) {
-                setData(prev => ({ ...prev, documents: updatedDocuments }));
-                setDirty(true); // Mark data as dirty to sync the updated 'localState'
+                updateData({ ...data, documents: updatedDocuments });
             }
         };
 
         const handler = setTimeout(uploadPendingFiles, 2000); // Debounce to avoid rapid firing
         return () => clearTimeout(handler);
 
-    }, [isOnline, user, data.documents]);
+    }, [isOnline, user, data.documents, updateData]);
 
     const dismissAlert = (appointmentId: string) => {
         setTriggeredAlerts(prev => prev.filter(a => a.id !== appointmentId));
@@ -687,7 +702,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     };
 
     const postponeSession = (sessionId: string, newDate: Date, newReason: string) => {
-        setData(prev => {
+        updateData(prev => {
             const newClients = prev.clients.map(client => {
                 let clientModified = false;
                 const newCases = client.cases.map(caseItem => {
@@ -752,8 +767,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             // Only return a new object if something actually changed.
             return newClients.some((c, i) => c !== prev.clients[i]) ? { ...prev, clients: newClients } : prev;
         });
-    
-        setDirty(true);
     };
     
     // --- Memos for derived data ---
@@ -811,15 +824,16 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         setDirty(true);
     };
 
-    const deleteClient = (clientId: string) => { setData(p => ({ ...p, clients: p.clients.filter(c => c.id !== clientId) })); createDeleteFunction('clients')(clientId); };
+    const deleteClient = (clientId: string) => { 
+        updateData(p => ({ ...p, clients: p.clients.filter(c => c.id !== clientId) })); 
+        createDeleteFunction('clients')(clientId); 
+    };
     const deleteCase = async (caseId: string, clientId: string) => {
-        // Find documents to delete that are associated with the case
         const docsToDelete = data.documents.filter(doc => doc.caseId === caseId);
         const docIdsToDelete = docsToDelete.map(doc => doc.id);
-        const docPathsToDelete = docsToDelete.map(doc => doc.storagePath).filter(Boolean); // Ensure no null/empty paths
+        const docPathsToDelete = docsToDelete.map(doc => doc.storagePath).filter(Boolean);
 
-        // Update local state by removing the case and its documents
-        setData(p => {
+        updateData(p => {
             const updatedClients = p.clients.map(c => 
                 c.id === clientId 
                 ? { ...c, cases: c.cases.filter(cs => cs.id !== caseId) } 
@@ -829,7 +843,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             return { ...p, clients: updatedClients, documents: updatedDocuments };
         });
 
-        // Add all deleted IDs to the pending deletions list in IndexedDB
         const db = await getDb();
         setDeletedIds(prevDeletedIds => {
             const newDeletedIds = { 
@@ -841,25 +854,43 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             db.put(DATA_STORE_NAME, newDeletedIds, `deletedIds_${userRef.current!.id}`);
             return newDeletedIds;
         });
-        
-        setDirty(true);
     };
-    const deleteStage = (stageId: string, caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: p.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.filter(st => st.id !== stageId) } : cs) } : c) })); createDeleteFunction('stages')(stageId); };
-    const deleteSession = (sessionId: string, stageId: string, caseId: string, clientId: string) => { setData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: p.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.map(st => st.id === stageId ? { ...st, sessions: st.sessions.filter(s => s.id !== sessionId) } : st) } : cs) } : c) })); createDeleteFunction('sessions')(sessionId); };
-    const deleteAdminTask = (taskId: string) => { setData(p => ({...p, adminTasks: p.adminTasks.filter(t => t.id !== taskId)})); createDeleteFunction('adminTasks')(taskId); };
-    const deleteAppointment = (appointmentId: string) => { setData(p => ({...p, appointments: p.appointments.filter(a => a.id !== appointmentId)})); createDeleteFunction('appointments')(appointmentId); };
-    const deleteAccountingEntry = (entryId: string) => { setData(p => ({...p, accountingEntries: p.accountingEntries.filter(e => e.id !== entryId)})); createDeleteFunction('accountingEntries')(entryId); };
-    const deleteInvoice = (invoiceId: string) => { setData(p => ({...p, invoices: p.invoices.filter(i => i.id !== invoiceId)})); createDeleteFunction('invoices')(invoiceId); };
-    const deleteAssistant = (name: string) => { setData(p => ({...p, assistants: p.assistants.filter(a => a !== name)})); createDeleteFunction('assistants')(name); };
+    const deleteStage = (stageId: string, caseId: string, clientId: string) => { 
+        updateData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: p.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.filter(st => st.id !== stageId) } : cs) } : c) })); 
+        createDeleteFunction('stages')(stageId); 
+    };
+    const deleteSession = (sessionId: string, stageId: string, caseId: string, clientId: string) => { 
+        updateData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: p.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.map(st => st.id === stageId ? { ...st, sessions: st.sessions.filter(s => s.id !== sessionId) } : st) } : cs) } : c) })); 
+        createDeleteFunction('sessions')(sessionId); 
+    };
+    const deleteAdminTask = (taskId: string) => { 
+        updateData(p => ({...p, adminTasks: p.adminTasks.filter(t => t.id !== taskId)})); 
+        createDeleteFunction('adminTasks')(taskId); 
+    };
+    const deleteAppointment = (appointmentId: string) => { 
+        updateData(p => ({...p, appointments: p.appointments.filter(a => a.id !== appointmentId)})); 
+        createDeleteFunction('appointments')(appointmentId); 
+    };
+    const deleteAccountingEntry = (entryId: string) => { 
+        updateData(p => ({...p, accountingEntries: p.accountingEntries.filter(e => e.id !== entryId)})); 
+        createDeleteFunction('accountingEntries')(entryId); 
+    };
+    const deleteInvoice = (invoiceId: string) => { 
+        updateData(p => ({...p, invoices: p.invoices.filter(i => i.id !== invoiceId)})); 
+        createDeleteFunction('invoices')(invoiceId); 
+    };
+    const deleteAssistant = (name: string) => { 
+        updateData(p => ({...p, assistants: p.assistants.filter(a => a !== name)})); 
+        createDeleteFunction('assistants')(name); 
+    };
     const deleteDocument = async (doc: CaseDocument) => {
         const db = await getDb();
         await db.delete(DOCS_FILES_STORE_NAME, doc.id);
         await db.delete(DOCS_METADATA_STORE_NAME, doc.id);
-        setData(p => ({ ...p, documents: p.documents.filter(d => d.id !== doc.id) }));
+        updateData(p => ({ ...p, documents: p.documents.filter(d => d.id !== doc.id) }));
         const newDeletedIds = { ...deletedIds, documents: [...deletedIds.documents, doc.id], documentPaths: [...deletedIds.documentPaths, doc.storagePath] };
         setDeletedIds(newDeletedIds);
         await db.put(DATA_STORE_NAME, newDeletedIds, `deletedIds_${user!.id}`);
-        setDirty(true);
     };
 
     const addDocuments = async (caseId: string, files: FileList) => {
@@ -889,8 +920,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             await db.put(DOCS_METADATA_STORE_NAME, doc, doc.id);
             newDocs.push(doc);
         }
-        setData(p => ({...p, documents: [...p.documents, ...newDocs]}));
-        setDirty(true);
+        updateData(p => ({...p, documents: [...p.documents, ...newDocs]}));
     };
 
     const getDocumentFile = async (docId: string): Promise<File | null> => {
@@ -910,7 +940,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     
         if (doc.localState === 'pending_download' && isOnline && supabase) {
             try {
-                setData(p => ({...p, documents: p.documents.map(d => d.id === docId ? {...d, localState: 'downloading' } : d)}));
+                updateData(p => ({...p, documents: p.documents.map(d => d.id === docId ? {...d, localState: 'downloading' } : d)}));
     
                 const { data: blob, error: downloadError } = await supabase.storage.from('documents').download(doc.storagePath);
                 if (downloadError) throw downloadError;
@@ -921,13 +951,13 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 await db.put(DOCS_FILES_STORE_NAME, downloadedFile, doc.id);
                 await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'synced' }, doc.id);
     
-                setData(p => ({...p, documents: p.documents.map(d => d.id === docId ? {...d, localState: 'synced'} : d)}));
+                updateData(p => ({...p, documents: p.documents.map(d => d.id === docId ? {...d, localState: 'synced'} : d)}));
     
                 return downloadedFile;
             } catch (error: any) {
                 console.error(`Failed to download document ${docId}:`, error);
                 await db.put(DOCS_METADATA_STORE_NAME, { ...doc, localState: 'error' }, doc.id);
-                setData(p => ({...p, documents: p.documents.map(d => d.id === docId ? {...d, localState: 'error'} : d)}));
+                updateData(p => ({...p, documents: p.documents.map(d => d.id === docId ? {...d, localState: 'error'} : d)}));
                 return null;
             }
         }
@@ -937,18 +967,18 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
     return {
         ...data,
-        setClients: (updater) => { setData(prev => ({...prev, clients: updater(prev.clients)})); setDirty(true); },
-        setAdminTasks: (updater) => { setData(prev => ({...prev, adminTasks: updater(prev.adminTasks)})); setDirty(true); },
-        setAppointments: (updater) => { setData(prev => ({...prev, appointments: updater(prev.appointments)})); setDirty(true); },
-        setAccountingEntries: (updater) => { setData(prev => ({...prev, accountingEntries: updater(prev.accountingEntries)})); setDirty(true); },
-        setInvoices: (updater) => { setData(prev => ({...prev, invoices: updater(prev.invoices)})); setDirty(true); },
-        setAssistants: (updater) => { setData(prev => ({...prev, assistants: updater(prev.assistants)})); setDirty(true); },
-        setDocuments: (updater) => { setData(prev => ({...prev, documents: updater(prev.documents)})); setDirty(true); },
-        setProfiles: (updater) => { setData(prev => ({...prev, profiles: updater(prev.profiles)})); setDirty(true); },
-        setSiteFinances: (updater) => { setData(prev => ({...prev, siteFinances: updater(prev.siteFinances)})); setDirty(true); },
+        setClients: (updater) => updateData(prev => ({ ...prev, clients: updater(prev.clients) })),
+        setAdminTasks: (updater) => updateData(prev => ({ ...prev, adminTasks: updater(prev.adminTasks) })),
+        setAppointments: (updater) => updateData(prev => ({ ...prev, appointments: updater(prev.appointments) })),
+        setAccountingEntries: (updater) => updateData(prev => ({ ...prev, accountingEntries: updater(prev.accountingEntries) })),
+        setInvoices: (updater) => updateData(prev => ({ ...prev, invoices: updater(prev.invoices) })),
+        setAssistants: (updater) => updateData(prev => ({ ...prev, assistants: updater(prev.assistants) })),
+        setDocuments: (updater) => updateData(prev => ({ ...prev, documents: updater(prev.documents) })),
+        setProfiles: (updater) => updateData(prev => ({ ...prev, profiles: updater(prev.profiles) })),
+        setSiteFinances: (updater) => updateData(prev => ({ ...prev, siteFinances: updater(prev.siteFinances) })),
+        setFullData,
         allSessions,
         unpostponedSessions,
-        setFullData,
         syncStatus,
         manualSync,
         lastSyncError,
