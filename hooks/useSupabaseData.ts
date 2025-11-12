@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem, CaseDocument, AppData, DeletedIds, getInitialDeletedIds, Profile, SiteFinancialEntry } from '../types';
 import { useOnlineStatus } from './useOnlineStatus';
-// Fix: Use `import type` for User and RealtimeChannel as they are used as types, not values. This resolves module resolution errors in some environments.
+// Fix: Use `import type` for User and RealtimeChannel as they are used as types, not a value. This resolves module resolution errors in some environments.
 import type { User, RealtimeChannel } from '@supabase/supabase-js';
 import { useSync, SyncStatus as SyncStatusType } from './useSync';
 import { getSupabaseClient } from '../supabaseClient';
@@ -20,14 +20,14 @@ interface UserSettings {
     isAutoSyncEnabled: boolean;
     isAutoBackupEnabled: boolean;
     adminTasksLayout: 'horizontal' | 'vertical';
-    adminTasksLocationOrder?: string[];
+    locationOrder?: string[];
 }
 
 const defaultSettings: UserSettings = {
     isAutoSyncEnabled: true,
     isAutoBackupEnabled: true,
     adminTasksLayout: 'horizontal',
-    adminTasksLocationOrder: [],
+    locationOrder: [],
 };
 
 
@@ -209,7 +209,7 @@ const validateAndFixData = (loadedData: any, user: User | null): AppData => {
                 }),
             };
         }),
-        adminTasks: safeArray(loadedData.adminTasks, (task) => {
+        adminTasks: safeArray(loadedData.adminTasks, (task, index) => {
             if (!isValidObject(task) || !task.id) return undefined;
             return {
                 id: String(task.id),
@@ -220,6 +220,7 @@ const validateAndFixData = (loadedData: any, user: User | null): AppData => {
                 assignee: task.assignee,
                 location: task.location,
                 updated_at: reviveDate(task.updated_at),
+                orderIndex: typeof task.orderIndex === 'number' ? task.orderIndex : index,
             };
         }),
         appointments: safeArray(loadedData.appointments, (apt) => {
@@ -331,7 +332,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const isAutoSyncEnabled = userSettings.isAutoSyncEnabled;
     const isAutoBackupEnabled = userSettings.isAutoBackupEnabled;
     const adminTasksLayout = userSettings.adminTasksLayout;
-    const adminTasksLocationOrder = userSettings.adminTasksLocationOrder || [];
+    const locationOrder = userSettings.locationOrder;
 
     const userRef = React.useRef(user);
     userRef.current = user;
@@ -360,24 +361,16 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     }, [user?.id]);
 
     const updateSettings = (updater: (prev: UserSettings) => UserSettings) => {
-        setUserSettings(prevSettings => {
-            const newSettings = updater(prevSettings);
-            const settingsKey = `userSettings_${user?.id}`;
-            localStorage.setItem(settingsKey, JSON.stringify(newSettings));
-            return newSettings;
-        });
+        const newSettings = updater(userSettings);
+        setUserSettings(newSettings);
+        const settingsKey = `userSettings_${user?.id}`;
+        localStorage.setItem(settingsKey, JSON.stringify(newSettings));
     };
 
     const setAutoSyncEnabled = (enabled: boolean) => updateSettings(p => ({ ...p, isAutoSyncEnabled: enabled }));
     const setAutoBackupEnabled = (enabled: boolean) => updateSettings(p => ({ ...p, isAutoBackupEnabled: enabled }));
     const setAdminTasksLayout = (layout: 'horizontal' | 'vertical') => updateSettings(p => ({ ...p, adminTasksLayout: layout }));
-    const setAdminTasksLocationOrder = (order: string[] | ((prev: string[]) => string[])) => {
-        if (typeof order === 'function') {
-            updateSettings(p => ({...p, adminTasksLocationOrder: order(p.adminTasksLocationOrder || [])}));
-        } else {
-            updateSettings(p => ({ ...p, adminTasksLocationOrder: order }));
-        }
-    };
+    const setLocationOrder = (order: string[]) => updateSettings(p => ({ ...p, locationOrder: order }));
 
     const handleSyncStatusChange = React.useCallback((status: SyncStatus, error: string | null) => {
         setSyncStatus(status);
@@ -965,7 +958,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         isAutoSyncEnabled, setAutoSyncEnabled,
         isAutoBackupEnabled, setAutoBackupEnabled,
         adminTasksLayout, setAdminTasksLayout,
-        adminTasksLocationOrder, setAdminTasksLocationOrder,
+        locationOrder: locationOrder || [],
+        setLocationOrder,
         exportData,
         triggeredAlerts,
         dismissAlert,

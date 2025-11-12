@@ -145,8 +145,8 @@ const HomePage: React.FC<HomePageProps> = ({
         clients,
         adminTasksLayout,
         setAdminTasksLayout,
-        adminTasksLocationOrder,
-        setAdminTasksLocationOrder,
+        locationOrder: savedLocationOrder,
+        setLocationOrder: setSavedLocationOrder,
     } = useData();
 
     const [calendarViewDate, setCalendarViewDate] = React.useState(selectedDate);
@@ -166,9 +166,10 @@ const HomePage: React.FC<HomePageProps> = ({
     const [taskToDelete, setTaskToDelete] = React.useState<AdminTask | null>(null);
     
     // State for drag-and-drop of tasks
-    const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
+    const draggedTaskId = React.useRef<string | null>(null);
     
     // State for drag-and-drop of groups
+    const [locationOrder, setLocationOrder] = React.useState<string[]>([]);
     const [draggedGroupLocation, setDraggedGroupLocation] = React.useState<string | null>(null);
     const [activeLocationTab, setActiveLocationTab] = React.useState<string>('');
 
@@ -335,9 +336,75 @@ const HomePage: React.FC<HomePageProps> = ({
     };
 
     // --- Drag and Drop Handlers ---
-    const handleDragStart = (e: React.DragEvent, type: 'task' | 'group', id: string) => { e.stopPropagation(); document.body.classList.add('grabbing'); if (type === 'task') { e.dataTransfer.setData('application/lawyer-app-task-id', id); e.dataTransfer.effectAllowed = 'move'; setDraggedTaskId(id); } else { e.dataTransfer.setData('application/lawyer-app-group-location', id); e.dataTransfer.effectAllowed = 'move'; setDraggedGroupLocation(id); } };
-    const handleDragEnd = () => { document.body.classList.remove('grabbing'); setDraggedTaskId(null); setDraggedGroupLocation(null); };
-    const handleTaskDrop = (targetTaskId: string | null, targetLocation: string, position: 'before' | 'after') => { if (!draggedTaskId) return; setAdminTasks(currentTasks => { const taskToMoveIndex = currentTasks.findIndex(t => t.id === draggedTaskId); if (taskToMoveIndex === -1) return currentTasks; const taskToMove = { ...currentTasks[taskToMoveIndex], location: targetLocation, updated_at: new Date() }; const remainingTasks = currentTasks.filter(t => t.id !== draggedTaskId); let targetIndex: number; if (targetTaskId) { const initialTargetIndex = remainingTasks.findIndex(t => t.id === targetTaskId); targetIndex = position === 'before' ? initialTargetIndex : initialTargetIndex + 1; } else { const tasksInTargetLocation = remainingTasks.filter(t => t.location === targetLocation); targetIndex = tasksInTargetLocation.length > 0 ? remainingTasks.indexOf(tasksInTargetLocation[tasksInTargetLocation.length - 1]) + 1 : remainingTasks.length; } remainingTasks.splice(targetIndex, 0, taskToMove); return remainingTasks; }); };
+    const handleDragStart = (e: React.DragEvent, type: 'task' | 'group', id: string) => { e.stopPropagation(); document.body.classList.add('grabbing'); if (type === 'task') { e.dataTransfer.setData('application/lawyer-app-task-id', id); e.dataTransfer.effectAllowed = 'move'; draggedTaskId.current = id; } else { e.dataTransfer.setData('application/lawyer-app-group-location', id); e.dataTransfer.effectAllowed = 'move'; setDraggedGroupLocation(id); } };
+    const handleDragEnd = () => { document.body.classList.remove('grabbing'); draggedTaskId.current = null; setDraggedGroupLocation(null); };
+
+    const handleTaskDrop = (targetTaskId: string | null, targetLocation: string, position: 'before' | 'after') => {
+        const currentDraggedId = draggedTaskId.current;
+        if (!currentDraggedId) return;
+    
+        setAdminTasks(currentTasks => {
+            const updatedTasks = currentTasks.map(t => ({...t}));
+    
+            const draggedTask = updatedTasks.find(t => t.id === currentDraggedId);
+            if (!draggedTask) return currentTasks;
+    
+            const sourceLocation = draggedTask.location || 'غير محدد';
+            const isChangingGroup = sourceLocation !== targetLocation;
+            
+            draggedTask.location = targetLocation;
+            draggedTask.updated_at = new Date();
+    
+            // Get target group, sorted, and find splice index
+            let targetGroup = updatedTasks
+                .filter(t => (t.location || 'غير محدد') === targetLocation)
+                .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+    
+            // Remove dragged task from it
+            const draggedTaskIndexInTarget = targetGroup.findIndex(t => t.id === currentDraggedId);
+            if(draggedTaskIndexInTarget > -1) {
+                targetGroup.splice(draggedTaskIndexInTarget, 1);
+            }
+    
+            // Find insert position
+            let insertIndex = targetGroup.length;
+            if(targetTaskId) {
+                const targetTaskIndexInTarget = targetGroup.findIndex(t => t.id === targetTaskId);
+                if(targetTaskIndexInTarget > -1) {
+                    insertIndex = position === 'before' ? targetTaskIndexInTarget : targetTaskIndexInTarget + 1;
+                }
+            }
+            
+            targetGroup.splice(insertIndex, 0, draggedTask);
+    
+            // Re-index target group
+            targetGroup.forEach((task, index) => {
+                const originalTask = updatedTasks.find(t => t.id === task.id);
+                if(originalTask && originalTask.orderIndex !== index) {
+                    originalTask.orderIndex = index;
+                    originalTask.updated_at = new Date();
+                }
+            });
+    
+            // Re-index source group if needed
+            if (isChangingGroup) {
+                const sourceGroup = updatedTasks
+                    .filter(t => (t.location || 'غير محدد') === sourceLocation && t.id !== currentDraggedId)
+                    .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+    
+                sourceGroup.forEach((task, index) => {
+                    const originalTask = updatedTasks.find(t => t.id === task.id);
+                    if(originalTask && originalTask.orderIndex !== index) {
+                        originalTask.orderIndex = index;
+                        originalTask.updated_at = new Date();
+                    }
+                });
+            }
+            
+            return updatedTasks;
+        });
+    };
+    
     const handleGroupDragOver = (e: React.DragEvent) => { e.preventDefault(); };
     const handleGroupDrop = (e: React.DragEvent, targetLocation: string) => { e.preventDefault(); const taskId = e.dataTransfer.getData('application/lawyer-app-task-id'); if (taskId) { handleTaskDrop(null, targetLocation, 'after'); } };
 
@@ -351,27 +418,28 @@ const HomePage: React.FC<HomePageProps> = ({
     // Memos
     const dailyData = React.useMemo(() => ({ dailySessions: allSessions.filter(s => isSameDay(s.date, selectedDate)), dailyAppointments: appointments.filter(a => isSameDay(a.date, selectedDate)) }), [selectedDate, allSessions, appointments]);
     const upcomingSessions = React.useMemo(() => { const tomorrow = new Date(selectedDate); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(0, 0, 0, 0); return allSessions.filter(s => new Date(s.date) >= tomorrow).sort((a, b) => a.date.getTime() - b.date.getTime()); }, [allSessions, selectedDate]);
-    const groupedTasks: Record<string, AdminTask[]> = React.useMemo(() => { const isCompleted = activeTaskTab === 'completed'; const filtered = adminTasks.filter(task => { const searchLower = debouncedAdminTaskSearch.toLowerCase(); const matchesSearch = searchLower === '' || task.task.toLowerCase().includes(searchLower) || (task.assignee && task.assignee.toLowerCase().includes(searchLower)) || (task.location && task.location.toLowerCase().includes(searchLower)); return task.completed === isCompleted && matchesSearch; }); const importanceOrder = { 'urgent': 3, 'important': 2, 'normal': 1 }; if (activeTaskTab === 'pending') { filtered.sort((a, b) => { const importanceA = importanceOrder[a.importance]; const importanceB = importanceOrder[b.importance]; if (importanceA !== importanceB) return importanceB - importanceA; const dateA = new Date(a.dueDate).getTime(); const dateB = new Date(b.dueDate).getTime(); if (dateA !== dateB) return dateA - dateB; return a.task.localeCompare(b.task, 'ar'); }); } return filtered.reduce((acc, task) => { const location = task.location || 'غير محدد'; if (!acc[location]) { acc[location] = []; } acc[location].push(task); return acc; }, {} as Record<string, AdminTask[]>); }, [adminTasks, activeTaskTab, debouncedAdminTaskSearch]);
+    const groupedTasks: Record<string, AdminTask[]> = React.useMemo(() => {
+        const isCompleted = activeTaskTab === 'completed';
+        const filtered = adminTasks.filter(task => {
+            const searchLower = debouncedAdminTaskSearch.toLowerCase();
+            const matchesSearch = searchLower === '' || task.task.toLowerCase().includes(searchLower) || (task.assignee && task.assignee.toLowerCase().includes(searchLower)) || (task.location && task.location.toLowerCase().includes(searchLower));
+            return task.completed === isCompleted && matchesSearch;
+        });
+        
+        // Sort by the user-defined order index.
+        filtered.sort((a, b) => (a.orderIndex ?? Infinity) - (b.orderIndex ?? Infinity));
+
+        return filtered.reduce((acc, task) => {
+            const location = task.location || 'غير محدد';
+            if (!acc[location]) {
+                acc[location] = [];
+            }
+            acc[location].push(task);
+            return acc;
+        }, {} as Record<string, AdminTask[]>);
+    }, [adminTasks, activeTaskTab, debouncedAdminTaskSearch]);
     
-    const locationOrder = React.useMemo(() => {
-        const allKnownLocations = Object.keys(groupedTasks);
-        const persistedOrder = adminTasksLocationOrder || [];
-        
-        // Filter persisted order to only include locations that still exist
-        const orderedLocations = persistedOrder.filter(loc => allKnownLocations.includes(loc));
-        // Find new locations that are not in the persisted order yet
-        const newLocations = allKnownLocations.filter(loc => !persistedOrder.includes(loc));
-        
-        const finalOrder = [...orderedLocations, ...newLocations];
-
-        // If new locations were added, the orders will be different. Update the persisted order.
-        if (finalOrder.length > persistedOrder.length || !finalOrder.every((loc, i) => loc === persistedOrder[i])) {
-            setTimeout(() => setAdminTasksLocationOrder(finalOrder), 0);
-        }
-
-        return finalOrder;
-    }, [groupedTasks, adminTasksLocationOrder, setAdminTasksLocationOrder]);
-
+    React.useEffect(() => { const allKnownLocations = new Set(Object.keys(groupedTasks)); const currentSavedOrder = savedLocationOrder || []; const ordered = currentSavedOrder.filter(loc => allKnownLocations.has(loc)); const orderedSet = new Set(ordered); let changed = false; allKnownLocations.forEach(loc => { if (!orderedSet.has(loc)) { ordered.push(loc); changed = true; } }); if (changed || ordered.length !== currentSavedOrder.length) { setSavedLocationOrder(ordered); } setLocationOrder(ordered); }, [groupedTasks, savedLocationOrder, setSavedLocationOrder]);
     React.useEffect(() => { if (activeLocationTab && locationOrder.includes(activeLocationTab)) { return; } if (locationOrder.length > 0) { setActiveLocationTab(locationOrder[0]); } else { setActiveLocationTab(''); } }, [locationOrder, activeLocationTab]);
 
     const handleDateSelect = (date: Date) => { setSelectedDate(date); setViewMode('daily'); };
@@ -387,7 +455,7 @@ const HomePage: React.FC<HomePageProps> = ({
     const handleAdminTaskTouchStart = (e: React.TouchEvent, task: AdminTask) => { adminTaskLongPressTimer.current = window.setTimeout(() => { const touch = e.touches[0]; const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY }; handleAdminTaskContextMenu(mockEvent as any, task); }, 500); };
     const handleAdminTaskTouchEnd = () => { if (adminTaskLongPressTimer.current !== null) { window.clearTimeout(adminTaskLongPressTimer.current); adminTaskLongPressTimer.current = null; } };
 
-    const renderTaskItem = (task: AdminTask, location: string) => ( <div key={task.id} draggable={activeTaskTab === 'pending'} onDragStart={e => handleDragStart(e, 'task', task.id)} onDragEnd={handleDragEnd} onDragOver={e => { if (activeTaskTab !== 'pending' || !draggedTaskId || draggedTaskId === task.id) return; e.preventDefault(); }} onDrop={e => { if (activeTaskTab !== 'pending') return; e.preventDefault(); e.stopPropagation(); const rect = e.currentTarget.getBoundingClientRect(); const midpoint = rect.top + rect.height / 2; const position = e.clientY < midpoint ? 'before' : 'after'; handleTaskDrop(task.id, location, position); }} onContextMenu={(e) => handleAdminTaskContextMenu(e, task)} onTouchStart={(e) => handleAdminTaskTouchStart(e, task)} onTouchEnd={handleAdminTaskTouchEnd} onTouchMove={handleAdminTaskTouchEnd} className={`p-3 border rounded-lg transition-all duration-150 ${draggedTaskId === task.id ? 'opacity-40 scale-95' : 'opacity-100 scale-100'} ${task.completed ? 'bg-green-50/70 border-green-200' : 'bg-white border-gray-200 hover:bg-gray-50 hover:shadow-sm'} ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`} > <div className="flex items-start gap-3"> <div className="flex-shrink-0 pt-1"> <input type="checkbox" checked={task.completed} onChange={() => handleToggleTaskComplete(task.id)} className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500" /> </div> <div className="flex-grow min-w-0"> <p className={`font-medium text-base whitespace-pre-wrap ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>{task.task}</p> <div className="mt-2 flex items-center gap-x-4 gap-y-2 text-sm text-gray-600"> <div className="flex items-center gap-1.5" onClick={() => activeTaskTab === 'pending' && setEditingAssigneeTaskId(task.id)}> <UserIcon className="w-4 h-4 text-gray-400" /> {editingAssigneeTaskId === task.id ? ( <select value={task.assignee} onChange={(e) => handleAssigneeChange(task.id, e.target.value)} onBlur={() => setEditingAssigneeTaskId(null)} className="p-1 border rounded bg-white text-sm focus:ring-blue-500 focus:border-blue-500" autoFocus> {assistants.map(name => ( <option key={name} value={name}> {name} </option> ))} </select> ) : ( <span className={activeTaskTab === 'pending' ? 'cursor-pointer hover:text-blue-600' : ''}> {task.assignee || '-'} </span> )} </div> <div className="flex items-center gap-1.5"> <CalendarIcon className="w-4 h-4 text-gray-400" /> <span>{formatDate(task.dueDate)}</span> </div> <div className="flex items-center gap-1.5"> <span className={`px-2 py-1 text-xs font-semibold rounded-full ${importanceMapAdminTasks[task.importance]?.className}`}> {importanceMapAdminTasks[task.importance]?.text} </span> </div> </div> </div> <div className="flex flex-col sm:flex-row items-center gap-0 sm:gap-1 flex-shrink-0"> <button onClick={() => handleShareTask(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-green-600 rounded-full" title="مشاركة عبر واتساب"><ShareIcon className="w-4 h-4" /></button> <button onClick={() => onOpenAdminTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-blue-600 rounded-full"><PencilIcon className="w-4 h-4" /></button> <button onClick={() => openDeleteTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-red-600 rounded-full"><TrashIcon className="w-4 h-4" /></button> </div> </div> </div> );
+    const renderTaskItem = (task: AdminTask, location: string) => ( <div key={task.id} draggable={activeTaskTab === 'pending'} onDragStart={e => handleDragStart(e, 'task', task.id)} onDragEnd={handleDragEnd} onDragOver={e => { if (activeTaskTab !== 'pending' || !draggedTaskId.current || draggedTaskId.current === task.id) return; e.preventDefault(); }} onDrop={e => { if (activeTaskTab !== 'pending') return; e.preventDefault(); e.stopPropagation(); const rect = e.currentTarget.getBoundingClientRect(); const midpoint = rect.top + rect.height / 2; const position = e.clientY < midpoint ? 'before' : 'after'; handleTaskDrop(task.id, location, position); }} onContextMenu={(e) => handleAdminTaskContextMenu(e, task)} onTouchStart={(e) => handleAdminTaskTouchStart(e, task)} onTouchEnd={handleAdminTaskTouchEnd} onTouchMove={handleAdminTaskTouchEnd} className={`p-3 border rounded-lg transition-all duration-150 ${draggedTaskId.current === task.id ? 'opacity-40 scale-95' : 'opacity-100 scale-100'} ${task.completed ? 'bg-green-50/70 border-green-200' : 'bg-white border-gray-200 hover:bg-gray-50 hover:shadow-sm'} ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`} > <div className="flex items-start gap-3"> <div className="flex-shrink-0 pt-1"> <input type="checkbox" checked={task.completed} onChange={() => handleToggleTaskComplete(task.id)} className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500" /> </div> <div className="flex-grow min-w-0"> <p className={`font-medium text-base whitespace-pre-wrap ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>{task.task}</p> <div className="mt-2 flex items-center gap-x-4 gap-y-2 text-sm text-gray-600"> <div className="flex items-center gap-1.5" onClick={() => activeTaskTab === 'pending' && setEditingAssigneeTaskId(task.id)}> <UserIcon className="w-4 h-4 text-gray-400" /> {editingAssigneeTaskId === task.id ? ( <select value={task.assignee} onChange={(e) => handleAssigneeChange(task.id, e.target.value)} onBlur={() => setEditingAssigneeTaskId(null)} className="p-1 border rounded bg-white text-sm focus:ring-blue-500 focus:border-blue-500" autoFocus> {assistants.map(name => ( <option key={name} value={name}> {name} </option> ))} </select> ) : ( <span className={activeTaskTab === 'pending' ? 'cursor-pointer hover:text-blue-600' : ''}> {task.assignee || '-'} </span> )} </div> <div className="flex items-center gap-1.5"> <CalendarIcon className="w-4 h-4 text-gray-400" /> <span>{formatDate(task.dueDate)}</span> </div> <div className="flex items-center gap-1.5"> <span className={`px-2 py-1 text-xs font-semibold rounded-full ${importanceMapAdminTasks[task.importance]?.className}`}> {importanceMapAdminTasks[task.importance]?.text} </span> </div> </div> </div> <div className="flex flex-col sm:flex-row items-center gap-0 sm:gap-1 flex-shrink-0"> <button onClick={() => handleShareTask(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-green-600 rounded-full" title="مشاركة عبر واتساب"><ShareIcon className="w-4 h-4" /></button> <button onClick={() => onOpenAdminTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-blue-600 rounded-full"><PencilIcon className="w-4 h-4" /></button> <button onClick={() => openDeleteTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-red-600 rounded-full"><TrashIcon className="w-4 h-4" /></button> </div> </div> </div> );
 
     return (
         <div className="space-y-6">
@@ -555,15 +623,15 @@ const HomePage: React.FC<HomePageProps> = ({
                                                 e.preventDefault();
                                                 e.stopPropagation();
                                                 if (!draggedGroupLocation || draggedGroupLocation === location) return;
-                                                setAdminTasksLocationOrder(currentOrder => {
-                                                    const sourceIndex = currentOrder.indexOf(draggedGroupLocation);
-                                                    const targetIndex = currentOrder.indexOf(location);
-                                                    if (sourceIndex === -1 || targetIndex === -1) return currentOrder;
-                                                    const newOrder = [...currentOrder];
-                                                    const [movedItem] = newOrder.splice(sourceIndex, 1);
-                                                    newOrder.splice(targetIndex, 0, movedItem);
-                                                    return newOrder;
-                                                });
+                                                const newOrder = [...locationOrder];
+                                                const sourceIndex = newOrder.indexOf(draggedGroupLocation);
+                                                const targetIndex = newOrder.indexOf(location);
+                                                if (sourceIndex === -1 || targetIndex === -1) return;
+                                                
+                                                const [movedItem] = newOrder.splice(sourceIndex, 1);
+                                                newOrder.splice(targetIndex, 0, movedItem);
+                                                setLocationOrder(newOrder);
+                                                setSavedLocationOrder(newOrder);
                                             }}
                                             className={`whitespace-normal break-words w-full text-right px-2 py-2 border-r-4 font-medium text-sm transition-colors duration-150 focus:outline-none ${activeTaskTab === 'pending' ? 'cursor-grab' : ''} ${
                                                 activeLocationTab === location
@@ -620,15 +688,15 @@ const HomePage: React.FC<HomePageProps> = ({
                                                     e.preventDefault();
                                                     e.stopPropagation();
                                                     if (!draggedGroupLocation || draggedGroupLocation === location) return;
-                                                    setAdminTasksLocationOrder(currentOrder => {
-                                                        const sourceIndex = currentOrder.indexOf(draggedGroupLocation);
-                                                        const targetIndex = currentOrder.indexOf(location);
-                                                        if (sourceIndex === -1 || targetIndex === -1) return currentOrder;
-                                                        const newOrder = [...currentOrder];
-                                                        const [movedItem] = newOrder.splice(sourceIndex, 1);
-                                                        newOrder.splice(targetIndex, 0, movedItem);
-                                                        return newOrder;
-                                                    });
+                                                    const newOrder = [...locationOrder];
+                                                    const sourceIndex = newOrder.indexOf(draggedGroupLocation);
+                                                    const targetIndex = newOrder.indexOf(location);
+                                                    if (sourceIndex === -1 || targetIndex === -1) return;
+                                                    
+                                                    const [movedItem] = newOrder.splice(sourceIndex, 1);
+                                                    newOrder.splice(targetIndex, 0, movedItem);
+                                                    setLocationOrder(newOrder);
+                                                    setSavedLocationOrder(newOrder);
                                                 }}
                                                 className={`whitespace-nowrap py-3 px-4 border font-medium text-sm rounded-t-lg transition-colors duration-150 focus:outline-none ${activeTaskTab === 'pending' ? 'cursor-grab' : ''} ${
                                                     activeLocationTab === location

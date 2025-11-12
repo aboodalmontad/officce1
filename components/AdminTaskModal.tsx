@@ -47,13 +47,12 @@ const AdminTaskModal: React.FC<AdminTaskModalProps> = ({ isOpen, onClose, onSubm
 
         // Explicitly construct the payload for onSubmit to ensure type safety and prevent spreading unwanted properties.
         onSubmit({
-            id: initialData?.id,
-            task: taskFormData.task,
-            dueDate: taskDate,
-            importance: taskFormData.importance,
-            assignee: taskFormData.assignee,
-            location: taskFormData.location || 'غير محدد',
-        });
+            // Spread taskFormData to include any other properties like orderIndex if they exist
+            ...taskFormData,
+            id: initialData?.id, // Override with id from initialData for editing
+            dueDate: taskDate, // Use the parsed Date object
+            location: taskFormData.location || 'غير محدد', // Ensure location has a default
+        } as Omit<AdminTask, 'completed'> & { id?: string });
     };
 
     if (!isOpen) return null;

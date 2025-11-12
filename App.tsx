@@ -139,7 +139,7 @@ const Navbar: React.FC<{
                 <button onClick={() => onNavigate('home')} className="flex items-center" aria-label="العودة إلى الصفحة الرئيسية">
                     <div className="flex items-baseline gap-2">
                         <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
-                        <span className="text-xs text-gray-500">الإصدار: 12-11-2025-2</span>
+                        <span className="text-xs text-gray-500">الإصدار: 10-11-2025-3</span>
                     </div>
                 </button>
                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
@@ -331,10 +331,18 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         if (taskData.id) { // Editing
             data.setAdminTasks(prev => prev.map(t => t.id === taskData.id ? { ...t, ...taskData, updated_at: new Date() } : t));
         } else { // Adding
+            const newLocation = taskData.location || 'غير محدد';
+            const maxOrderIndex = data.adminTasks
+                .filter(t => (t.location || 'غير محدد') === newLocation)
+                .reduce((max, t) => Math.max(max, t.orderIndex || 0), -1);
+
             const newTask: AdminTask = {
                 id: `task-${Date.now()}`,
                 ...taskData,
                 completed: false,
+                // When creating a new task, assign it the next available order index within its location group.
+                // This ensures it appears at the end of the list by default.
+                orderIndex: maxOrderIndex + 1,
                 updated_at: new Date(),
             };
             data.setAdminTasks(prev => [...prev, newTask]);

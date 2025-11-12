@@ -75,6 +75,7 @@ export interface AdminTask {
     assignee?: string;
     location?: string;
     updated_at?: Date;
+    orderIndex?: number;
 }
 
 export interface Appointment {
