@@ -172,6 +172,7 @@ ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS completed boolean DEFAUL
 ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS importance text DEFAULT 'normal';
 ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS assignee text;
 ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS location text;
+ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS order_index integer;
 ALTER TABLE public.admin_tasks ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
 
 CREATE TABLE IF NOT EXISTS public.appointments (id text NOT NULL PRIMARY KEY);

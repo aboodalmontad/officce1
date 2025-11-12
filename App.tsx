@@ -139,7 +139,7 @@ const Navbar: React.FC<{
                 <button onClick={() => onNavigate('home')} className="flex items-center" aria-label="العودة إلى الصفحة الرئيسية">
                     <div className="flex items-baseline gap-2">
                         <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
-                        <span className="text-xs text-gray-500">الإصدار: 12-11-2025-2</span>
+                        <span className="text-xs text-gray-500">الإصدار: 12-11-2025-1</span>
                     </div>
                 </button>
                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
@@ -486,16 +486,19 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         // Supabase onAuthStateChange will handle setting the session
     };
 
+    // Fix: Reordered the render logic. The manual trigger for the config modal (`showConfigModal`)
+    // and the automatic trigger (`data.syncStatus`) are now checked *before* checking the session state.
+    // This ensures the modal can open from the login page.
+    if (showConfigModal) {
+        return <ConfigurationModal onRetry={() => { data.manualSync(); setShowConfigModal(false); }} />;
+    }
+    
     if (data.syncStatus === 'unconfigured' || data.syncStatus === 'uninitialized') {
         return <ConfigurationModal onRetry={data.manualSync} />;
     }
     
     if (!session) {
         return <LoginPage onForceSetup={() => setShowConfigModal(true)} onLoginSuccess={handleLoginSuccess}/>;
-    }
-    
-    if (showConfigModal) { // Allow forcing setup even when logged in
-        return <ConfigurationModal onRetry={() => { data.manualSync(); setShowConfigModal(false); }} />;
     }
     
     if (!profile) {

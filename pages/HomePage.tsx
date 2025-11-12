@@ -167,11 +167,15 @@ const HomePage: React.FC<HomePageProps> = ({
     
     // State for drag-and-drop of tasks
     const draggedTaskId = React.useRef<string | null>(null);
+    const [isDragging, setIsDragging] = React.useState(false);
+    const [dragOverTaskId, setDragOverTaskId] = React.useState<string | null>(null);
+    const [dropPosition, setDropPosition] = React.useState<'before' | 'after' | null>(null);
     
     // State for drag-and-drop of groups
     const [locationOrder, setLocationOrder] = React.useState<string[]>([]);
     const [draggedGroupLocation, setDraggedGroupLocation] = React.useState<string | null>(null);
     const [activeLocationTab, setActiveLocationTab] = React.useState<string>('');
+    const [dragOverLocation, setDragOverLocation] = React.useState<string | null>(null);
 
     // State for inline assignee editing
     const [editingAssigneeTaskId, setEditingAssigneeTaskId] = React.useState<string | null>(null);
@@ -336,8 +340,8 @@ const HomePage: React.FC<HomePageProps> = ({
     };
 
     // --- Drag and Drop Handlers ---
-    const handleDragStart = (e: React.DragEvent, type: 'task' | 'group', id: string) => { e.stopPropagation(); document.body.classList.add('grabbing'); if (type === 'task') { e.dataTransfer.setData('application/lawyer-app-task-id', id); e.dataTransfer.effectAllowed = 'move'; draggedTaskId.current = id; } else { e.dataTransfer.setData('application/lawyer-app-group-location', id); e.dataTransfer.effectAllowed = 'move'; setDraggedGroupLocation(id); } };
-    const handleDragEnd = () => { document.body.classList.remove('grabbing'); draggedTaskId.current = null; setDraggedGroupLocation(null); };
+    const handleDragStart = (e: React.DragEvent, type: 'task' | 'group', id: string) => { e.stopPropagation(); document.body.classList.add('grabbing'); if (type === 'task') { e.dataTransfer.setData('application/lawyer-app-task-id', id); e.dataTransfer.effectAllowed = 'move'; draggedTaskId.current = id; } else { e.dataTransfer.setData('application/lawyer-app-group-location', id); e.dataTransfer.effectAllowed = 'move'; setDraggedGroupLocation(id); } setIsDragging(true); };
+    const handleDragEnd = () => { document.body.classList.remove('grabbing'); draggedTaskId.current = null; setDraggedGroupLocation(null); setIsDragging(false); setDragOverTaskId(null); setDropPosition(null); setDragOverLocation(null); };
 
     const handleTaskDrop = (targetTaskId: string | null, targetLocation: string, position: 'before' | 'after') => {
         const currentDraggedId = draggedTaskId.current;
@@ -455,7 +459,7 @@ const HomePage: React.FC<HomePageProps> = ({
     const handleAdminTaskTouchStart = (e: React.TouchEvent, task: AdminTask) => { adminTaskLongPressTimer.current = window.setTimeout(() => { const touch = e.touches[0]; const mockEvent = { preventDefault: () => e.preventDefault(), clientX: touch.clientX, clientY: touch.clientY }; handleAdminTaskContextMenu(mockEvent as any, task); }, 500); };
     const handleAdminTaskTouchEnd = () => { if (adminTaskLongPressTimer.current !== null) { window.clearTimeout(adminTaskLongPressTimer.current); adminTaskLongPressTimer.current = null; } };
 
-    const renderTaskItem = (task: AdminTask, location: string) => ( <div key={task.id} draggable={activeTaskTab === 'pending'} onDragStart={e => handleDragStart(e, 'task', task.id)} onDragEnd={handleDragEnd} onDragOver={e => { if (activeTaskTab !== 'pending' || !draggedTaskId.current || draggedTaskId.current === task.id) return; e.preventDefault(); }} onDrop={e => { if (activeTaskTab !== 'pending') return; e.preventDefault(); e.stopPropagation(); const rect = e.currentTarget.getBoundingClientRect(); const midpoint = rect.top + rect.height / 2; const position = e.clientY < midpoint ? 'before' : 'after'; handleTaskDrop(task.id, location, position); }} onContextMenu={(e) => handleAdminTaskContextMenu(e, task)} onTouchStart={(e) => handleAdminTaskTouchStart(e, task)} onTouchEnd={handleAdminTaskTouchEnd} onTouchMove={handleAdminTaskTouchEnd} className={`p-3 border rounded-lg transition-all duration-150 ${draggedTaskId.current === task.id ? 'opacity-40 scale-95' : 'opacity-100 scale-100'} ${task.completed ? 'bg-green-50/70 border-green-200' : 'bg-white border-gray-200 hover:bg-gray-50 hover:shadow-sm'} ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`} > <div className="flex items-start gap-3"> <div className="flex-shrink-0 pt-1"> <input type="checkbox" checked={task.completed} onChange={() => handleToggleTaskComplete(task.id)} className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500" /> </div> <div className="flex-grow min-w-0"> <p className={`font-medium text-base whitespace-pre-wrap ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>{task.task}</p> <div className="mt-2 flex items-center gap-x-4 gap-y-2 text-sm text-gray-600"> <div className="flex items-center gap-1.5" onClick={() => activeTaskTab === 'pending' && setEditingAssigneeTaskId(task.id)}> <UserIcon className="w-4 h-4 text-gray-400" /> {editingAssigneeTaskId === task.id ? ( <select value={task.assignee} onChange={(e) => handleAssigneeChange(task.id, e.target.value)} onBlur={() => setEditingAssigneeTaskId(null)} className="p-1 border rounded bg-white text-sm focus:ring-blue-500 focus:border-blue-500" autoFocus> {assistants.map(name => ( <option key={name} value={name}> {name} </option> ))} </select> ) : ( <span className={activeTaskTab === 'pending' ? 'cursor-pointer hover:text-blue-600' : ''}> {task.assignee || '-'} </span> )} </div> <div className="flex items-center gap-1.5"> <CalendarIcon className="w-4 h-4 text-gray-400" /> <span>{formatDate(task.dueDate)}</span> </div> <div className="flex items-center gap-1.5"> <span className={`px-2 py-1 text-xs font-semibold rounded-full ${importanceMapAdminTasks[task.importance]?.className}`}> {importanceMapAdminTasks[task.importance]?.text} </span> </div> </div> </div> <div className="flex flex-col sm:flex-row items-center gap-0 sm:gap-1 flex-shrink-0"> <button onClick={() => handleShareTask(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-green-600 rounded-full" title="مشاركة عبر واتساب"><ShareIcon className="w-4 h-4" /></button> <button onClick={() => onOpenAdminTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-blue-600 rounded-full"><PencilIcon className="w-4 h-4" /></button> <button onClick={() => openDeleteTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-red-600 rounded-full"><TrashIcon className="w-4 h-4" /></button> </div> </div> </div> );
+    const renderTaskItem = (task: AdminTask, location: string) => ( <div key={task.id} draggable={activeTaskTab === 'pending'} onDragStart={e => handleDragStart(e, 'task', task.id)} onDragEnd={handleDragEnd} onDragOver={e => { if (activeTaskTab !== 'pending' || !draggedTaskId.current || draggedTaskId.current === task.id) return; e.preventDefault(); setDragOverTaskId(task.id); const rect = e.currentTarget.getBoundingClientRect(); const midpoint = rect.top + rect.height / 2; setDropPosition(e.clientY < midpoint ? 'before' : 'after'); }} onDragLeave={() => { setDragOverTaskId(null); setDropPosition(null); }} onDrop={e => { if (activeTaskTab !== 'pending' || !dropPosition) return; e.preventDefault(); e.stopPropagation(); handleTaskDrop(task.id, location, dropPosition); setDragOverTaskId(null); setDropPosition(null); }} onContextMenu={(e) => handleAdminTaskContextMenu(e, task)} onTouchStart={(e) => handleAdminTaskTouchStart(e, task)} onTouchEnd={handleAdminTaskTouchEnd} onTouchMove={handleAdminTaskTouchEnd} className={`relative p-3 border rounded-lg transition-all duration-150 ${draggedTaskId.current === task.id ? 'opacity-40 scale-95' : 'opacity-100 scale-100'} ${task.completed ? 'bg-green-50/70 border-green-200' : 'bg-white border-gray-200 hover:bg-gray-50 hover:shadow-sm'} ${activeTaskTab === 'pending' ? 'cursor-move' : ''}`} > {dragOverTaskId === task.id && dropPosition === 'before' && <div className="absolute top-0 left-0 right-0 h-1 bg-blue-500 rounded-full z-10"></div>} <div className="flex items-start gap-3"> <div className="flex-shrink-0 pt-1"> <input type="checkbox" checked={task.completed} onChange={() => handleToggleTaskComplete(task.id)} className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500" /> </div> <div className="flex-grow min-w-0"> <p className={`font-medium text-base whitespace-pre-wrap ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>{task.task}</p> <div className="mt-2 flex items-center gap-x-4 gap-y-2 text-sm text-gray-600"> <div className="flex items-center gap-1.5" onClick={() => activeTaskTab === 'pending' && setEditingAssigneeTaskId(task.id)}> <UserIcon className="w-4 h-4 text-gray-400" /> {editingAssigneeTaskId === task.id ? ( <select value={task.assignee} onChange={(e) => handleAssigneeChange(task.id, e.target.value)} onBlur={() => setEditingAssigneeTaskId(null)} className="p-1 border rounded bg-white text-sm focus:ring-blue-500 focus:border-blue-500" autoFocus> {assistants.map(name => ( <option key={name} value={name}> {name} </option> ))} </select> ) : ( <span className={activeTaskTab === 'pending' ? 'cursor-pointer hover:text-blue-600' : ''}> {task.assignee || '-'} </span> )} </div> <div className="flex items-center gap-1.5"> <CalendarIcon className="w-4 h-4 text-gray-400" /> <span>{formatDate(task.dueDate)}</span> </div> <div className="flex items-center gap-1.5"> <span className={`px-2 py-1 text-xs font-semibold rounded-full ${importanceMapAdminTasks[task.importance]?.className}`}> {importanceMapAdminTasks[task.importance]?.text} </span> </div> </div> </div> <div className="flex flex-col sm:flex-row items-center gap-0 sm:gap-1 flex-shrink-0"> <button onClick={() => handleShareTask(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-green-600 rounded-full" title="مشاركة عبر واتساب"><ShareIcon className="w-4 h-4" /></button> <button onClick={() => onOpenAdminTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-blue-600 rounded-full"><PencilIcon className="w-4 h-4" /></button> <button onClick={() => openDeleteTaskModal(task)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-red-600 rounded-full"><TrashIcon className="w-4 h-4" /></button> </div> </div> {dragOverTaskId === task.id && dropPosition === 'after' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-500 rounded-full z-10"></div>} </div> );
 
     return (
         <div className="space-y-6">
@@ -617,21 +621,35 @@ const HomePage: React.FC<HomePageProps> = ({
                                             draggable={activeTaskTab === 'pending'}
                                             onDragStart={e => handleDragStart(e, 'group', location)}
                                             onDragEnd={handleDragEnd}
-                                            onDragOver={e => e.preventDefault()}
+                                            onDragOver={(e) => {
+                                                if (draggedTaskId.current) {
+                                                    e.preventDefault();
+                                                    setDragOverLocation(location);
+                                                } else if (draggedGroupLocation) {
+                                                    e.preventDefault();
+                                                }
+                                            }}
+                                            onDragLeave={() => setDragOverLocation(null)}
                                             onDrop={e => {
-                                                if (activeTaskTab !== 'pending') return;
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                if (!draggedGroupLocation || draggedGroupLocation === location) return;
-                                                const newOrder = [...locationOrder];
-                                                const sourceIndex = newOrder.indexOf(draggedGroupLocation);
-                                                const targetIndex = newOrder.indexOf(location);
-                                                if (sourceIndex === -1 || targetIndex === -1) return;
-                                                
-                                                const [movedItem] = newOrder.splice(sourceIndex, 1);
-                                                newOrder.splice(targetIndex, 0, movedItem);
-                                                setLocationOrder(newOrder);
-                                                setSavedLocationOrder(newOrder);
+                                                setDragOverLocation(null);
+                                                if (draggedTaskId.current) {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    handleTaskDrop(null, location, 'after');
+                                                } else { 
+                                                    if (activeTaskTab !== 'pending') return;
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    if (!draggedGroupLocation || draggedGroupLocation === location) return;
+                                                    const newOrder = [...locationOrder];
+                                                    const sourceIndex = newOrder.indexOf(draggedGroupLocation);
+                                                    const targetIndex = newOrder.indexOf(location);
+                                                    if (sourceIndex === -1 || targetIndex === -1) return;
+                                                    const [movedItem] = newOrder.splice(sourceIndex, 1);
+                                                    newOrder.splice(targetIndex, 0, movedItem);
+                                                    setLocationOrder(newOrder);
+                                                    setSavedLocationOrder(newOrder);
+                                                }
                                             }}
                                             className={`whitespace-normal break-words w-full text-right px-2 py-2 border-r-4 font-medium text-sm transition-colors duration-150 focus:outline-none ${activeTaskTab === 'pending' ? 'cursor-grab' : ''} ${
                                                 activeLocationTab === location
@@ -639,7 +657,7 @@ const HomePage: React.FC<HomePageProps> = ({
                                                     : 'border-transparent text-gray-600 hover:bg-gray-100'
                                             } ${
                                                 draggedGroupLocation === location ? 'opacity-30' : 'opacity-100'
-                                            }`}
+                                            } ${dragOverLocation === location ? 'bg-blue-200 border-blue-500' : ''}`}
                                         >
                                             {location}
                                         </button>
@@ -651,7 +669,7 @@ const HomePage: React.FC<HomePageProps> = ({
                                     <div 
                                         onDragOver={handleGroupDragOver}
                                         onDrop={e => handleGroupDrop(e, activeLocationTab)}
-                                        className="bg-gray-50 p-2 border border-gray-200 rounded-lg min-h-[200px]"
+                                        className={`p-2 rounded-lg min-h-[200px] transition-colors duration-200 ${isDragging ? 'border-dashed border-blue-500 bg-blue-50' : 'bg-gray-50 border border-gray-200'}`}
                                     >
                                         {(groupedTasks[activeLocationTab] || []).length > 0 ? (
                                             <div className="space-y-3">
@@ -682,29 +700,43 @@ const HomePage: React.FC<HomePageProps> = ({
                                                 draggable={activeTaskTab === 'pending'}
                                                 onDragStart={e => handleDragStart(e, 'group', location)}
                                                 onDragEnd={handleDragEnd}
-                                                onDragOver={e => e.preventDefault()}
+                                                onDragOver={(e) => {
+                                                    if (draggedTaskId.current) {
+                                                        e.preventDefault();
+                                                        setDragOverLocation(location);
+                                                    } else if (draggedGroupLocation) {
+                                                        e.preventDefault();
+                                                    }
+                                                }}
+                                                onDragLeave={() => setDragOverLocation(null)}
                                                 onDrop={e => {
-                                                    if (activeTaskTab !== 'pending') return;
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    if (!draggedGroupLocation || draggedGroupLocation === location) return;
-                                                    const newOrder = [...locationOrder];
-                                                    const sourceIndex = newOrder.indexOf(draggedGroupLocation);
-                                                    const targetIndex = newOrder.indexOf(location);
-                                                    if (sourceIndex === -1 || targetIndex === -1) return;
-                                                    
-                                                    const [movedItem] = newOrder.splice(sourceIndex, 1);
-                                                    newOrder.splice(targetIndex, 0, movedItem);
-                                                    setLocationOrder(newOrder);
-                                                    setSavedLocationOrder(newOrder);
+                                                    setDragOverLocation(null);
+                                                    if (draggedTaskId.current) {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        handleTaskDrop(null, location, 'after');
+                                                    } else { // Existing group drop logic
+                                                        if (activeTaskTab !== 'pending') return;
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        if (!draggedGroupLocation || draggedGroupLocation === location) return;
+                                                        const newOrder = [...locationOrder];
+                                                        const sourceIndex = newOrder.indexOf(draggedGroupLocation);
+                                                        const targetIndex = newOrder.indexOf(location);
+                                                        if (sourceIndex === -1 || targetIndex === -1) return;
+                                                        const [movedItem] = newOrder.splice(sourceIndex, 1);
+                                                        newOrder.splice(targetIndex, 0, movedItem);
+                                                        setLocationOrder(newOrder);
+                                                        setSavedLocationOrder(newOrder);
+                                                    }
                                                 }}
                                                 className={`whitespace-nowrap py-3 px-4 border font-medium text-sm rounded-t-lg transition-colors duration-150 focus:outline-none ${activeTaskTab === 'pending' ? 'cursor-grab' : ''} ${
                                                     activeLocationTab === location
-                                                        ? 'bg-gray-50 border-gray-200 border-b-gray-50 text-blue-600 font-semibold' // Active tab
-                                                        : 'bg-white border-transparent border-b-gray-200 text-gray-500 hover:text-gray-700' // Inactive tab
+                                                        ? 'bg-gray-50 border-gray-200 border-b-gray-50 text-blue-600 font-semibold'
+                                                        : 'bg-white border-transparent border-b-gray-200 text-gray-500 hover:text-gray-700'
                                                 } ${
                                                     draggedGroupLocation === location ? 'opacity-30' : ''
-                                                }`}
+                                                } ${dragOverLocation === location ? 'bg-blue-200' : ''}`}
                                             >
                                                 {location}
                                             </button>
@@ -713,7 +745,7 @@ const HomePage: React.FC<HomePageProps> = ({
                                     <div 
                                         onDragOver={handleGroupDragOver}
                                         onDrop={e => handleGroupDrop(e, activeLocationTab)}
-                                        className="bg-gray-50 p-2 sm:p-4 space-y-3 border border-gray-200 rounded-b-lg min-h-[100px]"
+                                        className={`p-2 sm:p-4 space-y-3 rounded-b-lg min-h-[100px] transition-colors duration-200 ${isDragging ? 'border-dashed border-blue-500 bg-blue-50' : 'bg-gray-50 border border-gray-200'}`}
                                     >
                                         {(groupedTasks[activeLocationTab] || []).length > 0 ? (
                                             (groupedTasks[activeLocationTab] || []).map(task => renderTaskItem(task, activeLocationTab))
