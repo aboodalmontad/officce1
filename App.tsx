@@ -218,6 +218,7 @@ const OfflineBanner: React.FC = () => {
 
 
 const LAST_USER_CACHE_KEY = 'lawyerAppLastUser';
+const LAST_USER_CREDENTIALS_CACHE_KEY = 'lawyerAppLastUserCredentials';
 const UNPOSTPONED_MODAL_SHOWN_KEY = 'lawyerAppUnpostponedModalShown';
 
 const FullScreenLoader: React.FC<{ text?: string }> = ({ text = 'جاري التحميل...' }) => (
@@ -262,9 +263,10 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
             setSession(session);
             setIsAuthLoading(false);
             
-            // If user logs out, clear the last user cache to prevent auto-login next time.
+            // If user logs out, clear all user-specific cache to prevent auto-login next time.
             if (_event === 'SIGNED_OUT') {
                 localStorage.removeItem(LAST_USER_CACHE_KEY);
+                localStorage.removeItem(LAST_USER_CREDENTIALS_CACHE_KEY);
                  localStorage.setItem('lawyerAppLoggedOut', 'true');
             } else if (_event === 'SIGNED_IN') {
                 localStorage.removeItem('lawyerAppLoggedOut');
