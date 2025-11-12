@@ -463,7 +463,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 setDeletedIds(storedDeletedIds || getInitialDeletedIds());
                 
                 if (isOnline) {
-                    await manualSync(true);
+                    await manualSync();
                 } else {
                     setSyncStatus('synced'); // Offline but data loaded
                 }
