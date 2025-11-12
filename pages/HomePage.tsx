@@ -241,9 +241,9 @@ const HomePage: React.FC<HomePageProps> = ({
         e.preventDefault();
         if (!newAppointment.title || !newAppointment.time || !newAppointment.date) return;
         
-        // Fix: Replaced manual date parsing with the robust `parseInputDateString` utility function.
-        // This resolves a TypeScript error related to arithmetic operations on potentially non-numeric types
-        // and provides more reliable date parsing that correctly handles timezones.
+        // Fix: Replaced a faulty date calculation that incorrectly combined a string and a number.
+        // The new implementation uses the robust `parseInputDateString` utility function,
+        // which correctly parses a 'YYYY-MM-DD' string into a local Date object, resolving the type error.
         const appointmentDate = parseInputDateString(newAppointment.date);
 
         if (!appointmentDate) {
