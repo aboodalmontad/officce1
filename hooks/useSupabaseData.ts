@@ -20,12 +20,16 @@ interface UserSettings {
     isAutoSyncEnabled: boolean;
     isAutoBackupEnabled: boolean;
     adminTasksLayout: 'horizontal' | 'vertical';
+    adminTasksLocationOrder: string[];
+    adminTasksOrder: string[];
 }
 
 const defaultSettings: UserSettings = {
     isAutoSyncEnabled: true,
     isAutoBackupEnabled: true,
     adminTasksLayout: 'horizontal',
+    adminTasksLocationOrder: [],
+    adminTasksOrder: [],
 };
 
 
@@ -326,9 +330,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
     // --- User Settings State ---
     const [userSettings, setUserSettings] = React.useState<UserSettings>(defaultSettings);
-    const isAutoSyncEnabled = userSettings.isAutoSyncEnabled;
-    const isAutoBackupEnabled = userSettings.isAutoBackupEnabled;
-    const adminTasksLayout = userSettings.adminTasksLayout;
+    const { isAutoSyncEnabled, isAutoBackupEnabled, adminTasksLayout, adminTasksLocationOrder, adminTasksOrder } = userSettings;
 
     const userRef = React.useRef(user);
     userRef.current = user;
@@ -349,7 +351,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         try {
             const storedSettings = localStorage.getItem(settingsKey);
             if (storedSettings) {
-                setUserSettings(JSON.parse(storedSettings));
+                const parsed = JSON.parse(storedSettings);
+                setUserSettings({ ...defaultSettings, ...parsed });
             }
         } catch (e) {
             console.error("Failed to load user settings from localStorage", e);
@@ -357,15 +360,20 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     }, [user?.id]);
 
     const updateSettings = (updater: (prev: UserSettings) => UserSettings) => {
-        const newSettings = updater(userSettings);
-        setUserSettings(newSettings);
-        const settingsKey = `userSettings_${user?.id}`;
-        localStorage.setItem(settingsKey, JSON.stringify(newSettings));
+        setUserSettings(prevSettings => {
+            const newSettings = updater(prevSettings);
+            const settingsKey = `userSettings_${user?.id}`;
+            localStorage.setItem(settingsKey, JSON.stringify(newSettings));
+            return newSettings;
+        });
     };
 
     const setAutoSyncEnabled = (enabled: boolean) => updateSettings(p => ({ ...p, isAutoSyncEnabled: enabled }));
     const setAutoBackupEnabled = (enabled: boolean) => updateSettings(p => ({ ...p, isAutoBackupEnabled: enabled }));
     const setAdminTasksLayout = (layout: 'horizontal' | 'vertical') => updateSettings(p => ({ ...p, adminTasksLayout: layout }));
+    const setAdminTasksLocationOrder = (order: string[] | ((prev: string[]) => string[])) => updateSettings(p => ({ ...p, adminTasksLocationOrder: typeof order === 'function' ? order(p.adminTasksLocationOrder || []) : order }));
+    const setAdminTasksOrder = (order: string[] | ((prev: string[]) => string[])) => updateSettings(p => ({ ...p, adminTasksOrder: typeof order === 'function' ? order(p.adminTasksOrder || []) : order }));
+
 
     const handleSyncStatusChange = React.useCallback((status: SyncStatus, error: string | null) => {
         setSyncStatus(status);
@@ -953,6 +961,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         isAutoSyncEnabled, setAutoSyncEnabled,
         isAutoBackupEnabled, setAutoBackupEnabled,
         adminTasksLayout, setAdminTasksLayout,
+        adminTasksLocationOrder, setAdminTasksLocationOrder,
+        adminTasksOrder, setAdminTasksOrder,
         exportData,
         triggeredAlerts,
         dismissAlert,

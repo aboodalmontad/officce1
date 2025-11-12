@@ -330,11 +330,6 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         if (taskData.id) { // Editing
             data.setAdminTasks(prev => prev.map(t => t.id === taskData.id ? { ...t, ...taskData, updated_at: new Date() } : t));
         } else { // Adding
-            // FIX: The previous attempt to fix this with destructuring failed.
-            // The problem is that a spread can include an `id: undefined` property,
-            // which causes a null value error on sync.
-            // By renaming the destructured `id` to `_` and creating a new rest object,
-            // we ensure the `id` property is always excluded from the spread.
             const { id: _, ...taskDataWithoutId } = taskData;
             const newTask: AdminTask = {
                 id: `task-${Date.now()}`,
@@ -343,6 +338,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                 updated_at: new Date(),
             };
             data.setAdminTasks(prev => [...prev, newTask]);
+            data.setAdminTasksOrder(prev => [...prev, newTask.id]);
         }
         setIsAdminTaskModalOpen(false);
     };

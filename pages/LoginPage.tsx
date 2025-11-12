@@ -111,31 +111,15 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
     };
 
     const normalizeMobileToE164 = (mobile: string): string | null => {
-        // Remove all non-digit characters to get a clean string of numbers
-        let digits = mobile.replace(/\D/g, '');
+        // Strip all non-digit characters and get the last 9 digits.
+        const localPart = (mobile || '').replace(/\D/g, '').slice(-9);
 
-        // Case 1: International format with double zero (e.g., 009639...)
-        if (digits.startsWith('009639') && digits.length === 14) {
-            return `+${digits.substring(2)}`; // Becomes +9639...
+        // A valid Syrian mobile number must be 9 digits long and start with '9'.
+        if (localPart.length === 9 && localPart.startsWith('9')) {
+            return `+963${localPart}`;
         }
 
-        // Case 2: International format without plus/zeros (e.g., 9639...)
-        if (digits.startsWith('9639') && digits.length === 12) {
-            return `+${digits}`; // Becomes +9639...
-        }
-
-        // Case 3: Local format with leading zero (e.g., 09...)
-        if (digits.startsWith('09') && digits.length === 10) {
-            return `+963${digits.substring(1)}`; // Becomes +9639...
-        }
-        
-        // Case 4: Local format without leading zero (e.g., 9...)
-        if (digits.startsWith('9') && digits.length === 9) {
-            return `+963${digits}`; // Becomes +9639...
-        }
-
-        // If none of the patterns match, the number is considered invalid for Syria.
-        return null;
+        return null; // Invalid format
     };
 
 
