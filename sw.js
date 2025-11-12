@@ -60,8 +60,13 @@ self.addEventListener('activate', event => {
         })
       );
     }).then(() => {
-      console.log('Service Worker: Claiming clients.');
-      return self.clients.claim(); // Take control of open pages immediately
+      console.log('Service Worker: Claiming clients and notifying for reload.');
+      return self.clients.claim().then(() => {
+        // After claiming, send a message to all clients to reload.
+        self.clients.matchAll().then(clients => {
+          clients.forEach(client => client.postMessage({ type: 'RELOAD_PAGE_NOW' }));
+        });
+      });
     })
   );
 });

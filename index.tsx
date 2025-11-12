@@ -16,14 +16,13 @@ window.addEventListener('storage', (event) => {
 
 // Register Service Worker for offline capabilities
 if ('serviceWorker' in navigator) {
-  // This block handles service worker updates. When a new worker takes control,
-  // it automatically reloads the page to ensure the user has the latest version.
-  let isReloading = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    // The isReloading flag prevents a potential infinite reload loop.
-    if (!isReloading) {
-        isReloading = true;
-        window.location.reload();
+  // This listener handles messages from the service worker.
+  // When a new service worker is activated, it sends a 'RELOAD_PAGE_NOW' message
+  // to all clients, forcing them to reload to get the latest version. This is more
+  // reliable than the 'controllerchange' event.
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data && event.data.type === 'RELOAD_PAGE_NOW') {
+      window.location.reload();
     }
   });
 
