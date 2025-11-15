@@ -129,7 +129,7 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
         onSyncStatusChange(status, error);
     };
 
-    const manualSync = React.useCallback(async (isInitialPull: boolean = false) => {
+    const manualSync = React.useCallback(async () => {
         if (syncStatus === 'syncing') return;
         if (isAuthLoading) return;
         const currentUser = userRef.current;
@@ -157,7 +157,7 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
             const hasPendingDeletions = Object.values(deletedIds).some(arr => arr.length > 0);
             const isRemoteEffectivelyEmpty = !remoteDataRaw || Object.values(remoteDataRaw).every(arr => arr?.length === 0);
 
-            if (isInitialPull || (isLocalEffectivelyEmpty && !isRemoteEffectivelyEmpty && !hasPendingDeletions)) {
+            if (isLocalEffectivelyEmpty && !isRemoteEffectivelyEmpty && !hasPendingDeletions) {
                 const freshData = constructData(remoteFlatData);
                 onDataSynced(freshData);
                 setStatus('synced');

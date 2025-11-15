@@ -333,14 +333,19 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         if (taskData.id) { // Editing
             data.setAdminTasks(prev => prev.map(t => t.id === taskData.id ? { ...t, ...taskData, updated_at: new Date() } : t));
         } else { // Adding
-            const newLocation = taskData.location || 'غير محدد';
+            // A new task is being added.
+            // We must ensure that a unique ID is assigned and not overwritten.
+            // The incoming `taskData` should not have an `id`, but to be safe, we'll destructure it out.
+            const { id, ...restOfTaskData } = taskData;
+
+            const newLocation = restOfTaskData.location || 'غير محدد';
             const maxOrderIndex = data.adminTasks
                 .filter(t => (t.location || 'غير محدد') === newLocation)
                 .reduce((max, t) => Math.max(max, t.orderIndex || 0), -1);
 
             const newTask: AdminTask = {
-                id: `task-${Date.now()}`,
-                ...taskData,
+                id: `task-${Date.now()}`, // Assign a new, guaranteed-unique ID.
+                ...restOfTaskData,       // Spread the rest of the data.
                 completed: false,
                 // When creating a new task, assign it the next available order index within its location group.
                 // This ensures it appears at the end of the list by default.
