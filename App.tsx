@@ -141,7 +141,7 @@ const Navbar: React.FC<{
                     <div className="flex flex-col items-start sm:flex-row sm:items-baseline gap-0 sm:gap-2">
                         <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
                         <div className="flex items-center gap-1 text-xs text-gray-500">
-                            <span>الإصدار: 20-11-2025-1</span>
+                            <span>الإصدار: 20-11-2025-2</span>
                             {profile && (
                                 <>
                                     <span className="mx-1 text-gray-300">|</span>
@@ -272,9 +272,34 @@ const FullScreenLoader: React.FC<{ text?: string }> = ({ text = 'جاري الت
 );
 
 const App: React.FC<AppProps> = ({ onRefresh }) => {
-    const [session, setSession] = React.useState<AuthSession | null>(null);
+    // 1. Optimistic Session Initialization from LocalStorage
+    // This prevents the "flash of login page" and allows instant offline access.
+    const [session, setSession] = React.useState<AuthSession | null>(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const lastUserRaw = localStorage.getItem(LAST_USER_CACHE_KEY);
+                if (lastUserRaw) {
+                    const user = JSON.parse(lastUserRaw) as User;
+                    // Construct a minimal valid session object for offline use
+                    return {
+                        access_token: "optimistic_access_token",
+                        refresh_token: "optimistic_refresh_token",
+                        expires_in: 86400,
+                        token_type: "bearer",
+                        user: user
+                    } as AuthSession;
+                }
+            } catch (e) {
+                console.error("Failed to parse cached user session:", e);
+            }
+        }
+        return null;
+    });
+
+    // 2. Auth loading is false if we have an optimistic session, allowing instant render.
+    const [isAuthLoading, setIsAuthLoading] = React.useState(!session);
+    
     const [profile, setProfile] = React.useState<Profile | null>(null);
-    const [isAuthLoading, setIsAuthLoading] = React.useState(true);
     const [authError, setAuthError] = React.useState<string | null>(null);
     const [showConfigModal, setShowConfigModal] = React.useState(false);
     const [loginMessage, setLoginMessage] = React.useState<string | null>(null);
@@ -299,28 +324,26 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const supabase = getSupabaseClient();
     const isOnline = useOnlineStatus();
 
-    // This effect handles authentication state changes.
+    // This effect handles authentication state changes and initial verification.
     React.useEffect(() => {
-        const { data: { subscription } } = supabase!.auth.onAuthStateChange((event, session) => {
-            setSession(session);
-            
-            // If user logs out, clear all user-specific cache to prevent auto-login next time.
+        const { data: { subscription } } = supabase!.auth.onAuthStateChange((event, newSession) => {
             if (event === 'SIGNED_OUT') {
+                setSession(null);
                 localStorage.removeItem(LAST_USER_CACHE_KEY);
                 localStorage.removeItem(LAST_USER_CREDENTIALS_CACHE_KEY);
                 localStorage.setItem('lawyerAppLoggedOut', 'true');
-            } else if (event === 'SIGNED_IN') {
+            } else if (newSession) {
+                setSession(newSession);
+                localStorage.setItem(LAST_USER_CACHE_KEY, JSON.stringify(newSession.user));
                 localStorage.removeItem('lawyerAppLoggedOut');
             }
-
-            // Ensure auth loading is turned off on any state change to prevent hanging
             setIsAuthLoading(false);
         });
         
-        // Check for initial session
-        supabase!.auth.getSession().then(({ data: { session }, error }) => {
+        // Check for initial session (verify with server if online, or trust local storage if offline)
+        supabase!.auth.getSession().then(({ data: { session: serverSession }, error }) => {
             if (error) {
-                console.warn("Initial session check failed:", error.message);
+                console.warn("Initial session verification failed:", error.message);
                 const errorMessage = error.message.toLowerCase();
                 
                 // Handle "Invalid Refresh Token" specifically by aggressively clearing local state
@@ -332,56 +355,53 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     localStorage.removeItem(LAST_USER_CACHE_KEY);
                     localStorage.removeItem(LAST_USER_CREDENTIALS_CACHE_KEY);
                     
-                    // 2. Clear Supabase specific token keys to ensure a clean slate
-                    // Supabase keys typically start with 'sb-'
+                    // 2. Clear Supabase specific token keys
                     Object.keys(localStorage).forEach(key => {
                         if (key.startsWith('sb-')) {
                             localStorage.removeItem(key);
                         }
                     });
                     
-                    // 3. Attempt to sign out cleanly (catch error if network fails)
+                    // 3. Attempt to sign out cleanly
                     supabase!.auth.signOut().catch(() => {}); 
                     
                     setSession(null);
                     
-                    // 4. Trigger a full app remount/refresh to reset all in-memory state
+                    // 4. Trigger a full app remount/refresh
                     onRefresh(); 
                 }
-                // NEW: Handle Network Errors (Failed to fetch) by attempting offline restoration
+                // Handle Network Errors: Keep optimistic session if we have one
                 else if (errorMessage.includes("failed to fetch") || errorMessage.includes("network")) {
-                    console.warn("Network error detected during session check. Attempting to restore last known user for offline mode.");
-                     const lastUserRaw = localStorage.getItem(LAST_USER_CACHE_KEY);
-                     if (lastUserRaw) {
-                         try {
-                             const user = JSON.parse(lastUserRaw) as User;
-                             // Create a synthetic session object for offline access
-                             const offlineSession = {
-                                 access_token: "offline_access_token",
-                                 refresh_token: "offline_refresh_token",
-                                 expires_in: 3600 * 24 * 7, // Fake long expiry
-                                 token_type: "bearer",
-                                 user: user
-                             } as AuthSession;
-                             setSession(offlineSession);
-                         } catch (parseError) {
-                             console.error("Failed to restore offline user:", parseError);
-                             setSession(null);
-                         }
-                     } else {
-                         setSession(null);
-                     }
+                    console.warn("Network error during session check. Keeping optimistic session.");
                 } else {
-                    setSession(null);
+                     // Other errors: Clear session
+                     setSession(null);
                 }
-            } else if (session) {
-                setSession(session);
+            } else if (serverSession) {
+                // Valid session from Supabase (either from server or valid local persistence)
+                setSession(serverSession);
+                localStorage.setItem(LAST_USER_CACHE_KEY, JSON.stringify(serverSession.user));
+            } else {
+                // No session found and no error (e.g. user is logged out).
+                // If we had an optimistic session but Supabase says "no session", it means the token was likely cleared or invalid.
+                // We should respect Supabase's state here unless it's a network failure (handled above).
+                if (session) {
+                     // Double check if we are online. If we are offline, getSession might return null if it can't verify?
+                     // Actually getSession usually checks localStorage first. If it returns null, the token is missing.
+                     setSession(null);
+                     localStorage.removeItem(LAST_USER_CACHE_KEY);
+                }
             }
+            setIsAuthLoading(false);
+        }).catch(err => {
+            // Handle promise rejection (network failure on startup)
+            console.warn("Session check promise rejected (likely network error):", err);
+            // Maintain optimistic session state if available
             setIsAuthLoading(false);
         });
 
         return () => subscription.unsubscribe();
-    }, [supabase, onRefresh]);
+    }, [supabase, onRefresh]); // Removed 'session' dependency to avoid loops
     
     // Fetch user profile when session is available
     const data = useSupabaseData(session?.user ?? null, isAuthLoading);
@@ -415,8 +435,13 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     }, []);
     
     const handleLogout = async () => {
-        await supabase!.auth.signOut();
-        onRefresh(); // Trigger a full app remount to clear all state
+        try {
+            await supabase!.auth.signOut();
+        } catch (error) {
+            console.warn("Logout network failed, clearing local state anyway:", error);
+        } finally {
+            onRefresh(); // Trigger a full app remount to clear all state
+        }
     };
     
     const handleNavigation = (page: Page) => {
@@ -432,9 +457,6 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         if (taskData.id) { // Editing
             data.setAdminTasks(prev => prev.map(t => t.id === taskData.id ? { ...t, ...taskData, updated_at: new Date() } : t));
         } else { // Adding
-            // A new task is being added.
-            // We must ensure that a unique ID is assigned and not overwritten.
-            // The incoming `taskData` should not have an `id`, but to be safe, we'll destructure it out.
             const { id, ...restOfTaskData } = taskData;
 
             const newLocation = restOfTaskData.location || 'غير محدد';
@@ -443,11 +465,9 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                 .reduce((max, t) => Math.max(max, t.orderIndex || 0), -1);
 
             const newTask: AdminTask = {
-                id: `task-${Date.now()}`, // Assign a new, guaranteed-unique ID.
-                ...restOfTaskData,       // Spread the rest of the data.
+                id: `task-${Date.now()}`,
+                ...restOfTaskData,
                 completed: false,
-                // When creating a new task, assign it the next available order index within its location group.
-                // This ensures it appears at the end of the list by default.
                 orderIndex: maxOrderIndex + 1,
                 updated_at: new Date(),
             };
@@ -581,16 +601,23 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
 
     // --- Render Logic ---
 
-    if (isAuthLoading || (data.isDataLoading && session)) {
+    // Do not show loader if we have a session (optimistic load). 
+    // Only show it if we are truly waiting for initial auth and have no cached session.
+    if (isAuthLoading && !session) {
         return <FullScreenLoader text="جاري تحميل البيانات..." />;
+    }
+    
+    // If we have a session, but data is still loading from IDB, show loader.
+    // NOTE: useSupabaseData now sets isDataLoading to false immediately after loading local data.
+    if (data.isDataLoading && session) {
+         return <FullScreenLoader text="جاري تحميل البيانات..." />;
     }
     
     const handleLoginSuccess = (user: User, isOfflineLogin: boolean = false) => {
         if (!isOfflineLogin) {
             localStorage.setItem(LAST_USER_CACHE_KEY, JSON.stringify(user));
         }
-        // Supabase onAuthStateChange will handle setting the session normally.
-        // If offline login, we manually update session here just in case, though App renders based on session prop.
+        // If offline login, we manually update session here because onAuthStateChange might not fire.
         if (isOfflineLogin) {
              const offlineSession = {
                  access_token: "offline_access_token",
@@ -603,9 +630,6 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         }
     };
 
-    // Fix: Reordered the render logic. The manual trigger for the config modal (`showConfigModal`)
-    // and the automatic trigger (`data.syncStatus`) are now checked *before* checking the session state.
-    // This ensures the modal can open from the login page.
     if (showConfigModal) {
         return <ConfigurationModal onRetry={() => { data.manualSync(); setShowConfigModal(false); }} />;
     }
@@ -619,30 +643,23 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     }
     
     if (!profile) {
-        // Only show loader if we are online. If offline and profile is missing (rare if cache works), 
-        // we might be in a weird state, but usually profile should be loaded from IDB.
-        if (isOnline) {
+        // Only show loader if we are online and waiting for profile sync. 
+        // If offline and profile is missing (rare if cache works), we might be in a weird state.
+        if (isOnline && data.profiles.length === 0) {
             return <FullScreenLoader text="جاري تحميل ملف المستخدم..." />;
         } else {
-             // Fallback profile for extreme offline cases where profile wasn't in IDB but user object exists
+             // Fallback logic for offline or slow profile load
              const fallbackProfile: Profile = {
                  id: session.user.id,
                  full_name: session.user.user_metadata.full_name || 'مستخدم',
                  mobile_number: session.user.user_metadata.mobile_number || '',
-                 is_approved: true, // Assume approved if offline login succeeded
+                 is_approved: true, // Assume approved if we have a valid cached session
                  is_active: true,
                  subscription_start_date: null,
                  subscription_end_date: null,
                  role: 'user'
              };
-             // We don't set state here to avoid loops, but pass it down? 
-             // Better to just render with a partial profile check or return loader if strict.
-             // For now, let's assume data hook handles it or return loader.
-             // If offline and data.profiles is empty, we are stuck.
-             if (data.profiles.length === 0) {
-                  // Force a reload or retry might be needed, or just show limited UI.
-                  return <FullScreenLoader text="جاري استرجاع البيانات المحلية..." />;
-             }
+             // Use fallback if profile is missing but we have cached data
         }
     }
 
@@ -650,6 +667,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const effectiveProfile = profile || data.profiles.find(p => p.id === session.user.id);
     
     if (!effectiveProfile) {
+         // If absolutely no profile data is available yet, show loader
          return <FullScreenLoader text="جاري تحميل الملف الشخصي..." />;
     }
 

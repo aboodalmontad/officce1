@@ -141,7 +141,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                 />
             </nav>
             <div className="mt-auto border-t pt-4">
-                <p className="mb-2 text-center text-xs text-gray-400">الإصدار: 20-11-2025-1</p>
+                <p className="mb-2 text-center text-xs text-gray-400">الإصدار: 20-11-2025-2</p>
                 <button
                     onClick={onLogout}
                     className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-red-100 hover:text-red-700 transition-colors"
