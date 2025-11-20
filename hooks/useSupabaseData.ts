@@ -1,3 +1,4 @@
+
 import * as React from 'react';
 import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem, CaseDocument, AppData, DeletedIds, getInitialDeletedIds, Profile, SiteFinancialEntry } from '../types';
 import { useOnlineStatus } from './useOnlineStatus';
@@ -484,16 +485,21 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 setData(finalData);
                 setDeletedIds(storedDeletedIds || getInitialDeletedIds());
                 
+                // CRITICAL OPTIMIZATION:
+                // We unlock the UI immediately after loading local data.
+                // Syncing happens in the background, so the user doesn't wait.
+                setIsDataLoading(false);
+
                 if (isOnline) {
-                    await manualSync();
+                    manualSync().catch(console.error);
                 } else {
                     setSyncStatus('synced'); // Offline but data loaded
                 }
             } catch (error) {
                 console.error('Failed to load data from IndexedDB:', error);
                 setSyncStatus('error', 'فشل تحميل البيانات المحلية.');
-            } finally {
-                if (!cancelled) setIsDataLoading(false);
+                // Even if local load fails, we stop loading to allow UI to show error or empty state
+                setIsDataLoading(false);
             }
         };
         loadData();

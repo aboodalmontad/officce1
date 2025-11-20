@@ -1,3 +1,4 @@
+
 import * as React from 'react';
 // Fix: Use `import type` for Session and User as they are used as types, not values. This resolves module resolution errors in some environments.
 import type { Session as AuthSession, User } from '@supabase/supabase-js';
@@ -259,23 +260,36 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
 
     // This effect handles authentication state changes.
     React.useEffect(() => {
-        const { data: { subscription } } = supabase!.auth.onAuthStateChange((_event, session) => {
+        const { data: { subscription } } = supabase!.auth.onAuthStateChange((event, session) => {
             setSession(session);
-            setIsAuthLoading(false);
             
             // If user logs out, clear all user-specific cache to prevent auto-login next time.
-            if (_event === 'SIGNED_OUT') {
+            if (event === 'SIGNED_OUT') {
                 localStorage.removeItem(LAST_USER_CACHE_KEY);
                 localStorage.removeItem(LAST_USER_CREDENTIALS_CACHE_KEY);
-                 localStorage.setItem('lawyerAppLoggedOut', 'true');
-            } else if (_event === 'SIGNED_IN') {
+                localStorage.setItem('lawyerAppLoggedOut', 'true');
+            } else if (event === 'SIGNED_IN') {
                 localStorage.removeItem('lawyerAppLoggedOut');
             }
+
+            // Ensure auth loading is turned off on any state change to prevent hanging
+            setIsAuthLoading(false);
         });
         
         // Check for initial session
-        supabase!.auth.getSession().then(({ data: { session } }) => {
-            if (session) {
+        supabase!.auth.getSession().then(({ data: { session }, error }) => {
+            if (error) {
+                console.warn("Initial session check failed:", error.message);
+                const errorMessage = error.message.toLowerCase();
+                // Handle "Invalid Refresh Token" specifically by clearing local state to force re-login
+                // This prevents infinite loading loops or stuck states.
+                if (errorMessage.includes("refresh token") || errorMessage.includes("not found")) {
+                    localStorage.removeItem(LAST_USER_CACHE_KEY);
+                    localStorage.removeItem(LAST_USER_CREDENTIALS_CACHE_KEY);
+                    supabase!.auth.signOut().catch(() => {}); 
+                }
+                setSession(null);
+            } else if (session) {
                 setSession(session);
             }
             setIsAuthLoading(false);
