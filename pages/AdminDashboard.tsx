@@ -1,3 +1,4 @@
+
 import * as React from 'react';
 import AdminPage from './AdminPage';
 import { PowerIcon, UserGroupIcon, ChartPieIcon, Bars3Icon, XMarkIcon, CurrencyDollarIcon, Cog6ToothIcon, ExclamationTriangleIcon } from '../components/icons';
@@ -140,7 +141,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                 />
             </nav>
             <div className="mt-auto border-t pt-4">
-                <p className="mb-2 text-center text-xs text-gray-400">الإصدار: 13-11-2025-1</p>
+                <p className="mb-2 text-center text-xs text-gray-400">الإصدار: 20-11-2025</p>
                 <button
                     onClick={onLogout}
                     className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-red-100 hover:text-red-700 transition-colors"
