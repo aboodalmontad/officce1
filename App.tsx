@@ -17,10 +17,10 @@ import SubscriptionExpiredPage from './pages/SubscriptionExpiredPage.tsx';
 
 import ConfigurationModal from './components/ConfigurationModal';
 import { useSupabaseData, SyncStatus } from './hooks/useSupabaseData';
-import { UserIcon, CalculatorIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, ExclamationTriangleIcon, PowerIcon, HomeIcon, PrintIcon, ShareIcon } from './components/icons';
+import { UserIcon, CalculatorIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, PowerIcon, PrintIcon, ShareIcon, CalendarDaysIcon, ClipboardDocumentCheckIcon } from './components/icons';
 import ContextMenu, { MenuItem } from './components/ContextMenu';
 import AdminTaskModal from './components/AdminTaskModal';
-import { AdminTask, Profile, Session, Client, Appointment, AccountingEntry, Invoice, CaseDocument, AppData, SiteFinancialEntry } from './types';
+import { AdminTask, Profile, Client, Appointment, AccountingEntry, Invoice, CaseDocument, AppData, SiteFinancialEntry } from './types';
 import { getSupabaseClient } from './supabaseClient';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import UnpostponedSessionsModal from './components/UnpostponedSessionsModal';
@@ -31,7 +31,7 @@ import { printElement } from './utils/printUtils';
 import { formatDate, isSameDay } from './utils/dateUtils';
 
 
-type Page = 'home' | 'clients' | 'accounting' | 'settings';
+type Page = 'home' | 'admin-tasks' | 'clients' | 'accounting' | 'settings';
 
 interface AppProps {
     onRefresh: () => void;
@@ -128,10 +128,10 @@ const Navbar: React.FC<{
 }> = ({ currentPage, onNavigate, onLogout, syncStatus, lastSyncError, isDirty, isOnline, onManualSync, profile, isAutoSyncEnabled, homePageActions }) => {
     
     const navItems = [
-        { id: 'home', label: 'الرئيسية', icon: HomeIcon },
+        { id: 'home', label: 'المفكرة', icon: CalendarDaysIcon },
+        { id: 'admin-tasks', label: 'المهام الإدارية', icon: ClipboardDocumentCheckIcon },
         { id: 'clients', label: 'الموكلين', icon: UserIcon },
         { id: 'accounting', label: 'المحاسبة', icon: CalculatorIcon },
-        { id: 'settings', label: 'الإعدادات', icon: Cog6ToothIcon },
     ];
     
     return (
@@ -173,6 +173,13 @@ const Navbar: React.FC<{
                     onManualSync={onManualSync}
                     isAutoSyncEnabled={isAutoSyncEnabled}
                 />
+                <button 
+                    onClick={() => onNavigate('settings')} 
+                    className={`p-2 rounded-full transition-colors ${currentPage === 'settings' ? 'bg-gray-200 text-gray-800' : 'text-gray-500 hover:bg-gray-100'}`} 
+                    title="الإعدادات"
+                >
+                    <Cog6ToothIcon className="w-5 h-5" />
+                </button>
                 <button onClick={onLogout} className="p-2 text-gray-500 hover:bg-red-100 hover:text-red-600 rounded-full transition-colors" title="تسجيل الخروج">
                     <PowerIcon className="w-5 h-5" />
                 </button>
@@ -249,7 +256,6 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const [isShareAssigneeModalOpen, setIsShareAssigneeModalOpen] = React.useState(false);
     const [printableReportData, setPrintableReportData] = React.useState<any | null>(null);
     const [isActionsMenuOpen, setIsActionsMenuOpen] = React.useState(false);
-    const [mainView, setMainView] = React.useState<'agenda' | 'adminTasks'>('agenda');
     const [selectedDate, setSelectedDate] = React.useState(new Date());
 
     const printReportRef = React.useRef<HTMLDivElement>(null);
@@ -281,14 +287,58 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
             if (error) {
                 console.warn("Initial session check failed:", error.message);
                 const errorMessage = error.message.toLowerCase();
-                // Handle "Invalid Refresh Token" specifically by clearing local state to force re-login
-                // This prevents infinite loading loops or stuck states.
+                
+                // Handle "Invalid Refresh Token" specifically by aggressively clearing local state
+                // and forcing a full app refresh to prevent infinite loops.
                 if (errorMessage.includes("refresh token") || errorMessage.includes("not found")) {
+                    console.error("Critical Auth Error: Invalid Refresh Token. Cleaning up...");
+                    
+                    // 1. Clear App-specific cache
                     localStorage.removeItem(LAST_USER_CACHE_KEY);
                     localStorage.removeItem(LAST_USER_CREDENTIALS_CACHE_KEY);
+                    
+                    // 2. Clear Supabase specific token keys to ensure a clean slate
+                    // Supabase keys typically start with 'sb-'
+                    Object.keys(localStorage).forEach(key => {
+                        if (key.startsWith('sb-')) {
+                            localStorage.removeItem(key);
+                        }
+                    });
+                    
+                    // 3. Attempt to sign out cleanly (catch error if network fails)
                     supabase!.auth.signOut().catch(() => {}); 
+                    
+                    setSession(null);
+                    
+                    // 4. Trigger a full app remount/refresh to reset all in-memory state
+                    onRefresh(); 
                 }
-                setSession(null);
+                // NEW: Handle Network Errors (Failed to fetch) by attempting offline restoration
+                else if (errorMessage.includes("failed to fetch") || errorMessage.includes("network")) {
+                    console.warn("Network error detected during session check. Attempting to restore last known user for offline mode.");
+                     const lastUserRaw = localStorage.getItem(LAST_USER_CACHE_KEY);
+                     if (lastUserRaw) {
+                         try {
+                             const user = JSON.parse(lastUserRaw) as User;
+                             // Create a synthetic session object for offline access
+                             const offlineSession = {
+                                 access_token: "offline_access_token",
+                                 refresh_token: "offline_refresh_token",
+                                 expires_in: 3600 * 24 * 7, // Fake long expiry
+                                 token_type: "bearer",
+                                 user: user
+                             } as AuthSession;
+                             setSession(offlineSession);
+                         } catch (parseError) {
+                             console.error("Failed to restore offline user:", parseError);
+                             setSession(null);
+                         }
+                     } else {
+                         setSession(null);
+                     }
+                } else {
+                    setSession(null);
+                }
             } else if (session) {
                 setSession(session);
             }
@@ -296,7 +346,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         });
 
         return () => subscription.unsubscribe();
-    }, [supabase]);
+    }, [supabase, onRefresh]);
     
     // Fetch user profile when session is available
     const data = useSupabaseData(session?.user ?? null, isAuthLoading);
@@ -504,7 +554,18 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         if (!isOfflineLogin) {
             localStorage.setItem(LAST_USER_CACHE_KEY, JSON.stringify(user));
         }
-        // Supabase onAuthStateChange will handle setting the session
+        // Supabase onAuthStateChange will handle setting the session normally.
+        // If offline login, we manually update session here just in case, though App renders based on session prop.
+        if (isOfflineLogin) {
+             const offlineSession = {
+                 access_token: "offline_access_token",
+                 refresh_token: "offline_refresh_token",
+                 expires_in: 3600 * 24 * 7,
+                 token_type: "bearer",
+                 user: user
+             } as AuthSession;
+             setSession(offlineSession);
+        }
     };
 
     // Fix: Reordered the render logic. The manual trigger for the config modal (`showConfigModal`)
@@ -523,18 +584,49 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     }
     
     if (!profile) {
-        return <FullScreenLoader text="جاري تحميل ملف المستخدم..." />;
+        // Only show loader if we are online. If offline and profile is missing (rare if cache works), 
+        // we might be in a weird state, but usually profile should be loaded from IDB.
+        if (isOnline) {
+            return <FullScreenLoader text="جاري تحميل ملف المستخدم..." />;
+        } else {
+             // Fallback profile for extreme offline cases where profile wasn't in IDB but user object exists
+             const fallbackProfile: Profile = {
+                 id: session.user.id,
+                 full_name: session.user.user_metadata.full_name || 'مستخدم',
+                 mobile_number: session.user.user_metadata.mobile_number || '',
+                 is_approved: true, // Assume approved if offline login succeeded
+                 is_active: true,
+                 subscription_start_date: null,
+                 subscription_end_date: null,
+                 role: 'user'
+             };
+             // We don't set state here to avoid loops, but pass it down? 
+             // Better to just render with a partial profile check or return loader if strict.
+             // For now, let's assume data hook handles it or return loader.
+             // If offline and data.profiles is empty, we are stuck.
+             if (data.profiles.length === 0) {
+                  // Force a reload or retry might be needed, or just show limited UI.
+                  return <FullScreenLoader text="جاري استرجاع البيانات المحلية..." />;
+             }
+        }
     }
 
-    if (!profile.is_approved) {
+    // Safety check for profile existence before accessing properties
+    const effectiveProfile = profile || data.profiles.find(p => p.id === session.user.id);
+    
+    if (!effectiveProfile) {
+         return <FullScreenLoader text="جاري تحميل الملف الشخصي..." />;
+    }
+
+    if (!effectiveProfile.is_approved) {
         return <PendingApprovalPage onLogout={handleLogout} />;
     }
 
-    if (!profile.is_active || (profile.subscription_end_date && new Date(profile.subscription_end_date) < new Date())) {
+    if (!effectiveProfile.is_active || (effectiveProfile.subscription_end_date && new Date(effectiveProfile.subscription_end_date) < new Date())) {
         return <SubscriptionExpiredPage onLogout={handleLogout} />;
     }
     
-    if (profile.role === 'admin') {
+    if (effectiveProfile.role === 'admin') {
          return (
             <DataProvider value={data}>
                 <AdminDashboard onLogout={handleLogout} />
@@ -558,9 +650,11 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                 return <AccountingPage initialInvoiceData={initialInvoiceData} clearInitialInvoiceData={() => setInitialInvoiceData(undefined)} />;
             case 'settings':
                 return <SettingsPage />;
+            case 'admin-tasks':
+                return <HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} mainView="adminTasks" selectedDate={selectedDate} setSelectedDate={setSelectedDate} />;
             case 'home':
             default:
-                return <HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} mainView={mainView} setMainView={setMainView} selectedDate={selectedDate} setSelectedDate={setSelectedDate} />;
+                return <HomePage onOpenAdminTaskModal={handleOpenAdminTaskModal} showContextMenu={showContextMenu} mainView="agenda" selectedDate={selectedDate} setSelectedDate={setSelectedDate} />;
         }
     };
     
@@ -604,7 +698,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     isDirty={data.isDirty}
                     isOnline={isOnline}
                     onManualSync={data.manualSync}
-                    profile={profile}
+                    profile={effectiveProfile}
                     isAutoSyncEnabled={data.isAutoSyncEnabled}
                     homePageActions={homePageActions}
                 />

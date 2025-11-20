@@ -1,3 +1,4 @@
+
 import * as React from 'react';
 import { getSupabaseClient } from '../supabaseClient';
 import { ExclamationCircleIcon, EyeIcon, EyeSlashIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, ArrowTopRightOnSquareIcon } from '../components/icons';
@@ -210,12 +211,17 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                 }));
             } catch (err: any) {
                 const lowerMsg = String(err.message).toLowerCase();
-                console.error('Online Login error:', err);
+                
+                // Suppress loud console errors for network issues as we handle them with fallback
+                if (!lowerMsg.includes('failed to fetch') && !lowerMsg.includes('networkerror')) {
+                    console.error('Online Login error:', err);
+                } else {
+                    console.warn('Online login failed due to network issue. Attempting offline fallback.');
+                }
 
                 // Fallback to offline login if online attempt fails due to network issues.
                 if (lowerMsg.includes('failed to fetch') || lowerMsg.includes('networkerror')) {
                     setInfo("فشل الاتصال بالخادم. جاري محاولة تسجيل الدخول دون اتصال...");
-                    console.log("Online login failed due to network error, attempting offline login as fallback.");
                     performOfflineLogin();
                     return;
                 }

@@ -1,3 +1,4 @@
+
 import * as React from 'react';
 import Calendar from '../components/Calendar';
 import { Session, AdminTask, Appointment, Stage, Client } from '../types';
@@ -117,7 +118,6 @@ interface HomePageProps {
     onOpenAdminTaskModal: (initialData?: any) => void;
     showContextMenu: (event: React.MouseEvent, menuItems: MenuItem[]) => void;
     mainView: 'agenda' | 'adminTasks';
-    setMainView: (view: 'agenda' | 'adminTasks') => void;
     selectedDate: Date;
     setSelectedDate: (date: Date) => void;
 }
@@ -126,7 +126,6 @@ const HomePage: React.FC<HomePageProps> = ({
     onOpenAdminTaskModal, 
     showContextMenu,
     mainView,
-    setMainView,
     selectedDate,
     setSelectedDate 
 }) => {
@@ -463,28 +462,6 @@ const HomePage: React.FC<HomePageProps> = ({
 
     return (
         <div className="space-y-6">
-            <div className="no-print pb-2 -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 px-4 sm:px-6 mb-6">
-                <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
-                        <button
-                            onClick={() => setMainView('agenda')}
-                            className={`flex-1 sm:flex-initial sm:w-40 text-center px-4 py-2 font-semibold text-sm rounded-lg transition-colors ${
-                                mainView === 'agenda' ? 'bg-blue-600 text-white shadow' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                            }`}
-                        >
-                            المفكرة
-                        </button>
-                        <button
-                            onClick={() => setMainView('adminTasks')}
-                            className={`flex-1 sm:flex-initial sm:w-40 text-center px-4 py-2 font-semibold text-sm rounded-lg transition-colors ${
-                                mainView === 'adminTasks' ? 'bg-blue-600 text-white shadow' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                            }`}
-                        >
-                            المهام الإدارية
-                        </button>
-                    </div>
-                </div>
-            </div>
             
             {mainView === 'agenda' && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
