@@ -1,12 +1,17 @@
+
 import * as React from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
-import { MusicalNoteIcon, PlayCircleIcon, TrashIcon, ArrowUpTrayIcon } from '../components/icons';
+import { MusicalNoteIcon, PlayCircleIcon, TrashIcon, ArrowUpTrayIcon, ServerIcon } from '../components/icons';
 // Fix: The imported variable name contained hyphens, which is invalid syntax. Corrected to use the camelCase version.
 import { defaultUserApprovalSoundBase64 } from '../components/RealtimeNotifier';
 
 const USER_APPROVAL_SOUND_KEY = 'customUserApprovalSound';
 
-const AdminSettingsPage: React.FC = () => {
+interface AdminSettingsPageProps {
+    onOpenConfig: () => void;
+}
+
+const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ onOpenConfig }) => {
     const [customSound, setCustomSound] = useLocalStorage<string | null>(USER_APPROVAL_SOUND_KEY, null);
     const [feedback, setFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -66,6 +71,28 @@ const AdminSettingsPage: React.FC = () => {
                     <span>{feedback.message}</span>
                 </div>
             )}
+            
+            <div className="bg-white p-6 rounded-lg shadow space-y-6">
+                <h2 className="text-xl font-bold text-gray-800 border-b pb-3 flex items-center gap-3">
+                    <ServerIcon className="w-6 h-6 text-blue-600" />
+                    <span>تكوين النظام</span>
+                </h2>
+                <div className="p-4 bg-gray-50 border rounded-lg">
+                    <h3 className="font-semibold text-lg text-gray-800">معالج إعداد قاعدة البيانات</h3>
+                    <p className="text-sm text-gray-600 mt-1">
+                        استخدم هذه الأداة لإعداد جداول قاعدة البيانات، وتكوين صلاحيات التخزين، وإصلاح مشاكل المزامنة. يجب استخدام هذه الأداة بحذر.
+                    </p>
+                    <div className="mt-4">
+                        <button 
+                            onClick={onOpenConfig}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                            <ServerIcon className="w-5 h-5" />
+                            <span>فتح معالج الإعداد</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
 
             <div className="bg-white p-6 rounded-lg shadow space-y-6">
                 <h2 className="text-xl font-bold text-gray-800 border-b pb-3 flex items-center gap-3">

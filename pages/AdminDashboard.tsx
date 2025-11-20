@@ -9,6 +9,7 @@ import AdminSettingsPage from './AdminSettingsPage';
 
 interface AdminDashboardProps {
     onLogout: () => void;
+    onOpenConfig: () => void;
 }
 
 type AdminView = 'analytics' | 'users' | 'finances' | 'settings';
@@ -41,7 +42,7 @@ const NavLink: React.FC<{
 );
 
 
-const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onOpenConfig }) => {
     const { profiles, isDataLoading: loading } = useData();
     const [view, setView] = React.useState<AdminView>('analytics');
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
@@ -98,7 +99,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
             case 'finances':
                 return <SiteFinancesPage />;
             case 'settings':
-                return <AdminSettingsPage />;
+                return <AdminSettingsPage onOpenConfig={onOpenConfig} />;
             default:
                 return <AdminAnalyticsPage />;
         }
@@ -141,7 +142,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                 />
             </nav>
             <div className="mt-auto border-t pt-4">
-                <p className="mb-2 text-center text-xs text-gray-400">الإصدار: 20-11-2025-2</p>
+                <p className="mb-2 text-center text-xs text-gray-400">الإصدار: 20-11-2025-3</p>
                 <button
                     onClick={onLogout}
                     className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-red-100 hover:text-red-700 transition-colors"

@@ -141,7 +141,7 @@ const Navbar: React.FC<{
                     <div className="flex flex-col items-start sm:flex-row sm:items-baseline gap-0 sm:gap-2">
                         <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
                         <div className="flex items-center gap-1 text-xs text-gray-500">
-                            <span>الإصدار: 20-11-2025-2</span>
+                            <span>الإصدار: 20-11-2025-3</span>
                             {profile && (
                                 <>
                                     <span className="mx-1 text-gray-300">|</span>
@@ -340,68 +340,70 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
             setIsAuthLoading(false);
         });
         
-        // Check for initial session (verify with server if online, or trust local storage if offline)
-        supabase!.auth.getSession().then(({ data: { session: serverSession }, error }) => {
-            if (error) {
-                console.warn("Initial session verification failed:", error.message);
-                const errorMessage = error.message.toLowerCase();
+        // Initial Session Check Logic
+        const checkSession = async () => {
+             // 1. If we are OFFLINE, skip server verification entirely.
+             //    Trust the optimistic session we loaded from localStorage.
+             if (!isOnline) {
+                 console.log("App started offline. Trusting cached session.");
+                 setIsAuthLoading(false);
+                 return;
+             }
+
+             // 2. If ONLINE, attempt to verify with Supabase.
+             try {
+                const { data: { session: serverSession }, error } = await supabase!.auth.getSession();
                 
-                // Handle "Invalid Refresh Token" specifically by aggressively clearing local state
-                // and forcing a full app refresh to prevent infinite loops.
-                if (errorMessage.includes("refresh token") || errorMessage.includes("not found")) {
-                    console.error("Critical Auth Error: Invalid Refresh Token. Cleaning up...");
+                if (error) {
+                    console.warn("Initial session verification failed:", error.message);
+                    const errorMessage = error.message.toLowerCase();
                     
-                    // 1. Clear App-specific cache
-                    localStorage.removeItem(LAST_USER_CACHE_KEY);
-                    localStorage.removeItem(LAST_USER_CREDENTIALS_CACHE_KEY);
-                    
-                    // 2. Clear Supabase specific token keys
-                    Object.keys(localStorage).forEach(key => {
-                        if (key.startsWith('sb-')) {
-                            localStorage.removeItem(key);
-                        }
-                    });
-                    
-                    // 3. Attempt to sign out cleanly
-                    supabase!.auth.signOut().catch(() => {}); 
-                    
-                    setSession(null);
-                    
-                    // 4. Trigger a full app remount/refresh
-                    onRefresh(); 
-                }
-                // Handle Network Errors: Keep optimistic session if we have one
-                else if (errorMessage.includes("failed to fetch") || errorMessage.includes("network")) {
-                    console.warn("Network error during session check. Keeping optimistic session.");
+                    // Handle "Invalid Refresh Token" specifically by aggressively clearing local state
+                    // ONLY IF we are online and the server explicitly rejected it.
+                    // If we are offline, this code block won't be reached due to the check above,
+                    // preventing accidental logout due to connection issues.
+                    if (errorMessage.includes("refresh token") || errorMessage.includes("not found")) {
+                        console.error("Critical Auth Error: Invalid Refresh Token. Cleaning up...");
+                        
+                        localStorage.removeItem(LAST_USER_CACHE_KEY);
+                        localStorage.removeItem(LAST_USER_CREDENTIALS_CACHE_KEY);
+                        Object.keys(localStorage).forEach(key => {
+                            if (key.startsWith('sb-')) localStorage.removeItem(key);
+                        });
+                        
+                        await supabase!.auth.signOut().catch(() => {}); 
+                        setSession(null);
+                        onRefresh(); 
+                    }
+                    // Handle Network Errors during the call (extra safety)
+                    else if (errorMessage.includes("failed to fetch") || errorMessage.includes("network")) {
+                        console.warn("Network error during session check. Keeping optimistic session.");
+                    } else {
+                         setSession(null);
+                    }
+                } else if (serverSession) {
+                    setSession(serverSession);
+                    localStorage.setItem(LAST_USER_CACHE_KEY, JSON.stringify(serverSession.user));
                 } else {
-                     // Other errors: Clear session
-                     setSession(null);
+                    // No session found (logged out)
+                    if (session) {
+                         // If we thought we had a session but server says no, logout.
+                         setSession(null);
+                         localStorage.removeItem(LAST_USER_CACHE_KEY);
+                    }
                 }
-            } else if (serverSession) {
-                // Valid session from Supabase (either from server or valid local persistence)
-                setSession(serverSession);
-                localStorage.setItem(LAST_USER_CACHE_KEY, JSON.stringify(serverSession.user));
-            } else {
-                // No session found and no error (e.g. user is logged out).
-                // If we had an optimistic session but Supabase says "no session", it means the token was likely cleared or invalid.
-                // We should respect Supabase's state here unless it's a network failure (handled above).
-                if (session) {
-                     // Double check if we are online. If we are offline, getSession might return null if it can't verify?
-                     // Actually getSession usually checks localStorage first. If it returns null, the token is missing.
-                     setSession(null);
-                     localStorage.removeItem(LAST_USER_CACHE_KEY);
-                }
-            }
-            setIsAuthLoading(false);
-        }).catch(err => {
-            // Handle promise rejection (network failure on startup)
-            console.warn("Session check promise rejected (likely network error):", err);
-            // Maintain optimistic session state if available
-            setIsAuthLoading(false);
-        });
+             } catch (err) {
+                 console.warn("Unexpected error during session check:", err);
+                 // In case of unexpected error (like network crash during execution), keep optimistic session
+             } finally {
+                 setIsAuthLoading(false);
+             }
+        };
+
+        checkSession();
 
         return () => subscription.unsubscribe();
-    }, [supabase, onRefresh]); // Removed 'session' dependency to avoid loops
+    }, [supabase, onRefresh, isOnline]); // Added isOnline dependency to re-check if connectivity changes
     
     // Fetch user profile when session is available
     const data = useSupabaseData(session?.user ?? null, isAuthLoading);
@@ -682,7 +684,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     if (effectiveProfile.role === 'admin') {
          return (
             <DataProvider value={data}>
-                <AdminDashboard onLogout={handleLogout} />
+                <AdminDashboard onLogout={handleLogout} onOpenConfig={() => setShowConfigModal(true)} />
                 <NotificationCenter 
                     appointmentAlerts={data.triggeredAlerts}
                     realtimeAlerts={data.realtimeAlerts}

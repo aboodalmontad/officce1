@@ -402,16 +402,6 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                             {isLoginView ? 'أنشئ حساباً جديداً' : 'سجل الدخول'}
                         </a>
                     </p>
-                    
-                    <div className="mt-4 pt-4 border-t text-center">
-                        <button 
-                            onClick={onForceSetup}
-                            className="inline-flex items-center gap-2 text-xs text-gray-500 hover:text-blue-600"
-                        >
-                            <DatabaseIcon className="w-4 h-4" />
-                            <span className="hover:underline">هل تواجه مشكلة في الإعداد؟ افتح معالج قاعدة البيانات</span>
-                        </button>
-                    </div>
                 </div>
 
                 <div className="mt-6 text-center">
@@ -426,7 +416,7 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                     </a>
                 </div>
                 <p className="mt-4 text-center text-xs text-gray-500">كافة الحقوق محفوظة للمحامي عبد الرحمن نحوي</p>
-                <p className="mt-1 text-center text-xs text-gray-400">الإصدار: 20-11-2025-2</p>
+                <p className="mt-1 text-center text-xs text-gray-400">الإصدار: 20-11-2025-3</p>
             </div>
         </div>
     );
