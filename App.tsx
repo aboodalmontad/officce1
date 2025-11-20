@@ -138,9 +138,17 @@ const Navbar: React.FC<{
         <header className="bg-white shadow-md p-2 sm:p-4 flex justify-between items-center no-print sticky top-0 z-30">
             <nav className="flex items-center gap-1 sm:gap-4 flex-wrap">
                 <button onClick={() => onNavigate('home')} className="flex items-center" aria-label="العودة إلى الصفحة الرئيسية">
-                    <div className="flex items-baseline gap-2">
+                    <div className="flex flex-col items-start sm:flex-row sm:items-baseline gap-0 sm:gap-2">
                         <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
-                        <span className="text-xs text-gray-500">الإصدار: 20-11-2025</span>
+                        <div className="flex items-center gap-1 text-xs text-gray-500">
+                            <span>الإصدار: 20-11-2025</span>
+                            {profile && (
+                                <>
+                                    <span className="mx-1 text-gray-300">|</span>
+                                    <span className="font-semibold text-blue-600 truncate max-w-[150px]">{profile.full_name}</span>
+                                </>
+                            )}
+                        </div>
                     </div>
                 </button>
                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
@@ -159,12 +167,6 @@ const Navbar: React.FC<{
                 </div>
             </nav>
             <div className="flex items-center gap-2 sm:gap-4">
-                 {profile && (
-                    <div className="text-right">
-                        <p className="font-semibold text-sm text-gray-800">{profile.full_name}</p>
-                        <p className="text-xs text-gray-500 hidden sm:block">{profile.role === 'admin' ? 'مدير' : 'مستخدم'}</p>
-                    </div>
-                )}
                 <SyncStatusIndicator 
                     status={syncStatus} 
                     lastError={lastSyncError} 
