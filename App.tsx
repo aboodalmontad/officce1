@@ -141,7 +141,7 @@ const Navbar: React.FC<{
                     <div className="flex flex-col items-start sm:flex-row sm:items-baseline gap-0 sm:gap-2">
                         <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
                         <div className="flex items-center gap-1 text-xs text-gray-500">
-                            <span>الإصدار: 20-11-2025</span>
+                            <span>الإصدار: 20-11-2025-1</span>
                             {profile && (
                                 <>
                                     <span className="mx-1 text-gray-300">|</span>
@@ -151,20 +151,22 @@ const Navbar: React.FC<{
                         </div>
                     </div>
                 </button>
-                 <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
+                 {/* Desktop Navigation - Hidden on Mobile */}
+                 <div className="hidden sm:flex items-center gap-1 sm:gap-2">
                     {navItems.map(item => (
                         <button
                             key={item.id}
                             onClick={() => onNavigate(item.id as Page)}
                             title={item.label}
-                            className={`flex items-center gap-0 sm:gap-2 p-2 sm:px-3 rounded-md text-sm font-medium transition-colors ${currentPage === item.id ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${currentPage === item.id ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
                         >
                             <item.icon className="w-5 h-5" />
-                            <span className="hidden sm:inline">{item.label}</span>
+                            <span>{item.label}</span>
                         </button>
                     ))}
-                    {currentPage === 'home' && homePageActions}
                 </div>
+                {/* Page Actions - Always visible if conditions met */}
+                {currentPage === 'home' && homePageActions}
             </nav>
             <div className="flex items-center gap-2 sm:gap-4">
                 <SyncStatusIndicator 
@@ -187,6 +189,37 @@ const Navbar: React.FC<{
                 </button>
             </div>
         </header>
+    );
+};
+
+const MobileNavbar: React.FC<{
+    currentPage: Page;
+    onNavigate: (page: Page) => void;
+}> = ({ currentPage, onNavigate }) => {
+    const navItems = [
+        { id: 'home', label: 'المفكرة', icon: CalendarDaysIcon },
+        { id: 'admin-tasks', label: 'المهام', icon: ClipboardDocumentCheckIcon },
+        { id: 'clients', label: 'الموكلين', icon: UserIcon },
+        { id: 'accounting', label: 'المحاسبة', icon: CalculatorIcon },
+    ];
+
+    return (
+        <nav className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 pb-safe pt-1 px-2 flex justify-around items-center z-40 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] h-[70px]">
+            {navItems.map(item => (
+                <button
+                    key={item.id}
+                    onClick={() => onNavigate(item.id as Page)}
+                    className={`flex flex-col items-center justify-center w-full h-full rounded-lg transition-colors ${
+                        currentPage === item.id 
+                        ? 'text-blue-600' 
+                        : 'text-gray-500 active:bg-gray-50'
+                    }`}
+                >
+                    <item.icon className={`w-7 h-7 mb-1 ${currentPage === item.id ? 'text-blue-600 fill-current' : ''}`} />
+                    <span className="text-[10px] font-bold">{item.label}</span>
+                </button>
+            ))}
+        </nav>
     );
 };
 
@@ -705,10 +738,13 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     homePageActions={homePageActions}
                 />
                 <OfflineBanner />
-                <main className="flex-grow p-4 sm:p-6 overflow-y-auto">
+                {/* Added padding-bottom to main content to prevent overlap with the mobile nav */}
+                <main className="flex-grow p-4 sm:p-6 overflow-y-auto pb-20 sm:pb-6">
                     {renderPage()}
                 </main>
                 
+                <MobileNavbar currentPage={currentPage} onNavigate={handleNavigation} />
+
                 <AdminTaskModal 
                     isOpen={isAdminTaskModalOpen}
                     onClose={() => setIsAdminTaskModalOpen(false)}
