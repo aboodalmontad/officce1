@@ -1,9 +1,10 @@
 
 import * as React from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
-import { MusicalNoteIcon, PlayCircleIcon, TrashIcon, ArrowUpTrayIcon, ServerIcon } from '../components/icons';
+import { MusicalNoteIcon, PlayCircleIcon, TrashIcon, ArrowUpTrayIcon, ServerIcon, ClipboardDocumentIcon } from '../components/icons';
 // Fix: The imported variable name contained hyphens, which is invalid syntax. Corrected to use the camelCase version.
 import { defaultUserApprovalSoundBase64 } from '../components/RealtimeNotifier';
+import { useData } from '../context/DataContext';
 
 const USER_APPROVAL_SOUND_KEY = 'customUserApprovalSound';
 
@@ -12,8 +13,21 @@ interface AdminSettingsPageProps {
 }
 
 const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ onOpenConfig }) => {
+    const { systemSettings, updateSystemSetting } = useData();
     const [customSound, setCustomSound] = useLocalStorage<string | null>(USER_APPROVAL_SOUND_KEY, null);
     const [feedback, setFeedback] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const [template, setTemplate] = React.useState('');
+
+    // Load the current template from the system settings
+    React.useEffect(() => {
+        const savedTemplate = systemSettings.find(s => s.key === 'verification_message_template');
+        if (savedTemplate) {
+            setTemplate(savedTemplate.value);
+        } else {
+            // Default fallback if nothing is in DB yet
+            setTemplate('مرحباً {{name}}،\nكود تفعيل حسابك في تطبيق مكتب المحامي هو: *{{code}}*\nيرجى إدخال هذا الكود في التطبيق لتأكيد رقم هاتفك.');
+        }
+    }, [systemSettings]);
 
     const showFeedback = (message: string, type: 'success' | 'error') => {
         setFeedback({ message, type });
@@ -62,6 +76,15 @@ const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ onOpenConfig }) =
         showFeedback('تمت استعادة الصوت الافتراضي.', 'success');
     };
 
+    const saveTemplate = () => {
+        if (!template.trim()) {
+            showFeedback('لا يمكن ترك القالب فارغاً.', 'error');
+            return;
+        }
+        updateSystemSetting('verification_message_template', template);
+        showFeedback('تم حفظ قالب الرسالة بنجاح.', 'success');
+    };
+
     return (
         <div className="space-y-8">
             <h1 className="text-3xl font-bold text-gray-800">إعدادات المدير</h1>
@@ -72,6 +95,40 @@ const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ onOpenConfig }) =
                 </div>
             )}
             
+            <div className="bg-white p-6 rounded-lg shadow space-y-6">
+                <h2 className="text-xl font-bold text-gray-800 border-b pb-3 flex items-center gap-3">
+                    <ClipboardDocumentIcon className="w-6 h-6 text-blue-600" />
+                    <span>قالب رسالة التفعيل</span>
+                </h2>
+                <div className="p-4 bg-gray-50 border rounded-lg">
+                    <p className="text-sm text-gray-600 mb-2">
+                        قم بتعديل الرسالة التي يتم إرسالها تلقائياً عبر واتساب للمستخدمين الجدد لتزويدهم بكود التفعيل.
+                        <br/>
+                        استخدم المتغيرات التالية داخل النص:
+                    </p>
+                    <ul className="list-disc list-inside text-sm text-gray-600 mb-4 px-2">
+                        <li><code>{'{{name}}'}</code> : سيتم استبداله باسم المستخدم.</li>
+                        <li><code>{'{{code}}'}</code> : سيتم استبداله بكود التفعيل.</li>
+                    </ul>
+                    
+                    <textarea 
+                        value={template}
+                        onChange={(e) => setTemplate(e.target.value)}
+                        className="w-full p-3 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent h-32 text-sm"
+                        dir="auto"
+                    />
+                    
+                    <div className="mt-4 flex justify-end">
+                        <button 
+                            onClick={saveTemplate}
+                            className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                            حفظ القالب
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <div className="bg-white p-6 rounded-lg shadow space-y-6">
                 <h2 className="text-xl font-bold text-gray-800 border-b pb-3 flex items-center gap-3">
                     <ServerIcon className="w-6 h-6 text-blue-600" />

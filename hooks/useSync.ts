@@ -1,3 +1,4 @@
+
 import * as React from 'react';
 // Fix: Use `import type` for User as it is used as a type, not a value. This resolves module resolution errors in some environments.
 import type { User } from '@supabase/supabase-js';
@@ -40,6 +41,7 @@ const flattenData = (data: AppData): FlatData => {
         case_documents: data.documents,
         profiles: data.profiles,
         site_finances: data.siteFinances,
+        system_settings: data.systemSettings,
     };
 };
 
@@ -84,24 +86,29 @@ const constructData = (flatData: Partial<FlatData>): AppData => {
         documents: (flatData.case_documents || []) as any,
         profiles: (flatData.profiles || []) as any,
         siteFinances: (flatData.site_finances || []) as any,
+        systemSettings: (flatData.system_settings || []) as any,
     };
 };
 
-const mergeForRefresh = <T extends { id: any; updated_at?: Date | string }>(local: T[], remote: T[]): T[] => {
+const mergeForRefresh = <T extends { id?: any; name?: any; key?: any; updated_at?: Date | string }>(local: T[], remote: T[]): T[] => {
     // This function is called by fetchAndRefresh. The `remote` array has already been
     // filtered to exclude any items that are pending local deletion.
     // Therefore, any item in `remote` that is not in `local` is a genuinely new item from another client.
 
     const finalItems = new Map<any, T>();
+    const getId = (item: T) => item.id ?? item.name ?? item.key;
 
     // 1. Add all local items. This preserves any new, unsynced local items.
     for (const localItem of local) {
-        finalItems.set(localItem.id ?? (localItem as any).name, localItem);
+        const id = getId(localItem);
+        if (id !== undefined) finalItems.set(id, localItem);
     }
 
     // 2. Iterate remote items. Update local items if the remote is newer, or add if it's new.
     for (const remoteItem of remote) {
-        const id = remoteItem.id ?? (remoteItem as any).name;
+        const id = getId(remoteItem);
+        if (id === undefined) continue;
+
         const existingItem = finalItems.get(id);
 
         if (existingItem) {
@@ -128,6 +135,8 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
     const setStatus = (status: SyncStatus, error: string | null = null) => {
         onSyncStatusChange(status, error);
     };
+
+    const getPk = (item: any) => item.id ?? item.name ?? item.key;
 
     const manualSync = React.useCallback(async () => {
         if (syncStatus === 'syncing') return;
@@ -177,20 +186,21 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                 documents: new Set(deletedIds.documents),
                 profiles: new Set(deletedIds.profiles),
                 siteFinances: new Set(deletedIds.siteFinances),
+                systemSettings: new Set(deletedIds.systemSettings),
             };
 
             for (const key of Object.keys(localFlatData) as (keyof FlatData)[]) {
                 const localItems = (localFlatData as any)[key] as any[];
                 const remoteItems = (remoteFlatData as any)[key] as any[] || [];
                 
-                const localMap = new Map(localItems.map(i => [i.id ?? i.name, i]));
-                const remoteMap = new Map(remoteItems.map(i => [i.id ?? i.name, i]));
+                const localMap = new Map(localItems.map(i => [getPk(i), i]));
+                const remoteMap = new Map(remoteItems.map(i => [getPk(i), i]));
 
                 const finalMergedItems = new Map<string, any>();
                 const itemsToUpsert: any[] = [];
 
                 for (const localItem of localItems) {
-                    const id = localItem.id ?? localItem.name;
+                    const id = getPk(localItem);
 
                     let isParentDeleted = false;
                     if (key === 'cases' && deletedIdsSets.clients.has(localItem.client_id)) isParentDeleted = true;
@@ -220,7 +230,7 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                 }
 
                 for (const remoteItem of remoteItems) {
-                    const id = remoteItem.id ?? remoteItem.name;
+                    const id = getPk(remoteItem);
                     if (!localMap.has(id)) {
                         let isDeleted = false;
                         const entityKey = 
@@ -228,7 +238,8 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                             key === 'accounting_entries' ? 'accountingEntries' : 
                             key === 'invoice_items' ? 'invoiceItems' : 
                             key === 'case_documents' ? 'documents' :
-                            key === 'site_finances' ? 'siteFinances' : key;
+                            key === 'site_finances' ? 'siteFinances' :
+                            key === 'system_settings' ? 'systemSettings' : key;
                         const deletedSet = (deletedIdsSets as any)[entityKey];
                         if (deletedSet) isDeleted = deletedSet.has(id);
                         if (!isDeleted) finalMergedItems.set(id, remoteItem);
@@ -275,6 +286,7 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                 invoice_items: deletedIds.invoiceItems.map(id => ({ id })) as any,
                 case_documents: deletedIds.documents.map(id => ({ id })) as any,
                 site_finances: deletedIds.siteFinances.map(id => ({ id })) as any,
+                system_settings: deletedIds.systemSettings.map(key => ({ key })) as any,
             };
 
             if (Object.values(flatDeletes).some(arr => arr && arr.length > 0)) {
@@ -287,11 +299,11 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
             const upsertedDataRaw = await upsertDataToSupabase(flatUpserts as FlatData, currentUser);
             const upsertedFlatData = transformRemoteToLocal(upsertedDataRaw);
             const upsertedDataMap = new Map();
-            Object.values(upsertedFlatData).forEach(arr => (arr as any[])?.forEach(item => upsertedDataMap.set(item.id ?? item.name, item)));
+            Object.values(upsertedFlatData).forEach(arr => (arr as any[])?.forEach(item => upsertedDataMap.set(getPk(item), item)));
 
             for (const key of Object.keys(mergedFlatData) as (keyof FlatData)[]) {
                 const mergedItems = (mergedFlatData as any)[key];
-                if (Array.isArray(mergedItems)) (mergedFlatData as any)[key] = mergedItems.map((item: any) => upsertedDataMap.get(item.id ?? item.name) || item);
+                if (Array.isArray(mergedItems)) (mergedFlatData as any)[key] = mergedItems.map((item: any) => upsertedDataMap.get(getPk(item)) || item);
             }
 
             const finalMergedData = constructData(mergedFlatData as FlatData);
@@ -337,6 +349,7 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                 documents: new Set(deletedIds.documents),
                 profiles: new Set(deletedIds.profiles),
                 siteFinances: new Set(deletedIds.siteFinances),
+                systemSettings: new Set(deletedIds.systemSettings),
             };
     
             const remoteFlatData: Partial<FlatData> = {};
@@ -346,12 +359,13 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                     key === 'accounting_entries' ? 'accountingEntries' :
                     key === 'invoice_items' ? 'invoiceItems' :
                     key === 'case_documents' ? 'documents' : 
-                    key === 'site_finances' ? 'siteFinances' : key;
+                    key === 'site_finances' ? 'siteFinances' :
+                    key === 'system_settings' ? 'systemSettings' : key;
                 
                 const deletedSet = (deletedIdsSets as any)[entityKey];
                 
                 if (deletedSet && deletedSet.size > 0) {
-                    (remoteFlatData as any)[key] = ((remoteFlatDataUntyped as any)[key] || []).filter((item: any) => !deletedSet.has(item.id ?? item.name));
+                    (remoteFlatData as any)[key] = ((remoteFlatDataUntyped as any)[key] || []).filter((item: any) => !deletedSet.has(getPk(item)));
                 } else {
                     (remoteFlatData as any)[key] = (remoteFlatDataUntyped as any)[key];
                 }
@@ -378,6 +392,7 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
                 case_documents: mergeForRefresh(localFlatData.case_documents, remoteFlatData.case_documents || []),
                 profiles: mergeForRefresh(localFlatData.profiles, remoteFlatData.profiles || []),
                 site_finances: mergeForRefresh(localFlatData.site_finances, remoteFlatData.site_finances || []),
+                system_settings: mergeForRefresh(localFlatData.system_settings, remoteFlatData.system_settings || []),
             };
     
             const mergedData = constructData(mergedFlatData);

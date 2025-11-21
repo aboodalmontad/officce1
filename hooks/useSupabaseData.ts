@@ -1,6 +1,6 @@
 
 import * as React from 'react';
-import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem, CaseDocument, AppData, DeletedIds, getInitialDeletedIds, Profile, SiteFinancialEntry } from '../types';
+import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem, CaseDocument, AppData, DeletedIds, getInitialDeletedIds, Profile, SiteFinancialEntry, SystemSetting } from '../types';
 import { useOnlineStatus } from './useOnlineStatus';
 // Fix: Use `import type` for User and RealtimeChannel as they are used as types, not a value. This resolves module resolution errors in some environments.
 import type { User, RealtimeChannel } from '@supabase/supabase-js';
@@ -42,6 +42,7 @@ const getInitialData = (): AppData => ({
     documents: [] as CaseDocument[],
     profiles: [] as Profile[],
     siteFinances: [] as SiteFinancialEntry[],
+    systemSettings: [] as SystemSetting[],
 });
 
 
@@ -289,6 +290,7 @@ const validateAndFixData = (loadedData: any, user: User | null): AppData => {
                 mobile_number: String(p.mobile_number || ''),
                 is_approved: !!p.is_approved,
                 is_active: p.is_active !== false,
+                verification_code: p.verification_code || null,
                 subscription_start_date: p.subscription_start_date || null,
                 subscription_end_date: p.subscription_end_date || null,
                 role: ['user', 'admin'].includes(p.role) ? p.role : 'user',
@@ -309,6 +311,14 @@ const validateAndFixData = (loadedData: any, user: User | null): AppData => {
                 category: sf.category,
                 profile_full_name: sf.profile_full_name,
                 updated_at: reviveDate(sf.updated_at),
+            };
+        }),
+        systemSettings: safeArray(loadedData.systemSettings, (s) => {
+            if (!isValidObject(s) || !s.key) return undefined;
+            return {
+                key: String(s.key),
+                value: String(s.value || ''),
+                updated_at: reviveDate(s.updated_at),
             };
         }),
     };
@@ -431,9 +441,10 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         for (const key of Object.keys(syncedDeletions) as Array<keyof DeletedIds>) {
             // Fix: Cast array to `any[]` to satisfy `new Set` which expects a single iterable type,
             // but `syncedDeletions[key]` can be `string[]` or `number[]`.
-            const synced = new Set((syncedDeletions[key] || []) as any[]);
+            const synced = new Set((syncedDeletions[key] || []) as unknown as any[]);
             if (synced.size > 0) {
-                newDeletedIds[key] = newDeletedIds[key].filter(id => !synced.has(id as any));
+                // Fix: Cast to any to allow assignment of filtered union array type
+                (newDeletedIds as any)[key] = (newDeletedIds[key] as any[]).filter(id => !synced.has(id));
                 changed = true;
             }
         }
@@ -464,8 +475,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             try {
                 const db = await getDb();
                 const [storedData, storedDeletedIds, localDocsMetadata] = await Promise.all([
-                    db.get(DATA_STORE_NAME, user.id),
-                    db.get(DATA_STORE_NAME, `deletedIds_${user.id}`),
+                    db.transaction(DATA_STORE_NAME).objectStore(DATA_STORE_NAME).get(user.id),
+                    db.transaction(DATA_STORE_NAME).objectStore(DATA_STORE_NAME).get(`deletedIds_${user.id}`),
                     db.getAll(DOCS_METADATA_STORE_NAME)
                 ]);
                 
@@ -497,7 +508,9 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 }
             } catch (error) {
                 console.error('Failed to load data from IndexedDB:', error);
-                setSyncStatus('error', 'فشل تحميل البيانات المحلية.');
+                // Fix: Use direct setters or handleSyncStatusChange to correctly set error state
+                setSyncStatus('error');
+                setLastSyncError('فشل تحميل البيانات المحلية.');
                 // Even if local load fails, we stop loading to allow UI to show error or empty state
                 setIsDataLoading(false);
             }
@@ -519,9 +532,10 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         try {
             const dataToExport = {
                 ...data,
-                // We don't export profiles or site finances in user backups
+                // We don't export profiles, site finances, or settings in user backups
                 profiles: undefined,
                 siteFinances: undefined,
+                systemSettings: undefined,
             };
             const jsonString = JSON.stringify(dataToExport, null, 2);
             const blob = new Blob([jsonString], { type: 'application/json' });
@@ -633,7 +647,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             if (newPendingUsers.length > 0) {
                 const newAlerts: RealtimeAlert[] = newPendingUsers.map(u => ({
                     id: Date.now() + Math.random(),
-                    message: `المستخدم "${u.full_name}" ينتظر الموافقة.`,
+                    // Include the verification code in the message for the admin to see
+                    message: `المستخدم "${u.full_name}" ينتظر الموافقة.${u.verification_code ? ` (كود التفعيل: ${u.verification_code})` : ''}`,
                     type: 'userApproval'
                 }));
                 setUserApprovalAlerts(prev => [...prev, ...newAlerts]);
@@ -705,6 +720,19 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
 
     const dismissUserApprovalAlert = (alertId: number) => {
         setUserApprovalAlerts(prev => prev.filter(a => a.id !== alertId));
+    };
+
+    const updateSystemSetting = (key: string, value: string) => {
+        updateData(prev => {
+            const exists = prev.systemSettings.find(s => s.key === key);
+            let newSettings;
+            if (exists) {
+                newSettings = prev.systemSettings.map(s => s.key === key ? { ...s, value, updated_at: new Date() } : s);
+            } else {
+                newSettings = [...prev.systemSettings, { key, value, updated_at: new Date() }];
+            }
+            return { ...prev, systemSettings: newSettings };
+        });
     };
 
     const postponeSession = (sessionId: string, newDate: Date, newReason: string) => {
@@ -862,11 +890,11 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         });
     };
     const deleteStage = (stageId: string, caseId: string, clientId: string) => { 
-        updateData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: p.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.filter(st => st.id !== stageId) } : cs) } : c) })); 
+        updateData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.filter(st => st.id !== stageId) } : cs) } : c) })); 
         createDeleteFunction('stages')(stageId); 
     };
     const deleteSession = (sessionId: string, stageId: string, caseId: string, clientId: string) => { 
-        updateData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: p.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.map(st => st.id === stageId ? { ...st, sessions: st.sessions.filter(s => s.id !== sessionId) } : st) } : cs) } : c) })); 
+        updateData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.map(st => st.id === stageId ? { ...st, sessions: st.sessions.filter(s => s.id !== sessionId) } : st) } : cs) } : c) })); 
         createDeleteFunction('sessions')(sessionId); 
     };
     const deleteAdminTask = (taskId: string) => { 
@@ -1017,6 +1045,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         getDocumentFile,
         postponeSession,
         showUnpostponedSessionsModal,
-        setShowUnpostponedSessionsModal
+        setShowUnpostponedSessionsModal,
+        updateSystemSetting,
     };
 };

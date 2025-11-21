@@ -1,5 +1,6 @@
+
 import { getSupabaseClient } from '../supabaseClient';
-import { Client, AdminTask, Appointment, AccountingEntry, Invoice, InvoiceItem, CaseDocument, Profile, SiteFinancialEntry } from '../types';
+import { Client, AdminTask, Appointment, AccountingEntry, Invoice, InvoiceItem, CaseDocument, Profile, SiteFinancialEntry, SystemSetting } from '../types';
 // Fix: Use `import type` for User as it is used as a type, not a value. This resolves module resolution errors in some environments.
 import type { User } from '@supabase/supabase-js';
 
@@ -18,6 +19,7 @@ export type FlatData = {
     case_documents: CaseDocument[];
     profiles: Profile[];
     site_finances: SiteFinancialEntry[];
+    system_settings: SystemSetting[];
 };
 
 
@@ -33,11 +35,21 @@ export const checkSupabaseSchema = async () => {
     }
 
     const tableChecks: { [key: string]: string } = {
-        'profiles': 'id', 'clients': 'id', 'cases': 'id',
-        'stages': 'id', 'sessions': 'id', 'admin_tasks': 'id',
-        'appointments': 'id', 'accounting_entries': 'id', 'assistants': 'name',
-        'invoices': 'id', 'invoice_items': 'id', 'case_documents': 'id',
+        // Critical: Check for 'verification_code' to ensure the DB schema includes recent updates.
+        'profiles': 'verification_code', 
+        'clients': 'id', 
+        'cases': 'id',
+        'stages': 'id', 
+        'sessions': 'id', 
+        'admin_tasks': 'id',
+        'appointments': 'id', 
+        'accounting_entries': 'id', 
+        'assistants': 'name',
+        'invoices': 'id', 
+        'invoice_items': 'id', 
+        'case_documents': 'id',
         'site_finances': 'id',
+        // 'system_settings': 'key', // Optional: We allow this to be missing to prevent blocking login
     };
     
     const tableCheckPromises = Object.entries(tableChecks).map(([table, query]) =>
@@ -51,8 +63,17 @@ export const checkSupabaseSchema = async () => {
                 const message = String(result.error.message || '').toLowerCase();
                 const code = String(result.error.code || '');
                 
-                if (code === '42P01' || message.includes('does not exist') || message.includes('could not find the table') || message.includes('schema cache') || message.includes('relation') ) {
-                    return { success: false, error: 'uninitialized', message: `Database uninitialized. Missing table or relation: ${result.table}.` };
+                // Enhanced check to catch missing columns or tables
+                if (
+                    code === '42P01' || 
+                    code === '42703' || 
+                    message.includes('does not exist') || 
+                    message.includes('could not find the table') || 
+                    message.includes('schema cache') || 
+                    message.includes('relation') ||
+                    message.includes('column') // Catch specific column errors
+                ) {
+                    return { success: false, error: 'uninitialized', message: `Database uninitialized. Missing table/column in: ${result.table}. Error: ${message}` };
                 } else {
                     throw result.error;
                 }
@@ -60,18 +81,35 @@ export const checkSupabaseSchema = async () => {
         }
         return { success: true, error: null, message: '' };
     } catch (err: any) {
-        const message = String(err?.message || '').toLowerCase();
+        // Robust error message extraction
+        let message = 'Unknown error';
+        if (err) {
+            if (typeof err === 'string') message = err;
+            else if (err.message) message = err.message;
+            else try { message = JSON.stringify(err); } catch(e) { message = String(err); }
+        }
+        
+        const lowerMessage = message.toLowerCase();
         const code = String(err?.code || '');
 
-        if (message.includes('failed to fetch')) {
+        if (lowerMessage.includes('failed to fetch') || lowerMessage.includes('networkerror')) {
             return { success: false, error: 'network', message: 'Failed to connect to the server. Check internet connection and CORS settings.' };
         }
         
-        if (message.includes('does not exist') || code === '42P01' || message.includes('could not find the table') || message.includes('schema cache')) {
+        if (
+            lowerMessage.includes('does not exist') || 
+            code === '42P01' || 
+            code === '42703' || 
+            lowerMessage.includes('could not find the table') || 
+            lowerMessage.includes('schema cache') ||
+            lowerMessage.includes('column')
+        ) {
             return { success: false, error: 'uninitialized', message: 'Database is not fully initialized.' };
         }
 
-        return { success: false, error: 'unknown', message: `Database schema check failed: ${err.message}` };
+        // Default to uninitialized for any other schema check error to allow the user to access the repair modal.
+        // This handles edge cases where the error structure isn't standard but indicates a schema issue.
+        return { success: false, error: 'uninitialized', message: `Database check failed: ${message}` };
     }
 };
 
@@ -85,63 +123,87 @@ export const fetchDataFromSupabase = async (): Promise<Partial<FlatData>> => {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase client not available.');
 
-    const [
-        clientsRes, adminTasksRes, appointmentsRes, accountingEntriesRes,
-        assistantsRes, invoicesRes, casesRes, stagesRes, sessionsRes, invoiceItemsRes,
-        caseDocumentsRes, profilesRes, siteFinancesRes
-    ] = await Promise.all([
-        supabase.from('clients').select('*'),
-        supabase.from('admin_tasks').select('*'),
-        supabase.from('appointments').select('*'),
-        supabase.from('accounting_entries').select('*'),
-        supabase.from('assistants').select('name'),
-        supabase.from('invoices').select('*'),
-        supabase.from('cases').select('*'),
-        supabase.from('stages').select('*'),
-        supabase.from('sessions').select('*'),
-        supabase.from('invoice_items').select('*'),
-        supabase.from('case_documents').select('*'),
-        supabase.from('profiles').select('*'),
-        supabase.from('site_finances').select('*'),
-    ]);
+    try {
+        const [
+            clientsRes, adminTasksRes, appointmentsRes, accountingEntriesRes,
+            assistantsRes, invoicesRes, casesRes, stagesRes, sessionsRes, invoiceItemsRes,
+            caseDocumentsRes, profilesRes, siteFinancesRes
+        ] = await Promise.all([
+            supabase.from('clients').select('*'),
+            supabase.from('admin_tasks').select('*'),
+            supabase.from('appointments').select('*'),
+            supabase.from('accounting_entries').select('*'),
+            supabase.from('assistants').select('name'),
+            supabase.from('invoices').select('*'),
+            supabase.from('cases').select('*'),
+            supabase.from('stages').select('*'),
+            supabase.from('sessions').select('*'),
+            supabase.from('invoice_items').select('*'),
+            supabase.from('case_documents').select('*'),
+            supabase.from('profiles').select('*'),
+            supabase.from('site_finances').select('*'),
+        ]);
 
-    const results = [
-        { res: clientsRes, name: 'clients' },
-        { res: adminTasksRes, name: 'admin_tasks' },
-        { res: appointmentsRes, name: 'appointments' },
-        { res: accountingEntriesRes, name: 'accounting_entries' },
-        { res: assistantsRes, name: 'assistants' },
-        { res: invoicesRes, name: 'invoices' },
-        { res: casesRes, name: 'cases' },
-        { res: stagesRes, name: 'stages' },
-        { res: sessionsRes, name: 'sessions' },
-        { res: invoiceItemsRes, name: 'invoice_items' },
-        { res: caseDocumentsRes, name: 'case_documents' },
-        { res: profilesRes, name: 'profiles' },
-        { res: siteFinancesRes, name: 'site_finances' },
-    ];
-
-    for (const { res, name } of results) {
-        if (res.error) {
-            throw new Error(`Failed to fetch ${name}: ${res.error.message}`);
+        // Treat system_settings as optional to prevent app crash if table is missing
+        let systemSettingsData: any[] = [];
+        try {
+            const { data, error } = await supabase.from('system_settings').select('*');
+            if (error) {
+                // If table missing or schema cache issue, log warning but don't throw
+                if (error.code === '42P01' || error.message.toLowerCase().includes('does not exist') || error.message.toLowerCase().includes('schema cache')) {
+                    console.warn('System settings table missing or schema outdated. Proceeding without settings.');
+                } else {
+                    console.error('Error fetching system settings:', error);
+                }
+            } else {
+                systemSettingsData = data || [];
+            }
+        } catch (e) {
+            console.warn('Exception fetching system settings:', e);
         }
-    }
 
-    return {
-        clients: clientsRes.data || [],
-        cases: casesRes.data || [],
-        stages: stagesRes.data || [],
-        sessions: sessionsRes.data || [],
-        admin_tasks: adminTasksRes.data || [],
-        appointments: appointmentsRes.data || [],
-        accounting_entries: accountingEntriesRes.data || [],
-        assistants: assistantsRes.data || [],
-        invoices: invoicesRes.data || [],
-        invoice_items: invoiceItemsRes.data || [],
-        case_documents: caseDocumentsRes.data || [],
-        profiles: profilesRes.data || [],
-        site_finances: siteFinancesRes.data || [],
-    };
+        const results = [
+            { res: clientsRes, name: 'clients' },
+            { res: adminTasksRes, name: 'admin_tasks' },
+            { res: appointmentsRes, name: 'appointments' },
+            { res: accountingEntriesRes, name: 'accounting_entries' },
+            { res: assistantsRes, name: 'assistants' },
+            { res: invoicesRes, name: 'invoices' },
+            { res: casesRes, name: 'cases' },
+            { res: stagesRes, name: 'stages' },
+            { res: sessionsRes, name: 'sessions' },
+            { res: invoiceItemsRes, name: 'invoice_items' },
+            { res: caseDocumentsRes, name: 'case_documents' },
+            { res: profilesRes, name: 'profiles' },
+            { res: siteFinancesRes, name: 'site_finances' },
+        ];
+
+        for (const { res, name } of results) {
+            if (res.error) {
+                throw new Error(`Failed to fetch ${name}: ${res.error.message}`);
+            }
+        }
+
+        return {
+            clients: clientsRes.data || [],
+            cases: casesRes.data || [],
+            stages: stagesRes.data || [],
+            sessions: sessionsRes.data || [],
+            admin_tasks: adminTasksRes.data || [],
+            appointments: appointmentsRes.data || [],
+            accounting_entries: accountingEntriesRes.data || [],
+            assistants: assistantsRes.data || [],
+            invoices: invoicesRes.data || [],
+            invoice_items: invoiceItemsRes.data || [],
+            case_documents: caseDocumentsRes.data || [],
+            profiles: profilesRes.data || [],
+            site_finances: siteFinancesRes.data || [],
+            system_settings: systemSettingsData,
+        };
+    } catch (err: any) {
+        console.error("Exception in fetchDataFromSupabase:", err);
+        throw new Error(err.message || "Failed to fetch data from server");
+    }
 };
 
 export const deleteDataFromSupabase = async (deletions: Partial<FlatData>, user: User) => {
@@ -153,16 +215,24 @@ export const deleteDataFromSupabase = async (deletions: Partial<FlatData>, user:
         'case_documents', 'invoice_items', 'sessions', 'stages', 'cases', 'invoices', 
         'admin_tasks', 'appointments', 'accounting_entries', 'assistants', 'clients',
         'site_finances', // Admin only
+        'system_settings', // Admin only
         'profiles',      // Admin only, handled by RPC
     ];
 
     for (const table of deletionOrder) {
         const itemsToDelete = (deletions as any)[table];
         if (itemsToDelete && itemsToDelete.length > 0) {
-            const primaryKeyColumn = table === 'assistants' ? 'name' : 'id';
+            let primaryKeyColumn = 'id';
+            if (table === 'assistants') primaryKeyColumn = 'name';
+            if (table === 'system_settings') primaryKeyColumn = 'key';
+
             const ids = itemsToDelete.map((i: any) => i[primaryKeyColumn]);
             
             let query = supabase.from(table).delete().in(primaryKeyColumn, ids);
+            
+            // Assistants are user-specific, so we constrain by user_id.
+            // System settings are global (admin only), so we don't constrain by user_id.
+            // Other tables are RLS protected, but adding eq('user_id', ...) is safer/clearer where applicable.
             if (table === 'assistants') {
                 query = query.eq('user_id', user.id);
             }
@@ -198,10 +268,10 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
             date: s.date,
             client_name: s.clientName,
             opponent_name: s.opponentName,
-            postponement_reason: s.postponementReason,
-            next_postponement_reason: s.nextPostponementReason,
-            is_postponed: s.isPostponed,
-            next_session_date: s.nextSessionDate,
+            postponement_reason: s.postponement_reason || s.postponementReason, // Handle both casing
+            next_postponement_reason: s.next_postponement_reason || s.nextPostponementReason,
+            is_postponed: s.is_postponed || s.isPostponed,
+            next_session_date: s.next_session_date || s.nextSessionDate,
             assignee: s.assignee,
             updated_at: s.updated_at
         })),
@@ -212,8 +282,9 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         invoices: data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, client_name: clientName, case_id: caseId, case_subject: caseSubject, issue_date: issueDate, due_date: dueDate, tax_rate: taxRate })),
         invoice_items: data.invoice_items?.map(({ ...item }) => ({ ...item, user_id: userId })),
         case_documents: data.case_documents?.map(({ caseId, userId: localUserId, addedAt, storagePath, localState, ...rest }) => ({ ...rest, user_id: localUserId || userId, case_id: caseId, added_at: addedAt, storage_path: storagePath })),
-        profiles: data.profiles?.map(({ full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, ...rest }) => ({ ...rest, full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date })),
+        profiles: data.profiles?.map(({ full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, verification_code, ...rest }) => ({ ...rest, full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, verification_code })),
         site_finances: data.site_finances?.map(({ user_id, payment_date, ...rest }) => ({ ...rest, user_id, payment_date })),
+        system_settings: data.system_settings, // No mapping needed, simple key-value
     };
     
     const upsertTable = async (table: string, records: any[] | undefined, options: { onConflict?: string } = {}) => {
@@ -221,7 +292,16 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         const { data: responseData, error } = await supabase.from(table).upsert(records, options).select();
         if (error) {
             console.error(`Error upserting to ${table}:`, error);
-            const newError = new Error(error.message);
+            
+            // If system_settings fails, we can just log and continue, as it's optional for general users
+            if (table === 'system_settings') {
+                 console.warn(`Skipping system_settings upsert due to error: ${error.message}`);
+                 return [];
+            }
+
+            // Enhanced error logging
+            console.error(`Details for ${table}:`, JSON.stringify(error, null, 2));
+            const newError = new Error(error.message || JSON.stringify(error));
             (newError as any).table = table;
             throw newError;
         }
@@ -236,16 +316,18 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     // STEP 2: Upsert tables that don't have dependencies on other user data.
     results.assistants = await upsertTable('assistants', dataToUpsert.assistants, { onConflict: 'user_id,name' });
     
-    const [adminTasks, appointments, accountingEntries, site_finances] = await Promise.all([
+    const [adminTasks, appointments, accountingEntries, site_finances, system_settings] = await Promise.all([
         upsertTable('admin_tasks', dataToUpsert.admin_tasks),
         upsertTable('appointments', dataToUpsert.appointments),
         upsertTable('accounting_entries', dataToUpsert.accounting_entries),
         upsertTable('site_finances', dataToUpsert.site_finances),
+        upsertTable('system_settings', dataToUpsert.system_settings),
     ]);
     results.admin_tasks = adminTasks;
     results.appointments = appointments;
     results.accounting_entries = accountingEntries;
     results.site_finances = site_finances;
+    results.system_settings = system_settings;
 
     // STEP 3: Upsert tables with dependencies.
     results.clients = await upsertTable('clients', dataToUpsert.clients);
@@ -275,7 +357,8 @@ export const transformRemoteToLocal = (remote: any): Partial<FlatData> => {
         invoices: remote.invoices?.map(({ client_id, client_name, case_id, case_subject, issue_date, due_date, tax_rate, ...r }: any) => ({ ...r, clientId: client_id, clientName: client_name, caseId: case_id, caseSubject: case_subject, issueDate: issue_date, dueDate: due_date, taxRate: tax_rate })),
         invoice_items: remote.invoice_items,
         case_documents: remote.case_documents?.map(({ user_id, case_id, added_at, storage_path, ...r }: any) => ({...r, userId: user_id, caseId: case_id, addedAt: added_at, storagePath: storage_path })),
-        profiles: remote.profiles?.map(({ full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, ...r }: any) => ({ ...r, full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date })),
+        profiles: remote.profiles?.map(({ full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, verification_code, ...r }: any) => ({ ...r, full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, verification_code })),
         site_finances: remote.site_finances,
+        system_settings: remote.system_settings,
     };
 };

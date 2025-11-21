@@ -1,8 +1,9 @@
+
 import * as React from 'react';
 import { Profile, SiteFinancialEntry } from '../types';
 import { useData } from '../context/DataContext';
 import { formatDate } from '../utils/dateUtils';
-import { XMarkIcon, PhoneIcon, UserGroupIcon, FolderIcon, CalendarDaysIcon, DocumentTextIcon, CheckCircleIcon, NoSymbolIcon, PencilIcon, ExclamationTriangleIcon } from './icons';
+import { XMarkIcon, PhoneIcon, UserGroupIcon, FolderIcon, CalendarDaysIcon, DocumentTextIcon, CheckCircleIcon, NoSymbolIcon, PencilIcon, ExclamationTriangleIcon, ShareIcon } from './icons';
 
 interface UserDetailsModalProps {
     user: Profile | null;
@@ -35,7 +36,7 @@ const getDisplayPhoneNumber = (mobile: string | null | undefined): string => {
 };
 
 const UserDetailsModal: React.FC<UserDetailsModalProps> = ({ user, onClose, onEdit }) => {
-    const { clients, siteFinances, documents, allSessions } = useData();
+    const { clients, siteFinances, documents, allSessions, systemSettings } = useData();
 
     const userStats = React.useMemo(() => {
         if (!user) return null;
@@ -59,7 +60,7 @@ const UserDetailsModal: React.FC<UserDetailsModalProps> = ({ user, onClose, onEd
     if (!user || !userStats) return null;
 
     const getStatusInfo = () => {
-        if (!user.is_approved) return { text: 'بانتظار الموافقة', color: 'bg-yellow-100 text-yellow-800' };
+        if (!user.is_approved) return { text: 'بانتظار التفعيل', color: 'bg-yellow-100 text-yellow-800' };
         if (!user.is_active) return { text: 'حساب غير نشط', color: 'bg-red-100 text-red-800' };
         
         const endDate = user.subscription_end_date ? new Date(user.subscription_end_date) : null;
@@ -83,6 +84,40 @@ const UserDetailsModal: React.FC<UserDetailsModalProps> = ({ user, onClose, onEd
         progress = Math.max(0, Math.min(100, (elapsed / totalDuration) * 100));
     }
 
+    const handleSendVerificationCode = () => {
+        if (!user.verification_code || !user.mobile_number) return;
+        
+        // Default template fallback
+        let template = 'مرحباً {{name}}،\nكود تفعيل حسابك في تطبيق مكتب المحامي هو: *{{code}}*\nيرجى إدخال هذا الكود في التطبيق لتأكيد رقم هاتفك.';
+        
+        // Try to get the template from system settings
+        const savedTemplate = systemSettings.find(s => s.key === 'verification_message_template');
+        if (savedTemplate && savedTemplate.value) {
+            template = savedTemplate.value;
+        }
+
+        const message = template
+            .replace(/{{name}}/g, user.full_name)
+            .replace(/{{code}}/g, user.verification_code);
+
+        // Normalize phone for WhatsApp: remove non-digits
+        let phone = user.mobile_number.replace(/\D/g, '');
+        
+        // Handle '00' prefix -> remove it
+        if (phone.startsWith('00')) {
+            phone = phone.substring(2);
+        }
+        
+        // Handle local Syrian numbers starting with '09' (length 10) -> add '963' and remove '0'
+        if (phone.startsWith('09') && phone.length === 10) {
+            phone = '963' + phone.substring(1);
+        }
+        
+        // Use api.whatsapp.com for better reliability with text parameter
+        const whatsappUrl = `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`;
+        window.open(whatsappUrl, '_blank');
+    };
+
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto" onClick={onClose}>
             <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl my-8" onClick={e => e.stopPropagation()}>
@@ -90,7 +125,7 @@ const UserDetailsModal: React.FC<UserDetailsModalProps> = ({ user, onClose, onEd
                 <div className="flex justify-between items-start p-6 border-b rounded-t-lg bg-gray-50">
                     <div>
                         <h2 className="text-3xl font-bold text-gray-900">{user.full_name}</h2>
-                        <div className="flex items-center gap-4 mt-2">
+                        <div className="flex items-center flex-wrap gap-4 mt-2">
                             <span className={`px-3 py-1 text-sm font-semibold rounded-full ${status.color}`}>
                                 {status.text}
                             </span>
@@ -98,6 +133,19 @@ const UserDetailsModal: React.FC<UserDetailsModalProps> = ({ user, onClose, onEd
                                 <PhoneIcon className="w-4 h-4" />
                                 <span>{getDisplayPhoneNumber(user.mobile_number)}</span>
                             </div>
+                            {user.verification_code ? (
+                                <div className="flex items-center gap-2 bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm">
+                                    <span>كود التفعيل: <strong>{user.verification_code}</strong></span>
+                                    <button onClick={handleSendVerificationCode} className="hover:bg-yellow-200 p-1 rounded-full" title="إرسال عبر واتساب">
+                                        <ShareIcon className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-1 text-green-600 text-sm font-medium px-2">
+                                    <CheckCircleIcon className="w-4 h-4" />
+                                    <span>رقم الهاتف مؤكد</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                     <button onClick={onClose} className="p-2 text-gray-400 hover:bg-gray-200 rounded-full"><XMarkIcon className="w-6 h-6" /></button>

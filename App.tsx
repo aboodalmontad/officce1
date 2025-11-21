@@ -17,7 +17,7 @@ import SubscriptionExpiredPage from './pages/SubscriptionExpiredPage.tsx';
 
 import ConfigurationModal from './components/ConfigurationModal';
 import { useSupabaseData, SyncStatus } from './hooks/useSupabaseData';
-import { UserIcon, CalculatorIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, PowerIcon, PrintIcon, ShareIcon, CalendarDaysIcon, ClipboardDocumentCheckIcon } from './components/icons';
+import { UserIcon, CalculatorIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, PowerIcon, PrintIcon, ShareIcon, CalendarDaysIcon, ClipboardDocumentCheckIcon, ExclamationTriangleIcon, ServerIcon } from './components/icons';
 import ContextMenu, { MenuItem } from './components/ContextMenu';
 import AdminTaskModal from './components/AdminTaskModal';
 import { AdminTask, Profile, Client, Appointment, AccountingEntry, Invoice, CaseDocument, AppData, SiteFinancialEntry } from './types';
@@ -644,36 +644,122 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         return <LoginPage onForceSetup={() => setShowConfigModal(true)} onLoginSuccess={handleLoginSuccess}/>;
     }
     
-    if (!profile) {
-        // Only show loader if we are online and waiting for profile sync. 
-        // If offline and profile is missing (rare if cache works), we might be in a weird state.
-        if (isOnline && data.profiles.length === 0) {
-            return <FullScreenLoader text="جاري تحميل ملف المستخدم..." />;
-        } else {
-             // Fallback logic for offline or slow profile load
-             const fallbackProfile: Profile = {
-                 id: session.user.id,
-                 full_name: session.user.user_metadata.full_name || 'مستخدم',
-                 mobile_number: session.user.user_metadata.mobile_number || '',
-                 is_approved: true, // Assume approved if we have a valid cached session
-                 is_active: true,
-                 subscription_start_date: null,
-                 subscription_end_date: null,
-                 role: 'user'
-             };
-             // Use fallback if profile is missing but we have cached data
-        }
-    }
-
     // Safety check for profile existence before accessing properties
     const effectiveProfile = profile || data.profiles.find(p => p.id === session.user.id);
     
+    // Check if we are actively syncing to distinguish between "syncing" and "finished but failed to find profile"
+    const isSyncing = data.syncStatus === 'loading' || data.syncStatus === 'syncing';
+
     if (!effectiveProfile) {
-         // If absolutely no profile data is available yet, show loader
-         return <FullScreenLoader text="جاري تحميل الملف الشخصي..." />;
+         // 1. If we are strictly loading/syncing and have no data, show loader.
+         if (isSyncing && isOnline) {
+             return <FullScreenLoader text="جاري تحميل ملف المستخدم..." />;
+         }
+
+         // 2. Handle Error State
+         if (data.syncStatus === 'error') {
+             return (
+                 <div className="fixed inset-0 flex flex-col items-center justify-center bg-gray-50 p-4 text-center" dir="rtl">
+                     <ExclamationCircleIcon className="w-16 h-16 text-red-500 mb-4" />
+                     <h2 className="text-2xl font-bold text-gray-800 mb-2">فشل تحميل الملف الشخصي</h2>
+                     <p className="text-gray-600 mb-6 max-w-md">
+                        {data.lastSyncError || "تعذر الاتصال بقاعدة البيانات. يرجى التحقق من الاتصال بالإنترنت."}
+                     </p>
+                     <div className="flex gap-4 flex-wrap justify-center">
+                        <button 
+                            onClick={data.manualSync} 
+                            className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                            إعادة المحاولة
+                        </button>
+                        {/* Added Repair Button */}
+                        <button
+                             onClick={() => setShowConfigModal(true)}
+                             className="px-6 py-2 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600 transition-colors flex items-center gap-2"
+                        >
+                             <ServerIcon className="w-5 h-5" />
+                             <span>إصلاح قاعدة البيانات</span>
+                        </button>
+                        <button 
+                            onClick={handleLogout} 
+                            className="px-6 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
+                        >
+                            تسجيل الخروج
+                        </button>
+                     </div>
+                 </div>
+             );
+         }
+         
+         // 3. Handle Offline + No Data
+         if (data.syncStatus === 'synced' && !isOnline && data.profiles.length === 0) {
+             return (
+                 <div className="fixed inset-0 flex flex-col items-center justify-center bg-gray-50 p-4 text-center" dir="rtl">
+                     <NoSymbolIcon className="w-16 h-16 text-gray-400 mb-4" />
+                     <h2 className="text-2xl font-bold text-gray-800 mb-2">لا توجد بيانات محفوظة</h2>
+                     <p className="text-gray-600 mb-6 max-w-md">
+                        أنت غير متصل بالإنترنت ولا توجد بيانات مستخدم محفوظة على هذا الجهاز. يرجى الاتصال بالإنترنت لتسجيل الدخول والمزامنة لأول مرة.
+                     </p>
+                     <button 
+                        onClick={handleLogout} 
+                        className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                     >
+                         العودة لتسجيل الدخول
+                     </button>
+                 </div>
+             );
+         }
+
+         // 4. Handle Online + Synced + Missing Profile (Infinite Loading Fix)
+         if (data.syncStatus === 'synced' && isOnline) {
+              return (
+                 <div className="fixed inset-0 flex flex-col items-center justify-center bg-gray-50 p-4 text-center" dir="rtl">
+                     <ExclamationTriangleIcon className="w-16 h-16 text-yellow-500 mb-4" />
+                     <h2 className="text-2xl font-bold text-gray-800 mb-2">ملف المستخدم مفقود</h2>
+                     <p className="text-gray-600 mb-6 max-w-md">
+                        تم تسجيل الدخول بنجاح، ولكن لم يتم العثور على بيانات المستخدم. قد يكون الحساب قد حذف أو لم يتم إنشاؤه بشكل صحيح.
+                     </p>
+                     <div className="flex gap-4 flex-wrap justify-center">
+                        <button
+                            onClick={data.manualSync}
+                            className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                            تحديث البيانات
+                        </button>
+                        {/* Added Repair Button here too */}
+                        <button
+                             onClick={() => setShowConfigModal(true)}
+                             className="px-6 py-2 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600 transition-colors flex items-center gap-2"
+                        >
+                             <ServerIcon className="w-5 h-5" />
+                             <span>إصلاح قاعدة البيانات</span>
+                        </button>
+                        <button
+                            onClick={handleLogout}
+                            className="px-6 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
+                        >
+                            تسجيل الخروج
+                        </button>
+                     </div>
+                 </div>
+             );
+         }
+
+         // Fallback loader
+         return <FullScreenLoader text="جاري تحميل ملف المستخدم..." />;
     }
 
     if (!effectiveProfile.is_approved) {
+        // Check if the user has a pending verification code
+        if (effectiveProfile.verification_code) {
+             return (
+                <LoginPage 
+                    onForceSetup={() => setShowConfigModal(true)} 
+                    onLoginSuccess={handleLoginSuccess}
+                    forceVerification={true}
+                />
+             );
+        }
         return <PendingApprovalPage onLogout={handleLogout} />;
     }
 

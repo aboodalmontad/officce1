@@ -44,7 +44,8 @@ const NavLink: React.FC<{
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onOpenConfig }) => {
     const { profiles, isDataLoading: loading } = useData();
-    const [view, setView] = React.useState<AdminView>('analytics');
+    // Change default view to 'users'
+    const [view, setView] = React.useState<AdminView>('users');
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
 
     const pendingUsersCount = React.useMemo(() => {
@@ -52,15 +53,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onOpenConfig 
     }, [profiles]);
 
     // Automatically unlock audio and vibration on component mount.
-    // This is required by modern browsers which restrict autoplay until a user interaction.
     React.useEffect(() => {
         const unlockAudioAndVibration = () => {
-            // A minimal, silent audio file to unlock the AudioContext.
             const silentAudio = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
             
             const tryVibrate = () => {
                 if ('vibrate' in navigator && typeof navigator.vibrate === 'function') {
-                    // A minimal vibration to "wake up" the vibration API.
                     navigator.vibrate(0);
                 }
             };
@@ -73,35 +71,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onOpenConfig 
             }).catch(() => {
                 console.warn('Audio autoplay was blocked. It will be enabled after the first user interaction.');
                 const enableOnInteraction = () => {
-                    attemptPlay().catch(() => {}); // Try again, ignore further errors.
+                    attemptPlay().catch(() => {}); 
                     tryVibrate();
-                    // Fix: The event listeners are added with the `once: true` option, which automatically
-                    // removes them after they are invoked. Manually calling `removeEventListener` is not
-                    // necessary and was causing an error because it was passed an invalid options object.
                     console.log('Audio and Vibration APIs unlocked after user interaction.');
                 };
-                // Set up listeners for the first interaction.
                 window.addEventListener('click', enableOnInteraction, { once: true });
                 window.addEventListener('touchend', enableOnInteraction, { once: true });
             }); 
         };
 
         unlockAudioAndVibration();
-    }, []); // Empty dependency array ensures this runs only once on mount.
+    }, []); 
 
 
     const renderView = () => {
         switch (view) {
-            case 'analytics':
-                return <AdminAnalyticsPage />;
             case 'users':
                 return <AdminPage />;
+            case 'analytics':
+                return <AdminAnalyticsPage />;
             case 'finances':
                 return <SiteFinancesPage />;
             case 'settings':
                 return <AdminSettingsPage onOpenConfig={onOpenConfig} />;
             default:
-                return <AdminAnalyticsPage />;
+                return <AdminPage />; // Default fallback also set to AdminPage
         }
     };
     
@@ -115,18 +109,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onOpenConfig 
                 <h1 className="text-2xl font-bold text-gray-800">لوحة تحكم المدير</h1>
             </div>
             <nav className="flex-grow space-y-2">
-                 <NavLink
-                    label="التحليلات"
-                    icon={<ChartPieIcon className="w-6 h-6" />}
-                    isActive={view === 'analytics'}
-                    onClick={() => { setView('analytics'); setIsSidebarOpen(false); }}
-                />
+                {/* Reordered Navigation: Users first */}
                 <NavLink
                     label="إدارة المستخدمين"
                     icon={<UserGroupIcon className="w-6 h-6" />}
                     isActive={view === 'users'}
                     onClick={() => { setView('users'); setIsSidebarOpen(false); }}
                     badgeCount={pendingUsersCount}
+                />
+                 <NavLink
+                    label="التحليلات"
+                    icon={<ChartPieIcon className="w-6 h-6" />}
+                    isActive={view === 'analytics'}
+                    onClick={() => { setView('analytics'); setIsSidebarOpen(false); }}
                 />
                  <NavLink
                     label="المحاسبة المالية"
