@@ -17,7 +17,7 @@ import SubscriptionExpiredPage from './pages/SubscriptionExpiredPage.tsx';
 
 import ConfigurationModal from './components/ConfigurationModal';
 import { useSupabaseData, SyncStatus } from './hooks/useSupabaseData';
-import { UserIcon, CalculatorIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, PowerIcon, PrintIcon, ShareIcon, CalendarDaysIcon, ClipboardDocumentCheckIcon, ExclamationTriangleIcon, ServerIcon } from './components/icons';
+import { UserIcon, CalculatorIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, PowerIcon, PrintIcon, ShareIcon, CalendarDaysIcon, ClipboardDocumentCheckIcon, ExclamationTriangleIcon, ServerIcon, XMarkIcon } from './components/icons';
 import ContextMenu, { MenuItem } from './components/ContextMenu';
 import AdminTaskModal from './components/AdminTaskModal';
 import { AdminTask, Profile, Client, Appointment, AccountingEntry, Invoice, CaseDocument, AppData, SiteFinancialEntry } from './types';
@@ -30,6 +30,7 @@ import PrintableReport from './components/PrintableReport';
 import { printElement } from './utils/printUtils';
 import { formatDate, isSameDay } from './utils/dateUtils';
 
+const APP_VERSION = '22-11-2025-fix-15';
 
 type Page = 'home' | 'admin-tasks' | 'clients' | 'accounting' | 'settings';
 
@@ -141,7 +142,7 @@ const Navbar: React.FC<{
                     <div className="flex flex-col items-start sm:flex-row sm:items-baseline gap-0 sm:gap-2">
                         <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
                         <div className="flex items-center gap-1 text-xs text-gray-500">
-                            <span>الإصدار: 22-11-2025-fix-14</span>
+                            <span>الإصدار: {APP_VERSION}</span>
                             {profile && (
                                 <>
                                     <span className="mx-1 text-gray-300">|</span>
@@ -317,12 +318,26 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const [printableReportData, setPrintableReportData] = React.useState<any | null>(null);
     const [isActionsMenuOpen, setIsActionsMenuOpen] = React.useState(false);
     const [selectedDate, setSelectedDate] = React.useState(new Date());
+    
+    // Update Notification State
+    const [showUpdateToast, setShowUpdateToast] = React.useState(false);
 
     const printReportRef = React.useRef<HTMLDivElement>(null);
     const actionsMenuRef = React.useRef<HTMLDivElement>(null);
 
     const supabase = getSupabaseClient();
     const isOnline = useOnlineStatus();
+
+    // Check for updates on mount
+    React.useEffect(() => {
+        const storedVersion = localStorage.getItem('lawyerAppVersion');
+        if (storedVersion !== APP_VERSION) {
+            setShowUpdateToast(true);
+            localStorage.setItem('lawyerAppVersion', APP_VERSION);
+            const timer = setTimeout(() => setShowUpdateToast(false), 6000);
+            return () => clearTimeout(timer);
+        }
+    }, []);
 
     // This effect handles authentication state changes and initial verification.
     React.useEffect(() => {
@@ -963,6 +978,19 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                                 </button>
                             </div>
                         </div>
+                    </div>
+                )}
+
+                {showUpdateToast && (
+                    <div className="fixed bottom-4 left-4 z-[200] bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-fade-in">
+                        <CheckCircleIcon className="w-6 h-6" />
+                        <div>
+                            <h4 className="font-bold text-sm">تحديث جديد</h4>
+                            <p className="text-xs">تم تحديث التطبيق إلى الإصدار {APP_VERSION}</p>
+                        </div>
+                        <button onClick={() => setShowUpdateToast(false)} className="bg-white/20 hover:bg-white/30 rounded-full p-1 ms-2">
+                            <XMarkIcon className="w-4 h-4" />
+                        </button>
                     </div>
                 )}
             </div>
