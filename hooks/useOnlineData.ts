@@ -248,30 +248,14 @@ export const deleteDataFromSupabase = async (deletions: Partial<FlatData>, user:
     }
 };
 
-// Utility to safely sanitize payload for JSON transmission.
-// This ensures:
-// 1. Undefined values are removed (which would cause API errors).
-// 2. Date objects are converted to ISO strings.
-// 3. NaN and Infinity are converted to 0 (null in JSON causes DB constraints errors for numeric fields).
+// Utility to remove undefined values from an object (recursively) and ensure JSON compatibility.
+// Fix: Replaced manual recursion with JSON.parse(JSON.stringify(obj)).
+// This is the most robust way to:
+// 1. Convert Date objects to ISO strings automatically.
+// 2. Remove keys with undefined values (which break Supabase requests).
+// 3. Convert NaN/Infinity to null.
 const sanitizePayload = (obj: any): any => {
-    const jsonString = JSON.stringify(obj, (key, value) => {
-        // Convert NaN and Infinity to 0 to prevent JSON null and subsequent DB errors on NOT NULL columns
-        if (typeof value === 'number' && !Number.isFinite(value)) {
-            return 0;
-        }
-        return value;
-    });
-    return JSON.parse(jsonString);
-};
-
-// Helper to convert empty strings/undefined/none to null for optional foreign keys
-// This prevents foreign key constraint violations when the UI passes "" for an optional selection
-// and avoids "invalid input syntax" for non-text columns.
-const emptyToNull = (str: any) => {
-    if (str === '' || str === undefined || str === null || str === 'none' || str === 'null' || str === 'undefined') {
-        return null;
-    }
-    return str;
+    return JSON.parse(JSON.stringify(obj));
 };
 
 export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) => {
@@ -303,41 +287,17 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         })),
         admin_tasks: data.admin_tasks?.map(({ dueDate, orderIndex, ...rest }) => ({ ...rest, user_id: userId, due_date: dueDate, order_index: orderIndex })),
         appointments: data.appointments?.map(({ reminderTimeInMinutes, ...rest }) => ({ ...rest, user_id: userId, reminder_time_in_minutes: reminderTimeInMinutes })),
-        accounting_entries: data.accounting_entries?.map(({ clientId, caseId, clientName, amount, ...rest }) => ({ 
-            ...rest, 
-            amount: Number(amount),
-            user_id: userId, 
-            client_id: emptyToNull(clientId), 
-            case_id: emptyToNull(caseId), 
-            client_name: clientName 
-        })),
+        accounting_entries: data.accounting_entries?.map(({ clientId, caseId, clientName, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, case_id: caseId, client_name: clientName })),
         assistants: data.assistants?.map(item => ({ ...item, user_id: userId })),
-        // Filter out invoices without a valid clientId to prevent NOT NULL constraint violation
-        invoices: data.invoices?.filter(inv => !!inv.clientId).map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, discount, ...rest }) => ({ 
-            ...rest, 
-            user_id: userId, 
-            client_id: clientId, // Already filtered, so safe to use directly or emptyToNull
-            client_name: clientName, 
-            case_id: emptyToNull(caseId), 
-            case_subject: caseSubject, 
-            issue_date: issueDate, 
-            due_date: dueDate, 
-            tax_rate: Number(taxRate),
-            discount: Number(discount)
-        })),
-        invoice_items: data.invoice_items?.map(({ amount, ...item }) => ({ ...item, amount: Number(amount), user_id: userId })),
+        invoices: data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, client_name: clientName, case_id: caseId, case_subject: caseSubject, issue_date: issueDate, due_date: dueDate, tax_rate: taxRate })),
+        invoice_items: data.invoice_items?.map(({ ...item }) => ({ ...item, user_id: userId })),
         case_documents: data.case_documents?.map(({ caseId, userId: localUserId, addedAt, storagePath, localState, ...rest }) => ({ ...rest, user_id: localUserId || userId, case_id: caseId, added_at: addedAt, storage_path: storagePath })),
         profiles: data.profiles?.map(({ full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, verification_code, ...rest }) => ({ ...rest, full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, verification_code })),
-        site_finances: data.site_finances?.map(({ user_id, payment_date, amount, ...rest }) => ({ 
-            ...rest, 
-            amount: Number(amount),
-            user_id: emptyToNull(user_id), 
-            payment_date 
-        })),
+        site_finances: data.site_finances?.map(({ user_id, payment_date, ...rest }) => ({ ...rest, user_id, payment_date })),
         system_settings: data.system_settings, // No mapping needed, simple key-value
     };
     
-    // Sanitize all payloads to remove undefined values and handle special numbers before sending
+    // Sanitize all payloads to remove undefined values before sending
     const dataToUpsert = sanitizePayload(rawDataToUpsert);
 
     const upsertTable = async (table: string, records: any[] | undefined, options: { onConflict?: string } = {}) => {
@@ -369,25 +329,22 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     // STEP 2: Upsert tables that don't have dependencies on other user data.
     results.assistants = await upsertTable('assistants', dataToUpsert.assistants, { onConflict: 'user_id,name' });
     
-    const [adminTasks, appointments, site_finances, system_settings] = await Promise.all([
+    const [adminTasks, appointments, accountingEntries, site_finances, system_settings] = await Promise.all([
         upsertTable('admin_tasks', dataToUpsert.admin_tasks),
         upsertTable('appointments', dataToUpsert.appointments),
-        // NOTE: accounting_entries moved to Step 3 to prevent FK violation if case/client is new
+        upsertTable('accounting_entries', dataToUpsert.accounting_entries),
         upsertTable('site_finances', dataToUpsert.site_finances),
         upsertTable('system_settings', dataToUpsert.system_settings),
     ]);
     results.admin_tasks = adminTasks;
     results.appointments = appointments;
+    results.accounting_entries = accountingEntries;
     results.site_finances = site_finances;
     results.system_settings = system_settings;
 
-    // STEP 3: Upsert tables with dependencies (Foreign Keys).
+    // STEP 3: Upsert tables with dependencies.
     results.clients = await upsertTable('clients', dataToUpsert.clients);
     results.cases = await upsertTable('cases', dataToUpsert.cases);
-    
-    // Now it is safe to upsert accounting_entries because clients and cases are guaranteed to exist.
-    results.accounting_entries = await upsertTable('accounting_entries', dataToUpsert.accounting_entries);
-
     results.stages = await upsertTable('stages', dataToUpsert.stages);
     results.sessions = await upsertTable('sessions', dataToUpsert.sessions);
     
