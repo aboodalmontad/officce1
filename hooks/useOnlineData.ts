@@ -248,16 +248,6 @@ export const deleteDataFromSupabase = async (deletions: Partial<FlatData>, user:
     }
 };
 
-// Utility to remove undefined values from an object (recursively) and ensure JSON compatibility.
-// Fix: Replaced manual recursion with JSON.parse(JSON.stringify(obj)).
-// This is the most robust way to:
-// 1. Convert Date objects to ISO strings automatically.
-// 2. Remove keys with undefined values (which break Supabase requests).
-// 3. Convert NaN/Infinity to null.
-const sanitizePayload = (obj: any): any => {
-    return JSON.parse(JSON.stringify(obj));
-};
-
 export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) => {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase client not available.');
@@ -265,7 +255,7 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     const userId = user.id;
 
     // Map application data (camelCase) to database schema (snake_case)
-    const rawDataToUpsert = {
+    const dataToUpsert = {
         clients: data.clients?.map(({ contactInfo, ...rest }) => ({ ...rest, user_id: userId, contact_info: contactInfo })),
         cases: data.cases?.map(({ clientName, opponentName, feeAgreement, ...rest }) => ({ ...rest, user_id: userId, client_name: clientName, opponent_name: opponentName, fee_agreement: feeAgreement })),
         stages: data.stages?.map(({ caseNumber, firstSessionDate, decisionDate, decisionNumber, decisionSummary, decisionNotes, ...rest }) => ({ ...rest, user_id: userId, case_number: caseNumber, first_session_date: firstSessionDate, decision_date: decisionDate, decision_number: decisionNumber, decision_summary: decisionSummary, decision_notes: decisionNotes })),
@@ -297,9 +287,6 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         system_settings: data.system_settings, // No mapping needed, simple key-value
     };
     
-    // Sanitize all payloads to remove undefined values before sending
-    const dataToUpsert = sanitizePayload(rawDataToUpsert);
-
     const upsertTable = async (table: string, records: any[] | undefined, options: { onConflict?: string } = {}) => {
         if (!records || records.length === 0) return [];
         const { data: responseData, error } = await supabase.from(table).upsert(records, options).select();

@@ -351,12 +351,22 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     
     const prevProfilesRef = React.useRef<Profile[]>([]);
 
+    // Safe wrapper for setData to prevent React Error #310 (setState called with extra args)
+    const safeSetData = React.useCallback((updater: React.SetStateAction<AppData>) => {
+        setData(updater);
+    }, []);
+
+    // Safe wrapper for setDirty to prevent React Error #310
+    const safeSetDirty = React.useCallback((value: boolean) => {
+        setDirty(value);
+    }, []);
+
     // The core function to update state and persist to IndexedDB
     const updateData = React.useCallback((updater: React.SetStateAction<AppData>) => {
         if (!userRef.current) return;
         const userId = userRef.current.id;
 
-        setData(currentData => {
+        safeSetData(currentData => {
             const newData = typeof updater === 'function' 
                 ? (updater as (prevState: AppData) => AppData)(currentData) 
                 : updater;
@@ -366,11 +376,12 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 db.put(DATA_STORE_NAME, newData, userId);
             });
 
-            setDirty(true);
+            safeSetDirty(true);
             return newData;
         });
-    }, []);
+    }, [safeSetData, safeSetDirty]);
 
+    // Wrapper specifically for setFullData to ensure it drops any extra args
     const setFullData = React.useCallback(async (newData: any) => {
         const validated = validateAndFixData(newData, userRef.current);
         updateData(validated);
@@ -428,13 +439,13 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             const finalData = { ...validatedMergedData, documents: finalDocs };
 
             await db.put(DATA_STORE_NAME, finalData, userRef.current!.id);
-            setData(finalData);
-            setDirty(false);
+            safeSetData(finalData);
+            safeSetDirty(false);
         } catch (e) {
             console.error("Critical error in handleDataSynced:", e);
             handleSyncStatusChange('error', 'فشل تحديث البيانات المحلية بعد المزامنة.');
         }
-    }, [userRef]);
+    }, [userRef, safeSetData, safeSetDirty, handleSyncStatusChange]);
     
     const handleDeletionsSynced = React.useCallback(async (syncedDeletions: Partial<DeletedIds>) => {
         const newDeletedIds = { ...deletedIds };
@@ -494,16 +505,16 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 
                 const finalData = { ...validatedData, documents: finalDocs };
                 
-                setData(finalData);
+                safeSetData(finalData);
                 setDeletedIds(storedDeletedIds || getInitialDeletedIds());
                 
-                // CRITICAL: We stop loading here. Syncing happens in a separate effect.
+                // CRITICAL: We stop loading here.
                 setIsDataLoading(false);
+                
+                // Force status to synced immediately so UI becomes interactive.
+                // The separate sync effect will switch it to 'syncing' momentarily if online.
+                setSyncStatus('synced');
 
-                // If offline, mark as synced immediately
-                if (!isOnline) {
-                    setSyncStatus('synced'); 
-                }
             } catch (error) {
                 console.error('Failed to load data from IndexedDB:', error);
                 setSyncStatus('error');
@@ -513,7 +524,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         };
         loadData();
         return () => { cancelled = true; };
-    }, [user, isAuthLoading]);
+    }, [user, isAuthLoading, safeSetData]);
 
     // Initial Sync after data load
     React.useEffect(() => {
@@ -872,7 +883,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         const newDeletedIds = { ...deletedIds, [entity]: [...deletedIds[entity], id] };
         setDeletedIds(newDeletedIds);
         await db.put(DATA_STORE_NAME, newDeletedIds, `deletedIds_${user!.id}`);
-        setDirty(true);
+        safeSetDirty(true);
     };
 
     const deleteClient = (clientId: string) => { 
