@@ -249,7 +249,13 @@ export const deleteDataFromSupabase = async (deletions: Partial<FlatData>, user:
 };
 
 // Utility to remove undefined values from an object (recursively)
+// Fix: Date objects are now properly handled by converting them to ISO strings.
+// Previously, `typeof new Date() === 'object'` caused Dates to be treated as generic objects,
+// resulting in `{}` which caused invalid input syntax errors in Postgres.
 const sanitizePayload = (obj: any): any => {
+    if (obj instanceof Date) {
+        return obj.toISOString();
+    }
     if (Array.isArray(obj)) {
         return obj.map(sanitizePayload);
     }
