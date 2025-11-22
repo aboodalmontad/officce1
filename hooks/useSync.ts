@@ -135,11 +135,13 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
     const deletedIdsRef = React.useRef(deletedIds);
     const userRef = React.useRef(user);
 
-    React.useEffect(() => {
-        localDataRef.current = localData;
-        deletedIdsRef.current = deletedIds;
-        userRef.current = user;
-    }, [localData, deletedIds, user]);
+    // CRITICAL FIX: Update refs synchronously during render.
+    // This ensures that if a useEffect or callback runs in the same commit phase or immediately after,
+    // they see the correct, updated data. Using useEffect to update refs can cause race conditions
+    // where manualSync runs before the ref is updated (e.g. during initial load).
+    localDataRef.current = localData;
+    deletedIdsRef.current = deletedIds;
+    userRef.current = user;
 
     const setStatus = (status: SyncStatus, error: string | null = null) => {
         onSyncStatusChange(status, error);
