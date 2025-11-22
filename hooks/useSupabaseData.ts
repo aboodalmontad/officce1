@@ -337,6 +337,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const [realtimeAlerts, setRealtimeAlerts] = React.useState<RealtimeAlert[]>([]);
     const [userApprovalAlerts, setUserApprovalAlerts] = React.useState<RealtimeAlert[]>([]);
     const isOnline = useOnlineStatus();
+    const hasInitialSynced = React.useRef(false);
 
     // --- User Settings State ---
     const [userSettings, setUserSettings] = React.useState<UserSettings>(defaultSettings);
@@ -496,28 +497,35 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
                 setData(finalData);
                 setDeletedIds(storedDeletedIds || getInitialDeletedIds());
                 
-                // CRITICAL OPTIMIZATION:
-                // We unlock the UI immediately after loading local data.
-                // Syncing happens in the background, so the user doesn't wait.
+                // CRITICAL: We stop loading here. Syncing happens in a separate effect.
                 setIsDataLoading(false);
 
-                if (isOnline) {
-                    manualSync().catch(console.error);
-                } else {
-                    setSyncStatus('synced'); // Offline but data loaded
+                // If offline, mark as synced immediately
+                if (!isOnline) {
+                    setSyncStatus('synced'); 
                 }
             } catch (error) {
                 console.error('Failed to load data from IndexedDB:', error);
-                // Fix: Use direct setters or handleSyncStatusChange to correctly set error state
                 setSyncStatus('error');
                 setLastSyncError('فشل تحميل البيانات المحلية.');
-                // Even if local load fails, we stop loading to allow UI to show error or empty state
                 setIsDataLoading(false);
             }
         };
         loadData();
         return () => { cancelled = true; };
     }, [user, isAuthLoading]);
+
+    // Initial Sync after data load
+    React.useEffect(() => {
+        if (!isDataLoading && user && isOnline && !hasInitialSynced.current) {
+            hasInitialSynced.current = true;
+            // Using setTimeout to allow the render cycle to complete and refs in useSync to update
+            const timer = setTimeout(() => {
+                manualSync().catch(console.error);
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [isDataLoading, user, isOnline, manualSync]);
 
     // 1. Auto-sync on data change (debounced)
     React.useEffect(() => {
