@@ -248,14 +248,20 @@ export const deleteDataFromSupabase = async (deletions: Partial<FlatData>, user:
     }
 };
 
-// Utility to remove undefined values from an object (recursively) and ensure JSON compatibility.
-// Fix: Replaced manual recursion with JSON.parse(JSON.stringify(obj)).
-// This is the most robust way to:
-// 1. Convert Date objects to ISO strings automatically.
-// 2. Remove keys with undefined values (which break Supabase requests).
-// 3. Convert NaN/Infinity to null.
+// Utility to safely sanitize payload for JSON transmission.
+// This ensures:
+// 1. Undefined values are removed (which would cause API errors).
+// 2. Date objects are converted to ISO strings.
+// 3. NaN and Infinity are converted to 0 (null in JSON causes DB constraints errors for numeric fields).
 const sanitizePayload = (obj: any): any => {
-    return JSON.parse(JSON.stringify(obj));
+    const jsonString = JSON.stringify(obj, (key, value) => {
+        // Convert NaN and Infinity to 0 to prevent JSON null and subsequent DB errors on NOT NULL columns
+        if (typeof value === 'number' && !Number.isFinite(value)) {
+            return 0;
+        }
+        return value;
+    });
+    return JSON.parse(jsonString);
 };
 
 export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) => {
@@ -297,7 +303,7 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         system_settings: data.system_settings, // No mapping needed, simple key-value
     };
     
-    // Sanitize all payloads to remove undefined values before sending
+    // Sanitize all payloads to remove undefined values and handle special numbers before sending
     const dataToUpsert = sanitizePayload(rawDataToUpsert);
 
     const upsertTable = async (table: string, records: any[] | undefined, options: { onConflict?: string } = {}) => {
@@ -329,22 +335,25 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     // STEP 2: Upsert tables that don't have dependencies on other user data.
     results.assistants = await upsertTable('assistants', dataToUpsert.assistants, { onConflict: 'user_id,name' });
     
-    const [adminTasks, appointments, accountingEntries, site_finances, system_settings] = await Promise.all([
+    const [adminTasks, appointments, site_finances, system_settings] = await Promise.all([
         upsertTable('admin_tasks', dataToUpsert.admin_tasks),
         upsertTable('appointments', dataToUpsert.appointments),
-        upsertTable('accounting_entries', dataToUpsert.accounting_entries),
+        // NOTE: accounting_entries moved to Step 3 to prevent FK violation if case/client is new
         upsertTable('site_finances', dataToUpsert.site_finances),
         upsertTable('system_settings', dataToUpsert.system_settings),
     ]);
     results.admin_tasks = adminTasks;
     results.appointments = appointments;
-    results.accounting_entries = accountingEntries;
     results.site_finances = site_finances;
     results.system_settings = system_settings;
 
-    // STEP 3: Upsert tables with dependencies.
+    // STEP 3: Upsert tables with dependencies (Foreign Keys).
     results.clients = await upsertTable('clients', dataToUpsert.clients);
     results.cases = await upsertTable('cases', dataToUpsert.cases);
+    
+    // Now it is safe to upsert accounting_entries because clients and cases are guaranteed to exist.
+    results.accounting_entries = await upsertTable('accounting_entries', dataToUpsert.accounting_entries);
+
     results.stages = await upsertTable('stages', dataToUpsert.stages);
     results.sessions = await upsertTable('sessions', dataToUpsert.sessions);
     
