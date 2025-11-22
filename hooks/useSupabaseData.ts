@@ -519,6 +519,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         return () => { cancelled = true; };
     }, [user, isAuthLoading]);
 
+    // 1. Auto-sync on data change (debounced)
     React.useEffect(() => {
         if (isOnline && isDirty && isAutoSyncEnabled && syncStatus !== 'syncing') {
             const handler = setTimeout(() => {
@@ -526,7 +527,15 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
             }, 3000);
             return () => clearTimeout(handler);
         }
-    }, [isOnline, isDirty, isAutoSyncEnabled, syncStatus, manualSync]);
+    }, [isDirty, isAutoSyncEnabled, syncStatus, manualSync, isOnline]);
+
+    // 2. Immediate sync when coming online
+    React.useEffect(() => {
+        if (isOnline && isDirty && isAutoSyncEnabled && syncStatus !== 'syncing') {
+             console.log("Connection restored. Syncing pending changes...");
+             manualSync();
+        }
+    }, [isOnline]); // Only triggers when isOnline changes
     
     const exportData = React.useCallback((): boolean => {
         try {
