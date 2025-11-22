@@ -17,7 +17,7 @@ import SubscriptionExpiredPage from './pages/SubscriptionExpiredPage.tsx';
 
 import ConfigurationModal from './components/ConfigurationModal';
 import { useSupabaseData, SyncStatus } from './hooks/useSupabaseData';
-import { UserIcon, CalculatorIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, PowerIcon, PrintIcon, ShareIcon, CalendarDaysIcon, ClipboardDocumentCheckIcon, ExclamationTriangleIcon, ServerIcon } from './components/icons';
+import { UserIcon, CalculatorIcon, Cog6ToothIcon, ArrowPathIcon, NoSymbolIcon, CheckCircleIcon, ExclamationCircleIcon, PowerIcon, PrintIcon, ShareIcon, CalendarDaysIcon, ClipboardDocumentCheckIcon, ExclamationTriangleIcon, ServerIcon, XMarkIcon } from './components/icons';
 import ContextMenu, { MenuItem } from './components/ContextMenu';
 import AdminTaskModal from './components/AdminTaskModal';
 import { AdminTask, Profile, Client, Appointment, AccountingEntry, Invoice, CaseDocument, AppData, SiteFinancialEntry } from './types';
@@ -141,7 +141,7 @@ const Navbar: React.FC<{
                     <div className="flex flex-col items-start sm:flex-row sm:items-baseline gap-0 sm:gap-2">
                         <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
                         <div className="flex items-center gap-1 text-xs text-gray-500">
-                            <span>الإصدار: 22-11-2025-fix-3</span>
+                            <span>الإصدار: 22-11-2025-fix-4</span>
                             {profile && (
                                 <>
                                     <span className="mx-1 text-gray-300">|</span>
@@ -259,6 +259,18 @@ const OfflineBanner: React.FC = () => {
     );
 };
 
+const UpdateNotification: React.FC<{ onClose: () => void }> = ({ onClose }) => (
+    <div className="fixed bottom-4 left-4 z-[200] bg-blue-600 text-white p-4 rounded-lg shadow-lg flex items-center gap-4 animate-fade-in">
+        <div className="flex-1">
+            <h4 className="font-bold text-sm">تم تحديث التطبيق</h4>
+            <p className="text-xs mt-1">أنت الآن تستخدم أحدث نسخة (22-11-2025-fix-4).</p>
+        </div>
+        <button onClick={onClose} className="p-1 hover:bg-blue-700 rounded-full">
+            <XMarkIcon className="w-5 h-5" />
+        </button>
+    </div>
+);
+
 
 const LAST_USER_CACHE_KEY = 'lawyerAppLastUser';
 const LAST_USER_CREDENTIALS_CACHE_KEY = 'lawyerAppLastUserCredentials';
@@ -317,12 +329,25 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     const [printableReportData, setPrintableReportData] = React.useState<any | null>(null);
     const [isActionsMenuOpen, setIsActionsMenuOpen] = React.useState(false);
     const [selectedDate, setSelectedDate] = React.useState(new Date());
+    const [showUpdateNotification, setShowUpdateNotification] = React.useState(false);
 
     const printReportRef = React.useRef<HTMLDivElement>(null);
     const actionsMenuRef = React.useRef<HTMLDivElement>(null);
 
     const supabase = getSupabaseClient();
     const isOnline = useOnlineStatus();
+
+    // Check for version update
+    React.useEffect(() => {
+        const currentVersion = '22-11-2025-fix-4';
+        const lastVersion = localStorage.getItem('appVersion');
+        if (lastVersion !== currentVersion) {
+            setShowUpdateNotification(true);
+            localStorage.setItem('appVersion', currentVersion);
+            // Auto hide after 5 seconds
+            setTimeout(() => setShowUpdateNotification(false), 5000);
+        }
+    }, []);
 
     // This effect handles authentication state changes and initial verification.
     React.useEffect(() => {
@@ -844,6 +869,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                     homePageActions={homePageActions}
                 />
                 <OfflineBanner />
+                {showUpdateNotification && <UpdateNotification onClose={() => setShowUpdateNotification(false)} />}
                 {/* Added padding-bottom to main content to prevent overlap with the mobile nav */}
                 <main className="flex-grow p-4 sm:p-6 overflow-y-auto pb-20 sm:pb-6">
                     {renderPage()}

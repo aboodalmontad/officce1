@@ -248,25 +248,14 @@ export const deleteDataFromSupabase = async (deletions: Partial<FlatData>, user:
     }
 };
 
-// Utility to remove undefined values from an object (recursively)
-// Fix: Date objects are now properly handled by converting them to ISO strings.
-// Previously, `typeof new Date() === 'object'` caused Dates to be treated as generic objects,
-// resulting in `{}` which caused invalid input syntax errors in Postgres.
+// Utility to remove undefined values from an object (recursively) and ensure JSON compatibility.
+// Fix: Replaced manual recursion with JSON.parse(JSON.stringify(obj)).
+// This is the most robust way to:
+// 1. Convert Date objects to ISO strings automatically.
+// 2. Remove keys with undefined values (which break Supabase requests).
+// 3. Convert NaN/Infinity to null.
 const sanitizePayload = (obj: any): any => {
-    if (obj instanceof Date) {
-        return obj.toISOString();
-    }
-    if (Array.isArray(obj)) {
-        return obj.map(sanitizePayload);
-    }
-    if (obj !== null && typeof obj === 'object') {
-        return Object.fromEntries(
-            Object.entries(obj)
-                .filter(([_, v]) => v !== undefined)
-                .map(([k, v]) => [k, sanitizePayload(v)])
-        );
-    }
-    return obj;
+    return JSON.parse(JSON.stringify(obj));
 };
 
 export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) => {
