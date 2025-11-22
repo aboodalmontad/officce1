@@ -264,10 +264,14 @@ const sanitizePayload = (obj: any): any => {
     return JSON.parse(jsonString);
 };
 
-// Helper to convert empty strings to null for optional foreign keys
+// Helper to convert empty strings/undefined/none to null for optional foreign keys
 // This prevents foreign key constraint violations when the UI passes "" for an optional selection
-const emptyToNull = (str: string | undefined | null) => {
-    return (str === '' || str === undefined || str === null) ? null : str;
+// and avoids "invalid input syntax" for non-text columns.
+const emptyToNull = (str: any) => {
+    if (str === '' || str === undefined || str === null || str === 'none' || str === 'null' || str === 'undefined') {
+        return null;
+    }
+    return str;
 };
 
 export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) => {
@@ -299,30 +303,34 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         })),
         admin_tasks: data.admin_tasks?.map(({ dueDate, orderIndex, ...rest }) => ({ ...rest, user_id: userId, due_date: dueDate, order_index: orderIndex })),
         appointments: data.appointments?.map(({ reminderTimeInMinutes, ...rest }) => ({ ...rest, user_id: userId, reminder_time_in_minutes: reminderTimeInMinutes })),
-        accounting_entries: data.accounting_entries?.map(({ clientId, caseId, clientName, ...rest }) => ({ 
+        accounting_entries: data.accounting_entries?.map(({ clientId, caseId, clientName, amount, ...rest }) => ({ 
             ...rest, 
+            amount: Number(amount),
             user_id: userId, 
             client_id: emptyToNull(clientId), 
             case_id: emptyToNull(caseId), 
             client_name: clientName 
         })),
         assistants: data.assistants?.map(item => ({ ...item, user_id: userId })),
-        invoices: data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, ...rest }) => ({ 
+        // Filter out invoices without a valid clientId to prevent NOT NULL constraint violation
+        invoices: data.invoices?.filter(inv => !!inv.clientId).map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, discount, ...rest }) => ({ 
             ...rest, 
             user_id: userId, 
-            client_id: emptyToNull(clientId), 
+            client_id: clientId, // Already filtered, so safe to use directly or emptyToNull
             client_name: clientName, 
             case_id: emptyToNull(caseId), 
             case_subject: caseSubject, 
             issue_date: issueDate, 
             due_date: dueDate, 
-            tax_rate: taxRate 
+            tax_rate: Number(taxRate),
+            discount: Number(discount)
         })),
-        invoice_items: data.invoice_items?.map(({ ...item }) => ({ ...item, user_id: userId })),
+        invoice_items: data.invoice_items?.map(({ amount, ...item }) => ({ ...item, amount: Number(amount), user_id: userId })),
         case_documents: data.case_documents?.map(({ caseId, userId: localUserId, addedAt, storagePath, localState, ...rest }) => ({ ...rest, user_id: localUserId || userId, case_id: caseId, added_at: addedAt, storage_path: storagePath })),
         profiles: data.profiles?.map(({ full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, verification_code, ...rest }) => ({ ...rest, full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, verification_code })),
-        site_finances: data.site_finances?.map(({ user_id, payment_date, ...rest }) => ({ 
+        site_finances: data.site_finances?.map(({ user_id, payment_date, amount, ...rest }) => ({ 
             ...rest, 
+            amount: Number(amount),
             user_id: emptyToNull(user_id), 
             payment_date 
         })),
