@@ -264,6 +264,12 @@ const sanitizePayload = (obj: any): any => {
     return JSON.parse(jsonString);
 };
 
+// Helper to convert empty strings to null for optional foreign keys
+// This prevents foreign key constraint violations when the UI passes "" for an optional selection
+const emptyToNull = (str: string | undefined | null) => {
+    return (str === '' || str === undefined || str === null) ? null : str;
+};
+
 export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) => {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase client not available.');
@@ -293,13 +299,33 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         })),
         admin_tasks: data.admin_tasks?.map(({ dueDate, orderIndex, ...rest }) => ({ ...rest, user_id: userId, due_date: dueDate, order_index: orderIndex })),
         appointments: data.appointments?.map(({ reminderTimeInMinutes, ...rest }) => ({ ...rest, user_id: userId, reminder_time_in_minutes: reminderTimeInMinutes })),
-        accounting_entries: data.accounting_entries?.map(({ clientId, caseId, clientName, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, case_id: caseId, client_name: clientName })),
+        accounting_entries: data.accounting_entries?.map(({ clientId, caseId, clientName, ...rest }) => ({ 
+            ...rest, 
+            user_id: userId, 
+            client_id: emptyToNull(clientId), 
+            case_id: emptyToNull(caseId), 
+            client_name: clientName 
+        })),
         assistants: data.assistants?.map(item => ({ ...item, user_id: userId })),
-        invoices: data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, client_name: clientName, case_id: caseId, case_subject: caseSubject, issue_date: issueDate, due_date: dueDate, tax_rate: taxRate })),
+        invoices: data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, ...rest }) => ({ 
+            ...rest, 
+            user_id: userId, 
+            client_id: emptyToNull(clientId), 
+            client_name: clientName, 
+            case_id: emptyToNull(caseId), 
+            case_subject: caseSubject, 
+            issue_date: issueDate, 
+            due_date: dueDate, 
+            tax_rate: taxRate 
+        })),
         invoice_items: data.invoice_items?.map(({ ...item }) => ({ ...item, user_id: userId })),
         case_documents: data.case_documents?.map(({ caseId, userId: localUserId, addedAt, storagePath, localState, ...rest }) => ({ ...rest, user_id: localUserId || userId, case_id: caseId, added_at: addedAt, storage_path: storagePath })),
         profiles: data.profiles?.map(({ full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, verification_code, ...rest }) => ({ ...rest, full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, verification_code })),
-        site_finances: data.site_finances?.map(({ user_id, payment_date, ...rest }) => ({ ...rest, user_id, payment_date })),
+        site_finances: data.site_finances?.map(({ user_id, payment_date, ...rest }) => ({ 
+            ...rest, 
+            user_id: emptyToNull(user_id), 
+            payment_date 
+        })),
         system_settings: data.system_settings, // No mapping needed, simple key-value
     };
     
