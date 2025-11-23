@@ -30,7 +30,7 @@ import PrintableReport from './components/PrintableReport';
 import { printElement } from './utils/printUtils';
 import { formatDate, isSameDay } from './utils/dateUtils';
 
-const APP_VERSION = '22-11-2025-fix-20';
+const APP_VERSION = '22-11-2025-fix-21';
 
 type Page = 'home' | 'admin-tasks' | 'clients' | 'accounting' | 'settings';
 

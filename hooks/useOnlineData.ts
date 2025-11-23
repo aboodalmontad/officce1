@@ -98,7 +98,8 @@ export const checkSupabaseSchema = async () => {
         'site_finances': 'id',
     };
     
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timed out')), 15000));
+    // Increased timeout for mobile connections
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timed out')), 25000));
 
     try {
         const checkPromises = Object.entries(tableChecks).map(([table, query]) =>
@@ -261,127 +262,181 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     const userId = user.id;
 
     // --- 1. Transform Objects to Database Format (Snake Case) & Enforce Safe Data Types ---
-    
+    // We explicitly set NULL for optional fields instead of undefined, to ensure consistent JSON shape.
+    // We also provide fallbacks for required fields (like Client Name) to prevent data dropping.
+
     const rawProfiles = data.profiles?.map(({ full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, verification_code, ...rest }) => ({ 
         ...rest, 
+        id: String(rest.id),
         full_name, 
         mobile_number, 
         is_approved, 
         is_active, 
-        subscription_start_date, 
-        subscription_end_date, 
-        verification_code 
+        subscription_start_date: subscription_start_date || null, 
+        subscription_end_date: subscription_end_date || null, 
+        verification_code: verification_code || null
     })) || [];
 
-    const rawSettings = data.system_settings || [];
+    const rawSettings = data.system_settings?.map(s => ({
+        ...s,
+        key: String(s.key),
+        value: s.value || null
+    })) || [];
     
-    const rawAssistants = data.assistants?.map(item => ({ ...item, user_id: userId })) || [];
+    const rawAssistants = data.assistants?.map(item => ({ 
+        ...item, 
+        user_id: userId,
+        name: String(item.name)
+    })) || [];
     
     const rawAdminTasks = data.admin_tasks?.map(({ dueDate, orderIndex, ...rest }) => ({ 
         ...rest, 
+        id: String(rest.id),
         user_id: userId, 
         due_date: safeDate(dueDate), // MANDATORY: Safe Date
-        order_index: orderIndex 
+        order_index: typeof orderIndex === 'number' ? orderIndex : 0,
+        assignee: rest.assignee || null,
+        location: rest.location || null
     })) || [];
     
     const rawAppointments = data.appointments?.map(({ reminderTimeInMinutes, date, ...rest }) => ({ 
         ...rest, 
+        id: String(rest.id),
         user_id: userId, 
         date: safeDate(date), // MANDATORY: Safe Date
-        reminder_time_in_minutes: reminderTimeInMinutes 
+        reminder_time_in_minutes: typeof reminderTimeInMinutes === 'number' ? reminderTimeInMinutes : 15,
+        assignee: rest.assignee || null
     })) || [];
     
-    const rawSiteFinances = data.site_finances?.map(({ user_id, payment_date, ...rest }) => ({ 
+    const rawSiteFinances = data.site_finances?.map(({ user_id, payment_date, amount, ...rest }) => ({ 
         ...rest, 
-        user_id, 
-        payment_date: safeDate(payment_date) // MANDATORY: Safe Date
+        id: Number(rest.id),
+        user_id: user_id || null, 
+        payment_date: safeDate(payment_date), // MANDATORY: Safe Date
+        amount: Number(amount) || 0,
+        description: rest.description || null,
+        payment_method: rest.payment_method || null,
+        category: rest.category || null,
+        profile_full_name: rest.profile_full_name || null
     })) || [];
     
-    const rawAccountingEntries = data.accounting_entries?.map(({ clientId, caseId, clientName, date, ...rest }) => ({ 
+    const rawAccountingEntries = data.accounting_entries?.map(({ clientId, caseId, clientName, date, amount, ...rest }) => ({ 
         ...rest, 
+        id: String(rest.id),
         user_id: userId, 
-        client_id: clientId, 
-        case_id: caseId, 
-        client_name: clientName,
-        date: safeDate(date) // MANDATORY: Safe Date
+        client_id: clientId || null, 
+        case_id: caseId || null, 
+        client_name: clientName || '',
+        date: safeDate(date), // MANDATORY: Safe Date
+        amount: Number(amount) || 0,
+        description: rest.description || ''
     })) || [];
 
     // Parent: Clients
-    const rawClients = data.clients?.map(({ contactInfo, ...rest }) => ({ ...rest, user_id: userId, contact_info: contactInfo })) || [];
+    // FALLBACK: If client name is empty (mobile glitch), use "موكل بدون اسم" to allow sync.
+    const rawClients = data.clients?.map(({ contactInfo, name, ...rest }) => ({ 
+        ...rest, 
+        id: String(rest.id),
+        user_id: userId, 
+        name: (name && name.trim() !== '') ? name.trim() : 'موكل بدون اسم',
+        contact_info: contactInfo || null 
+    })) || [];
     
     // --- 2. STRICT Referential Integrity Filtering ---
     // We filter children based on the *actual* parents we are about to upload (or assume exist).
     // This prevents "Orphan" records from causing Foreign Key violations.
 
     // Step 2a: Filter Clients
-    // (Assume all clients with a name are valid)
-    const validClients = rawClients.filter(c => c.name && c.name.trim() !== '');
+    // We trust the rawClients mapping which now enforces a name.
+    const validClients = rawClients; 
     const validClientIds = new Set(validClients.map(c => c.id));
 
     // Step 2b: Filter Cases (Must have a valid Client ID)
-    const rawCases = data.cases?.map(({ clientName, opponentName, feeAgreement, ...rest }) => ({ ...rest, user_id: userId, client_name: clientName, opponent_name: opponentName, fee_agreement: feeAgreement })) || [];
+    const rawCases = data.cases?.map(({ clientName, opponentName, feeAgreement, ...rest }) => ({ 
+        ...rest, 
+        id: String(rest.id),
+        user_id: userId, 
+        client_id: String(rest.client_id),
+        client_name: clientName || null, 
+        opponent_name: opponentName || null, 
+        fee_agreement: feeAgreement || null 
+    })) || [];
     const validCases = rawCases.filter(c => c.client_id && validClientIds.has(c.client_id));
     const validCaseIds = new Set(validCases.map(c => c.id));
 
     // Step 2c: Filter Stages (Must have a valid Case ID)
     const rawStages = data.stages?.map(({ caseNumber, firstSessionDate, decisionDate, decisionNumber, decisionSummary, decisionNotes, ...rest }) => ({ 
         ...rest, 
+        id: String(rest.id),
         user_id: userId, 
-        case_number: caseNumber, 
+        case_id: String(rest.case_id),
+        court: rest.court || 'غير محدد',
+        case_number: caseNumber || null, 
         first_session_date: firstSessionDate ? safeDate(firstSessionDate) : null, // Safe Optional Date
         decision_date: decisionDate ? safeDate(decisionDate) : null, 
-        decision_number: decisionNumber, 
-        decision_summary: decisionSummary, 
-        decision_notes: decisionNotes 
+        decision_number: decisionNumber || null, 
+        decision_summary: decisionSummary || null, 
+        decision_notes: decisionNotes || null
     })) || [];
     const validStages = rawStages.filter(s => s.case_id && validCaseIds.has(s.case_id));
     const validStageIds = new Set(validStages.map(s => s.id));
 
     // Step 2d: Filter Sessions (Must have a valid Stage ID)
     const rawSessions = data.sessions?.map((s: any) => ({
-        id: s.id,
+        id: String(s.id),
         user_id: userId,
-        stage_id: s.stage_id,
-        court: s.court,
-        case_number: s.caseNumber,
+        stage_id: String(s.stage_id),
+        court: s.court || null,
+        case_number: s.caseNumber || null,
         date: safeDate(s.date), // MANDATORY: Safe Date
-        client_name: s.clientName,
-        opponent_name: s.opponentName,
-        postponement_reason: s.postponementReason,
-        next_postponement_reason: s.nextPostponementReason,
-        is_postponed: s.isPostponed,
+        client_name: s.clientName || null,
+        opponent_name: s.opponentName || null,
+        postponement_reason: s.postponementReason || null,
+        next_postponement_reason: s.nextPostponementReason || null,
+        is_postponed: !!s.isPostponed,
         next_session_date: s.nextSessionDate ? safeDate(s.nextSessionDate) : null,
-        assignee: s.assignee,
+        assignee: s.assignee || null,
         updated_at: s.updated_at
     })) || [];
     const validSessions = rawSessions.filter(s => s.stage_id && validStageIds.has(s.stage_id));
 
     // Step 2e: Filter Invoices (Must have a valid Client ID)
-    const rawInvoices = data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, ...rest }) => ({ 
+    const rawInvoices = data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, discount, notes, ...rest }) => ({ 
         ...rest, 
+        id: String(rest.id),
         user_id: userId, 
-        client_id: clientId, 
-        client_name: clientName, 
-        case_id: caseId, 
-        case_subject: caseSubject, 
+        client_id: String(clientId), 
+        client_name: clientName || '', 
+        case_id: caseId || null, 
+        case_subject: caseSubject || null, 
         issue_date: safeDate(issueDate), // MANDATORY: Safe Date
         due_date: safeDate(dueDate), // MANDATORY: Safe Date
-        tax_rate: taxRate 
+        tax_rate: Number(taxRate) || 0,
+        discount: Number(discount) || 0,
+        notes: notes || null
     })) || [];
     const validInvoices = rawInvoices.filter(i => i.client_id && validClientIds.has(i.client_id));
     const validInvoiceIds = new Set(validInvoices.map(i => i.id));
 
     // Step 2f: Filter Invoice Items (Must have a valid Invoice ID)
-    const rawInvoiceItems = data.invoice_items?.map((item: any) => ({ ...item, user_id: userId })) || [];
+    const rawInvoiceItems = data.invoice_items?.map((item: any) => ({ 
+        ...item, 
+        id: String(item.id),
+        invoice_id: String(item.invoice_id),
+        user_id: userId,
+        amount: Number(item.amount) || 0 
+    })) || [];
     const validInvoiceItems = rawInvoiceItems.filter(item => item.invoice_id && validInvoiceIds.has(item.invoice_id));
 
     // Step 2g: Filter Documents (Must have a valid Case ID)
-    const rawDocuments = data.case_documents?.map(({ caseId, userId: localUserId, addedAt, storagePath, localState, ...rest }) => ({ 
+    const rawDocuments = data.case_documents?.map(({ caseId, userId: localUserId, addedAt, storagePath, localState, size, ...rest }) => ({ 
         ...rest, 
+        id: String(rest.id),
         user_id: localUserId || userId, 
-        case_id: caseId, 
+        case_id: String(caseId), 
         added_at: safeDate(addedAt), // MANDATORY: Safe Date
-        storage_path: storagePath 
+        storage_path: storagePath || '',
+        size: Number(size) || 0
     })) || [];
     const validDocuments = rawDocuments.filter(d => d.case_id && validCaseIds.has(d.case_id));
 
