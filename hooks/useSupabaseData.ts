@@ -1,6 +1,6 @@
 
 import * as React from 'react';
-import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem, CaseDocument, AppData, DeletedIds, getInitialDeletedIds, Profile, SiteFinancialEntry, SystemSetting } from '../types';
+import { Client, Session, AdminTask, Appointment, AccountingEntry, Case, Stage, Invoice, InvoiceItem, CaseDocument, AppData, DeletedIds, getInitialDeletedIds, Profile, SiteFinancialEntry } from '../types';
 import { useOnlineStatus } from './useOnlineStatus';
 // Fix: Use `import type` for User and RealtimeChannel as they are used as types, not a value. This resolves module resolution errors in some environments.
 import type { User, RealtimeChannel } from '@supabase/supabase-js';
@@ -42,7 +42,6 @@ const getInitialData = (): AppData => ({
     documents: [] as CaseDocument[],
     profiles: [] as Profile[],
     siteFinances: [] as SiteFinancialEntry[],
-    systemSettings: [] as SystemSetting[],
 });
 
 
@@ -290,7 +289,6 @@ const validateAndFixData = (loadedData: any, user: User | null): AppData => {
                 mobile_number: String(p.mobile_number || ''),
                 is_approved: !!p.is_approved,
                 is_active: p.is_active !== false,
-                verification_code: p.verification_code || null,
                 subscription_start_date: p.subscription_start_date || null,
                 subscription_end_date: p.subscription_end_date || null,
                 role: ['user', 'admin'].includes(p.role) ? p.role : 'user',
@@ -313,29 +311,14 @@ const validateAndFixData = (loadedData: any, user: User | null): AppData => {
                 updated_at: reviveDate(sf.updated_at),
             };
         }),
-        systemSettings: safeArray(loadedData.systemSettings, (s) => {
-            if (!isValidObject(s) || !s.key) return undefined;
-            return {
-                key: String(s.key),
-                value: String(s.value || ''),
-                updated_at: reviveDate(s.updated_at),
-            };
-        }),
     };
     return validatedData;
 };
 
-export const useSupabaseData = (user: User | null, isAuthLoading: boolean, accessToken?: string) => {
+export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
     const [data, setData] = React.useState<AppData>(getInitialData);
     const [deletedIds, setDeletedIds] = React.useState<DeletedIds>(getInitialDeletedIds);
-    // Initialize isDirty from localStorage to handle mobile app killing/reloading
-    const [isDirty, setDirty] = React.useState(() => {
-        try {
-            return localStorage.getItem('app_is_dirty') === 'true';
-        } catch {
-            return false;
-        }
-    });
+    const [isDirty, setDirty] = React.useState(false);
     const [syncStatus, setSyncStatus] = React.useState<SyncStatus>('loading');
     const [lastSyncError, setLastSyncError] = React.useState<string | null>(null);
     const [isDataLoading, setIsDataLoading] = React.useState(true);
@@ -344,7 +327,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean, acces
     const [realtimeAlerts, setRealtimeAlerts] = React.useState<RealtimeAlert[]>([]);
     const [userApprovalAlerts, setUserApprovalAlerts] = React.useState<RealtimeAlert[]>([]);
     const isOnline = useOnlineStatus();
-    const hasInitialSynced = React.useRef(false);
 
     // --- User Settings State ---
     const [userSettings, setUserSettings] = React.useState<UserSettings>(defaultSettings);
@@ -358,27 +340,12 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean, acces
     
     const prevProfilesRef = React.useRef<Profile[]>([]);
 
-    // Safe wrapper for setData to prevent React Error #310 (setState called with extra args)
-    const safeSetData = React.useCallback((updater: React.SetStateAction<AppData>) => {
-        setData(updater);
-    }, []);
-
-    // Safe wrapper for setDirty that also updates localStorage
-    const safeSetDirty = React.useCallback((value: boolean) => {
-        setDirty(value);
-        try {
-            localStorage.setItem('app_is_dirty', String(value));
-        } catch (e) {
-            // ignore storage errors
-        }
-    }, []);
-
     // The core function to update state and persist to IndexedDB
     const updateData = React.useCallback((updater: React.SetStateAction<AppData>) => {
         if (!userRef.current) return;
         const userId = userRef.current.id;
 
-        safeSetData(currentData => {
+        setData(currentData => {
             const newData = typeof updater === 'function' 
                 ? (updater as (prevState: AppData) => AppData)(currentData) 
                 : updater;
@@ -388,12 +355,11 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean, acces
                 db.put(DATA_STORE_NAME, newData, userId);
             });
 
-            safeSetDirty(true);
+            setDirty(true);
             return newData;
         });
-    }, [safeSetData, safeSetDirty]);
+    }, []);
 
-    // Wrapper specifically for setFullData to ensure it drops any extra args
     const setFullData = React.useCallback(async (newData: any) => {
         const validated = validateAndFixData(newData, userRef.current);
         updateData(validated);
@@ -451,13 +417,13 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean, acces
             const finalData = { ...validatedMergedData, documents: finalDocs };
 
             await db.put(DATA_STORE_NAME, finalData, userRef.current!.id);
-            safeSetData(finalData);
-            safeSetDirty(false);
+            setData(finalData);
+            setDirty(false);
         } catch (e) {
             console.error("Critical error in handleDataSynced:", e);
             handleSyncStatusChange('error', 'فشل تحديث البيانات المحلية بعد المزامنة.');
         }
-    }, [userRef, safeSetData, safeSetDirty, handleSyncStatusChange]);
+    }, [userRef]);
     
     const handleDeletionsSynced = React.useCallback(async (syncedDeletions: Partial<DeletedIds>) => {
         const newDeletedIds = { ...deletedIds };
@@ -465,10 +431,9 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean, acces
         for (const key of Object.keys(syncedDeletions) as Array<keyof DeletedIds>) {
             // Fix: Cast array to `any[]` to satisfy `new Set` which expects a single iterable type,
             // but `syncedDeletions[key]` can be `string[]` or `number[]`.
-            const synced = new Set((syncedDeletions[key] || []) as unknown as any[]);
+            const synced = new Set((syncedDeletions[key] || []) as any[]);
             if (synced.size > 0) {
-                // Fix: Cast to any to allow assignment of filtered union array type
-                (newDeletedIds as any)[key] = (newDeletedIds[key] as any[]).filter(id => !synced.has(id));
+                newDeletedIds[key] = newDeletedIds[key].filter(id => !synced.has(id as any));
                 changed = true;
             }
         }
@@ -499,8 +464,8 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean, acces
             try {
                 const db = await getDb();
                 const [storedData, storedDeletedIds, localDocsMetadata] = await Promise.all([
-                    db.transaction(DATA_STORE_NAME).objectStore(DATA_STORE_NAME).get(user.id),
-                    db.transaction(DATA_STORE_NAME).objectStore(DATA_STORE_NAME).get(`deletedIds_${user.id}`),
+                    db.get(DATA_STORE_NAME, user.id),
+                    db.get(DATA_STORE_NAME, `deletedIds_${user.id}`),
                     db.getAll(DOCS_METADATA_STORE_NAME)
                 ]);
                 
@@ -517,40 +482,30 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean, acces
                 
                 const finalData = { ...validatedData, documents: finalDocs };
                 
-                safeSetData(finalData);
+                setData(finalData);
                 setDeletedIds(storedDeletedIds || getInitialDeletedIds());
                 
-                // CRITICAL: We stop loading here.
+                // CRITICAL OPTIMIZATION:
+                // We unlock the UI immediately after loading local data.
+                // Syncing happens in the background, so the user doesn't wait.
                 setIsDataLoading(false);
-                
-                // Force status to synced immediately so UI becomes interactive.
-                // The separate sync effect will switch it to 'syncing' momentarily if online.
-                setSyncStatus('synced');
 
+                if (isOnline) {
+                    manualSync().catch(console.error);
+                } else {
+                    setSyncStatus('synced'); // Offline but data loaded
+                }
             } catch (error) {
                 console.error('Failed to load data from IndexedDB:', error);
-                setSyncStatus('error');
-                setLastSyncError('فشل تحميل البيانات المحلية.');
+                setSyncStatus('error', 'فشل تحميل البيانات المحلية.');
+                // Even if local load fails, we stop loading to allow UI to show error or empty state
                 setIsDataLoading(false);
             }
         };
         loadData();
         return () => { cancelled = true; };
-    }, [user, isAuthLoading, safeSetData]);
+    }, [user, isAuthLoading]);
 
-    // Initial Sync after data load
-    React.useEffect(() => {
-        if (!isDataLoading && user && isOnline && !hasInitialSynced.current) {
-            hasInitialSynced.current = true;
-            // Using setTimeout to allow the render cycle to complete and refs in useSync to update
-            const timer = setTimeout(() => {
-                manualSync().catch(console.error);
-            }, 100);
-            return () => clearTimeout(timer);
-        }
-    }, [isDataLoading, user, isOnline, manualSync]);
-
-    // 1. Auto-sync on data change (debounced)
     React.useEffect(() => {
         if (isOnline && isDirty && isAutoSyncEnabled && syncStatus !== 'syncing') {
             const handler = setTimeout(() => {
@@ -558,56 +513,15 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean, acces
             }, 3000);
             return () => clearTimeout(handler);
         }
-    }, [isDirty, isAutoSyncEnabled, syncStatus, manualSync, isOnline]);
-
-    // 2. Immediate sync when coming online
-    React.useEffect(() => {
-        if (isOnline && isDirty && isAutoSyncEnabled && syncStatus !== 'syncing') {
-             console.log("Connection restored. Syncing pending changes...");
-             manualSync();
-        }
-    }, [isOnline]); // Only triggers when isOnline changes
+    }, [isOnline, isDirty, isAutoSyncEnabled, syncStatus, manualSync]);
     
-    // 3. CRITICAL: Sync immediately when app visibility changes (hidden/background)
-    // This handles the mobile case where users switch apps right after editing.
-    React.useEffect(() => {
-        const handleVisibilityChange = () => {
-            if (document.visibilityState === 'hidden' && isOnline && isDirty && isAutoSyncEnabled) {
-                console.log("App hidden. Triggering immediate sync...");
-                // We call manualSync directly. Note: Browsers throttle JS in background, 
-                // but visibilitychange fires *before* freezing.
-                manualSync();
-            }
-        };
-
-        // For desktop close events
-        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-            if (isDirty && isAutoSyncEnabled) {
-                // We can't reliably await async here, but we can try
-                manualSync();
-                // Optionally warn user
-                // e.preventDefault();
-                // e.returnValue = '';
-            }
-        };
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        window.addEventListener('beforeunload', handleBeforeUnload);
-
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-            window.removeEventListener('beforeunload', handleBeforeUnload);
-        };
-    }, [isOnline, isDirty, isAutoSyncEnabled, manualSync]);
-
     const exportData = React.useCallback((): boolean => {
         try {
             const dataToExport = {
                 ...data,
-                // We don't export profiles, site finances, or settings in user backups
+                // We don't export profiles or site finances in user backups
                 profiles: undefined,
                 siteFinances: undefined,
-                systemSettings: undefined,
             };
             const jsonString = JSON.stringify(dataToExport, null, 2);
             const blob = new Blob([jsonString], { type: 'application/json' });
@@ -684,34 +598,23 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean, acces
         const supabase = getSupabaseClient();
         if (!supabase) return;
 
-        // Explicitly set the auth token for the socket connection
-        if (accessToken) {
-            supabase.realtime.setAuth(accessToken);
-        }
-
         const handleRealtimeUpdate = (payload: any) => {
             console.log('Realtime change received:', payload);
+            // setRealtimeAlerts(prev => [...prev, { id: Date.now(), message: `تم تحديث البيانات من قبل مستخدم آخر.`, type: 'sync' }]);
             fetchAndRefresh();
         };
 
-        // Creating a channel returns a new subscription instance.
-        // React's cleanup function will handle unsubscribing when accessToken changes.
         const channel = supabase.channel('public:all_tables')
             .on('postgres_changes', { event: '*', schema: 'public' }, handleRealtimeUpdate)
             .subscribe((status, err) => {
                 if (status === 'SUBSCRIBED') console.log('Real-time subscription active.');
-                if (err) {
-                    console.error('Real-time subscription error.', err);
-                    // If token is expired, this error will log. The parent App component should have updated the accessToken prop,
-                    // which triggers this effect to re-run and re-subscribe with the new token.
-                }
+                if (err) console.error('Real-time subscription error.', err);
             });
 
         return () => {
-            console.log('Cleaning up Real-time subscription...');
-            supabase.removeChannel(channel);
+            channel.unsubscribe();
         };
-    }, [isOnline, user, fetchAndRefresh, accessToken]); // Dependency on accessToken ensures re-subscription on token refresh
+    }, [isOnline, user, fetchAndRefresh]);
 
     React.useEffect(() => {
         if (currentUserProfile?.role !== 'admin' || isDataLoading) {
@@ -730,8 +633,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean, acces
             if (newPendingUsers.length > 0) {
                 const newAlerts: RealtimeAlert[] = newPendingUsers.map(u => ({
                     id: Date.now() + Math.random(),
-                    // Include the verification code in the message for the admin to see
-                    message: `المستخدم "${u.full_name}" ينتظر الموافقة.${u.verification_code ? ` (كود التفعيل: ${u.verification_code})` : ''}`,
+                    message: `المستخدم "${u.full_name}" ينتظر الموافقة.`,
                     type: 'userApproval'
                 }));
                 setUserApprovalAlerts(prev => [...prev, ...newAlerts]);
@@ -803,19 +705,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean, acces
 
     const dismissUserApprovalAlert = (alertId: number) => {
         setUserApprovalAlerts(prev => prev.filter(a => a.id !== alertId));
-    };
-
-    const updateSystemSetting = (key: string, value: string) => {
-        updateData(prev => {
-            const exists = prev.systemSettings.find(s => s.key === key);
-            let newSettings;
-            if (exists) {
-                newSettings = prev.systemSettings.map(s => s.key === key ? { ...s, value, updated_at: new Date() } : s);
-            } else {
-                newSettings = [...prev.systemSettings, { key, value, updated_at: new Date() }];
-            }
-            return { ...prev, systemSettings: newSettings };
-        });
     };
 
     const postponeSession = (sessionId: string, newDate: Date, newReason: string) => {
@@ -938,7 +827,7 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean, acces
         const newDeletedIds = { ...deletedIds, [entity]: [...deletedIds[entity], id] };
         setDeletedIds(newDeletedIds);
         await db.put(DATA_STORE_NAME, newDeletedIds, `deletedIds_${user!.id}`);
-        safeSetDirty(true);
+        setDirty(true);
     };
 
     const deleteClient = (clientId: string) => { 
@@ -973,11 +862,11 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean, acces
         });
     };
     const deleteStage = (stageId: string, caseId: string, clientId: string) => { 
-        updateData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.filter(st => st.id !== stageId) } : cs) } : c) })); 
+        updateData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: p.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.filter(st => st.id !== stageId) } : cs) } : c) })); 
         createDeleteFunction('stages')(stageId); 
     };
     const deleteSession = (sessionId: string, stageId: string, caseId: string, clientId: string) => { 
-        updateData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: c.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.map(st => st.id === stageId ? { ...st, sessions: st.sessions.filter(s => s.id !== sessionId) } : st) } : cs) } : c) })); 
+        updateData(p => ({ ...p, clients: p.clients.map(c => c.id === clientId ? { ...c, cases: p.cases.map(cs => cs.id === caseId ? { ...cs, stages: cs.stages.map(st => st.id === stageId ? { ...st, sessions: st.sessions.filter(s => s.id !== sessionId) } : st) } : cs) } : c) })); 
         createDeleteFunction('sessions')(sessionId); 
     };
     const deleteAdminTask = (taskId: string) => { 
@@ -1128,7 +1017,6 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean, acces
         getDocumentFile,
         postponeSession,
         showUnpostponedSessionsModal,
-        setShowUnpostponedSessionsModal,
-        updateSystemSetting,
+        setShowUnpostponedSessionsModal
     };
 };

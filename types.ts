@@ -1,11 +1,9 @@
-
 export interface Profile {
   id: string; // uuid
   full_name: string;
   mobile_number: string;
   is_approved: boolean;
   is_active: boolean;
-  verification_code?: string | null; // Added for manual verification logic
   subscription_start_date: string | null; // ISO string
   subscription_end_date: string | null; // ISO string
   role: 'user' | 'admin';
@@ -154,12 +152,6 @@ export interface CaseDocument {
   updated_at?: Date;
 }
 
-export interface SystemSetting {
-    key: string;
-    value: string;
-    updated_at?: Date;
-}
-
 export type AppData = {
     clients: Client[];
     adminTasks: AdminTask[];
@@ -170,7 +162,6 @@ export type AppData = {
     documents: CaseDocument[];
     profiles: Profile[];
     siteFinances: SiteFinancialEntry[];
-    systemSettings: SystemSetting[];
 };
 
 export type DeletedIds = {
@@ -188,8 +179,6 @@ export type DeletedIds = {
     documentPaths: string[];
     profiles: string[];
     siteFinances: number[];
-    // System settings are generally not deleted by users, but good to have for completeness if needed
-    systemSettings: string[]; 
 };
 
 export const getInitialDeletedIds = (): DeletedIds => ({
@@ -198,5 +187,4 @@ export const getInitialDeletedIds = (): DeletedIds => ({
     documentPaths: [],
     profiles: [],
     siteFinances: [],
-    systemSettings: [],
 });

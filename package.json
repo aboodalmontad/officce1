@@ -2,10 +2,6 @@
   "name": "lawyer-business-management-vercel",
   "version": "1.0.1",
   "private": true,
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/username/repo.git"
-  },
   "scripts": {
     "build": "node build.js"
   },

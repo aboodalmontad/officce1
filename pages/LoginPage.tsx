@@ -1,15 +1,32 @@
 
 import * as React from 'react';
 import { getSupabaseClient } from '../supabaseClient';
-import { ExclamationCircleIcon, EyeIcon, EyeSlashIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, ArrowTopRightOnSquareIcon, CheckCircleIcon, DatabaseIcon } from '../components/icons';
+import { ExclamationCircleIcon, EyeIcon, EyeSlashIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, ArrowTopRightOnSquareIcon } from '../components/icons';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 // Fix: Use `import type` for User as it is used as a type, not a value. This resolves module resolution errors in some environments.
 import type { User } from '@supabase/supabase-js';
 
+/*
+ * =============================================================================
+ *  ! تنبيه هام بخصوص إعدادات المصادقة في Supabase !
+ * =============================================================================
+ * لتمكين تسجيل الدخول باستخدام البريد الإلكتروني الوهمي، يجب ضبط الإعدادات التالية في لوحة تحكم Supabase:
+ * 
+ * 1. اذهب إلى: Authentication -> Providers
+ * 2. ابحث عن مزود الخدمة "Email".
+ * 3. تأكد من أن المفتاح الرئيسي لمزود "Email" في وضعية (ON / تشغيل).
+ * 4. اضغط على "Email" لتوسيع إعداداته.
+ * 5. تأكد من أن المفتاح الفرعي "Confirm email" في وضعية (OFF / إيقاف).
+ * 6. اضغط "Save".
+ * 
+ * هذا الإعداد ضروري لأن التطبيق يحول رقم الهاتف إلى بريد إلكتروني للمصادقة،
+ * وتعطيل تأكيد البريد الإلكتروني يسمح بتفعيل الحسابات يدوياً من قبل المدير.
+ * =============================================================================
+ */
+
 interface AuthPageProps {
     onForceSetup: () => void;
     onLoginSuccess: (user: User, isOfflineLogin?: boolean) => void;
-    forceVerification?: boolean; // New prop to force verification mode
 }
 
 const LAST_USER_CREDENTIALS_CACHE_KEY = 'lawyerAppLastUserCredentials';
@@ -31,16 +48,20 @@ const CopyButton: React.FC<{ textToCopy: string }> = ({ textToCopy }) => {
     );
 };
 
-const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess, forceVerification = false }) => {
+const DatabaseIcon: React.FC<{ className?: string }> = ({ className = "w-6 h-6" }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+    </svg>
+);
+
+const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) => {
     const [isLoginView, setIsLoginView] = React.useState(true);
-    const [verificationMode, setVerificationMode] = React.useState(forceVerification); // Initialize based on prop
     const [loading, setLoading] = React.useState(false);
     const [error, setError] = React.useState<React.ReactNode | null>(null);
     const [message, setMessage] = React.useState<string | null>(null);
     const [info, setInfo] = React.useState<string | null>(null);
     const [authFailed, setAuthFailed] = React.useState(false); // For highlighting fields on auth failure
     const [showPassword, setShowPassword] = React.useState(false);
-    const [verificationCode, setVerificationCode] = React.useState('');
     const isOnline = useOnlineStatus();
 
     const [form, setForm] = React.useState({
@@ -49,13 +70,6 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess, forc
         password: '',
     });
     
-    // Update state if prop changes
-    React.useEffect(() => {
-        if (forceVerification) {
-            setVerificationMode(true);
-        }
-    }, [forceVerification]);
-
     // On component mount, try to load the last used credentials from localStorage.
     React.useEffect(() => {
         try {
@@ -91,53 +105,29 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess, forc
     const toggleView = (e: React.MouseEvent) => {
         e.preventDefault();
         setIsLoginView(prev => !prev);
-        setVerificationMode(false);
         setError(null);
         setMessage(null);
         setInfo(isOnline ? null : "أنت غير متصل. تسجيل الدخول متاح فقط للمستخدم الأخير الذي سجل دخوله على هذا الجهاز.");
         setAuthFailed(false);
     };
 
-    /**
-     * Normalizes a phone number to E.164 format.
-     * Handles:
-     * - Whitespace trimming
-     * - '00' prefix -> '+'
-     * - Local Syrian format '09...' -> '+9639...'
-     * - Short Syrian format '9...' -> '+9639...'
-     * - Existing E.164 '+...'
-     */
-    const normalizeMobileToE164 = (mobileInput: string): string | null => {
-        let mobile = mobileInput.trim();
-        
-        // Convert leading '00' to '+'
-        if (mobile.startsWith('00')) {
-            mobile = '+' + mobile.slice(2);
-        }
-
+    const normalizeMobileToE164 = (mobile: string): string | null => {
+        // Remove all non-digit characters.
         const digits = mobile.replace(/\D/g, '');
 
-        // If already in E.164 format (starts with +)
-        if (mobile.startsWith('+')) {
-             // Simple check: needs enough digits. E.164 can be up to 15 chars.
-             // +963 9xx xxx xxx is 12 digits total.
-             if (digits.length >= 7 && digits.length <= 15) return `+${digits}`;
-             return null;
+        // We only care about the last 9 digits for the core number.
+        if (digits.length >= 9) {
+            const lastNine = digits.slice(-9);
+            // Ensure the core number is a valid Syrian mobile format (starts with 9).
+            if (lastNine.startsWith('9')) {
+                return `+963${lastNine}`;
+            }
         }
 
-        // Fallback for legacy local Syrian numbers (starts with 09 or 9)
-        // 09xxxxxxxx (10 digits total)
-        if (digits.length === 10 && digits.startsWith('09')) {
-             return `+963${digits.slice(1)}`;
-        }
-        
-        // 9xxxxxxxx (9 digits total - user omitted the leading 0)
-        if (digits.length === 9 && digits.startsWith('9')) {
-             return `+963${digits}`;
-        }
-
+        // If the number is too short or doesn't follow the Syrian format, it's invalid.
         return null;
     };
+
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -146,57 +136,6 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess, forc
         if (authFailed) setAuthFailed(false);
     };
 
-    const handleVerifyCode = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-        setError(null);
-
-        if (!supabase) return;
-
-        try {
-             const { data, error: rpcError } = await supabase.rpc('verify_account', {
-                 code_input: verificationCode.trim()
-             });
-
-             if (rpcError) throw rpcError;
-
-             if (data === true) {
-                 setMessage("تم تأكيد رقم الجوال بنجاح! الحساب بانتظار موافقة المدير.");
-                 
-                 // Reload session to get updated profile status
-                 const { data: { session }, error: sessionError } = await supabase.auth.refreshSession();
-                 if(session) {
-                     onLoginSuccess(session.user);
-                 } else {
-                     window.location.reload();
-                 }
-             } else {
-                 setError("الكود غير صحيح. يرجى التأكد من الكود والمحاولة مرة أخرى.");
-             }
-
-        } catch (err: any) {
-            let errorMsg: React.ReactNode = err.message;
-            
-            // Detect missing function error
-            if (String(err.message).toLowerCase().includes('function') && String(err.message).toLowerCase().includes('does not exist')) {
-                errorMsg = (
-                    <div className="text-right w-full">
-                        <p className="font-bold mb-2">خطأ: التكوين ناقص</p>
-                        <p>دالة التحقق غير موجودة في قاعدة البيانات. يرجى تشغيل سكربت الإصلاح.</p>
-                        <button onClick={onForceSetup} className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600">
-                            <DatabaseIcon className="w-5 h-5"/>
-                            <span>إصلاح قاعدة البيانات</span>
-                        </button>
-                    </div>
-                );
-            }
-            
-            setError(errorMsg);
-        } finally {
-            setLoading(false);
-        }
-    }
-
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
@@ -204,27 +143,13 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess, forc
         setMessage(null);
         setAuthFailed(false);
     
-        const trimmedMobile = form.mobile.trim();
-        const phone = normalizeMobileToE164(trimmedMobile);
-
+        const phone = normalizeMobileToE164(form.mobile);
         if (!phone) {
-            setError('رقم الجوال غير صالح.');
+            setError('رقم الجوال غير صالح. يجب أن يكون رقماً سورياً صحيحاً (مثال: 0912345678).');
             setLoading(false);
             setAuthFailed(true);
             return;
         }
-
-        // For SignUp, strict check for international format user intent
-        // Allow '+' or '00' to start.
-        if (!isLoginView) {
-             if (!trimmedMobile.startsWith('+') && !trimmedMobile.startsWith('00')) {
-                 setError('يجب إدخال رقم الجوال بالصيغة الدولية حصراً (مثال: +9639xxxxxxx أو 00963...).');
-                 setLoading(false);
-                 setAuthFailed(true);
-                 return;
-             }
-        }
-
         // Remove the '+' from the E.164 phone number to create a safer email format.
         const email = `sy${phone.substring(1)}@email.com`;
     
@@ -252,7 +177,6 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess, forc
     
                 const cachedCredentials = JSON.parse(cachedCredentialsRaw);
     
-                // Relaxed normalization for offline comparison - just compare last 9 digits
                 const normalize = (numStr: string) => (numStr || '').replace(/\D/g, '').slice(-9);
                 
                 if (normalize(cachedCredentials.mobile) === normalize(form.mobile) && cachedCredentials.password === form.password) {
@@ -278,29 +202,13 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess, forc
             }
     
             try {
-                const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password: form.password });
+                const { error: signInError } = await supabase.auth.signInWithPassword({ email, password: form.password });
                 if (signInError) throw signInError;
     
                 localStorage.setItem(LAST_USER_CREDENTIALS_CACHE_KEY, JSON.stringify({
                     mobile: form.mobile,
                     password: form.password,
                 }));
-
-                // Check if verification is needed
-                if (data.user) {
-                    const { data: profile } = await supabase.from('profiles').select('verification_code').eq('id', data.user.id).single();
-                    
-                    // If verification_code is NOT NULL, it means user hasn't verified phone yet.
-                    if (profile && profile.verification_code) {
-                        setVerificationMode(true); // Show verification code input
-                        setLoading(false);
-                        return; // Stop here, wait for verification
-                    }
-                    
-                    // If code is null, phone is verified. Proceed to normal success flow.
-                    onLoginSuccess(data.user);
-                }
-
             } catch (err: any) {
                 const lowerMsg = String(err.message).toLowerCase();
                 
@@ -324,9 +232,30 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess, forc
                     displayError = "بيانات الدخول غير صحيحة. يرجى التحقق من رقم الجوال وكلمة المرور.";
                     setAuthFailed(true);
                 } else if (lowerMsg.includes('email not confirmed')) {
-                     // This case is handled differently in the new flow via verification code,
-                     // but keep it for legacy support or admin config errors.
-                     displayError = "الحساب موجود ولكنه غير مفعل. يرجى انتظار التفعيل أو إدخال كود التحقق.";
+                    const sqlCommandAll = `UPDATE auth.users SET email_confirmed_at = NOW() WHERE email_confirmed_at IS NULL;`;
+                    const sqlCommandSpecific = `UPDATE auth.users SET email_confirmed_at = NOW() WHERE email = '${email}';`;
+                    displayError = (
+                        <div className="text-right w-full text-xs">
+                            <p className="font-bold mb-2 text-sm">خطأ: البريد الإلكتروني غير مؤكد</p>
+                            <p>هذا يعني أن الحساب موجود ولكن المسؤول لم يقم بتفعيله بعد.</p>
+                            <p className="mt-2 text-gray-500">للمسؤولين: يمكن حل هذه المشكلة بتشغيل أحد أوامر SQL التالية في محرر Supabase:</p>
+                            <div className="mt-2 space-y-2">
+                                <code className="block bg-gray-800 text-gray-200 p-2 rounded text-left">
+                                    <div className="flex justify-between items-center">
+                                        <span>{sqlCommandSpecific}</span>
+                                        <CopyButton textToCopy={sqlCommandSpecific} />
+                                    </div>
+                                </code>
+                                <p className="text-center text-gray-400">أو لتفعيل جميع الحسابات:</p>
+                                <code className="block bg-gray-800 text-gray-200 p-2 rounded text-left">
+                                    <div className="flex justify-between items-center">
+                                        <span>{sqlCommandAll}</span>
+                                        <CopyButton textToCopy={sqlCommandAll} />
+                                    </div>
+                                </code>
+                            </div>
+                        </div>
+                    );
                 } else if (lowerMsg.includes('database is not configured') || lowerMsg.includes('relation "profiles" does not exist')) {
                     displayError = (
                         <div className="text-right w-full">
@@ -349,12 +278,32 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess, forc
                     throw new Error('لا يمكن إنشاء حساب جديد بدون اتصال بالإنترنت.');
                 }
                 
+                const normalizeMobileForDBCheck = (mobile: string): string | null => {
+                    const digits = mobile.replace(/\D/g, '');
+                    if (digits.length >= 9) {
+                        const lastNine = digits.slice(-9);
+                        if (lastNine.startsWith('9')) {
+                            return '0' + lastNine;
+                        }
+                    }
+                    return null;
+                };
+
+                const normalizedMobile = normalizeMobileForDBCheck(form.mobile);
+                if (!normalizedMobile) {
+                    setError('رقم الجوال غير صالح.');
+                    setLoading(false);
+                    setAuthFailed(true);
+                    return;
+                }
+
                 const { data: mobileExists, error: rpcError } = await supabase.rpc('check_if_mobile_exists', {
-                    mobile_to_check: phone // Use normalized phone to check uniqueness
+                    mobile_to_check: normalizedMobile
                 });
 
                 if (rpcError) {
                     console.warn("RPC error checking mobile number:", rpcError);
+                    // Proceed and let the database's unique constraint handle the final validation.
                 }
 
                 if (mobileExists === true) {
@@ -364,25 +313,16 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess, forc
                     return;
                 }
     
-                // Generate Verification Code (6 digits)
-                const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-
                 const { data, error: signUpError } = await supabase.auth.signUp({
                     email,
                     password: form.password,
-                    options: { 
-                        data: { 
-                            full_name: form.fullName, 
-                            mobile_number: phone, // Store normalized phone
-                            verification_code: verificationCode // Send code to DB
-                        } 
-                    }
+                    options: { data: { full_name: form.fullName, mobile_number: form.mobile } }
                 });
     
                 if (signUpError) throw signUpError;
                 
                 if (data.user) {
-                    setMessage("تم إنشاء الحساب بنجاح. سيتم إرسال كود التفعيل إليك من قبل الإدارة (عبر واتساب أو رسالة نصية). يرجى تسجيل الدخول واستخدام الكود لتأكيد رقم الجوال.");
+                    setMessage("تم إنشاء حسابك بنجاح. يرجى انتظار موافقة المسؤول لتتمكن من تسجيل الدخول.");
                     setIsLoginView(true);
                     setForm({ fullName: '', mobile: '', password: ''});
                 } else {
@@ -413,93 +353,55 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess, forc
 
                 <div className="bg-white p-8 rounded-lg shadow-md">
                     <h2 className="text-2xl font-bold text-center text-gray-700 mb-6">
-                        {verificationMode ? 'تأكيد رقم الجوال' : (isLoginView ? 'تسجيل الدخول' : 'إنشاء حساب جديد')}
+                        {isLoginView ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}
                     </h2>
 
                     {error && (
                         <div className="mb-4 p-4 text-sm text-red-800 bg-red-100 rounded-lg flex items-start gap-3">
                             <ExclamationCircleIcon className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                            <div className="w-full">{error}</div>
+                            <div>{error}</div>
                         </div>
                     )}
                     {message && <div className="mb-4 p-4 text-sm text-green-800 bg-green-100 rounded-lg">{message}</div>}
                     {info && <div className="mb-4 p-4 text-sm text-blue-800 bg-blue-100 rounded-lg">{info}</div>}
 
-                    {verificationMode ? (
-                         <form onSubmit={handleVerifyCode} className="space-y-6">
+                    <form onSubmit={handleAuth} className="space-y-6">
+                        {!isLoginView && (
                             <div>
-                                <p className="text-sm text-gray-600 mb-4 text-center">
-                                    يرجى إدخال كود التفعيل الذي تم إرساله إليك لتأكيد رقم الجوال.
-                                </p>
-                                <label htmlFor="verificationCode" className="block text-sm font-medium text-gray-700">كود التفعيل</label>
-                                <input id="verificationCode" name="verificationCode" type="text" value={verificationCode} onChange={(e) => setVerificationCode(e.target.value)} required placeholder="123456" className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-center text-lg tracking-widest" />
+                                <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">الاسم الكامل</label>
+                                <input id="fullName" name="fullName" type="text" value={form.fullName} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
                             </div>
-                            <button type="submit" disabled={loading} className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-green-300">
-                                {loading ? 'جاري التحقق...' : 'تأكيد الرقم'}
+                        )}
+
+                        <div>
+                            <label htmlFor="mobile" className="block text-sm font-medium text-gray-700">رقم الجوال</label>
+                            <input id="mobile" name="mobile" type="tel" value={form.mobile} onChange={handleInputChange} required placeholder="09xxxxxxxx" className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${authFailed ? 'border-red-500' : 'border-gray-300'}`} />
+                        </div>
+
+                        <div>
+                            <label htmlFor="password"
+                                className="block text-sm font-medium text-gray-700">كلمة المرور</label>
+                            <div className="relative mt-1">
+                                <input id="password" name="password" type={showPassword ? 'text' : 'password'} value={form.password} onChange={handleInputChange} required className={`block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${authFailed ? 'border-red-500' : 'border-gray-300'}`} />
+                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 left-0 px-3 flex items-center text-gray-400">
+                                    {showPassword ? <EyeSlashIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <button type="submit" disabled={loading || (!isOnline && !isLoginView)} className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-300">
+                                {loading ? 'جاري التحميل...' : (isLoginView ? 'تسجيل الدخول' : 'إنشاء الحساب')}
                             </button>
-                            <div className="text-center">
-                                <button type="button" onClick={() => { 
-                                    // If forced, we might want to logout, but for now let's allow switching back to login view logic
-                                    if(forceVerification) onForceSetup(); // Abuse onForceSetup to trigger something, or simply reload? 
-                                    // Actually, standard behavior:
-                                    setVerificationMode(false);
-                                }} className="text-sm text-blue-600 hover:underline">
-                                    العودة لتسجيل الدخول
-                                </button>
-                            </div>
-                        </form>
-                    ) : (
-                        <form onSubmit={handleAuth} className="space-y-6">
-                            {!isLoginView && (
-                                <div>
-                                    <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">الاسم الكامل</label>
-                                    <input id="fullName" name="fullName" type="text" value={form.fullName} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
-                                </div>
-                            )}
+                        </div>
+                    </form>
 
-                            <div>
-                                <label htmlFor="mobile" className="block text-sm font-medium text-gray-700">رقم الجوال</label>
-                                <input 
-                                    id="mobile" 
-                                    name="mobile" 
-                                    type="tel" 
-                                    value={form.mobile} 
-                                    onChange={handleInputChange} 
-                                    required 
-                                    placeholder={!isLoginView ? "+9639xxxxxxxx" : "09xxxxxxxx أو +963..."} 
-                                    className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${authFailed ? 'border-red-500' : 'border-gray-300'}`} 
-                                    dir="ltr"
-                                />
-                                {!isLoginView && <p className="text-xs text-gray-500 mt-1 text-right">يرجى استخدام الصيغة الدولية (+963...)</p>}
-                            </div>
-
-                            <div>
-                                <label htmlFor="password"
-                                    className="block text-sm font-medium text-gray-700">كلمة المرور</label>
-                                <div className="relative mt-1">
-                                    <input id="password" name="password" type={showPassword ? 'text' : 'password'} value={form.password} onChange={handleInputChange} required className={`block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${authFailed ? 'border-red-500' : 'border-gray-300'}`} />
-                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 left-0 px-3 flex items-center text-gray-400">
-                                        {showPassword ? <EyeSlashIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div>
-                                <button type="submit" disabled={loading || (!isOnline && !isLoginView)} className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-300">
-                                    {loading ? 'جاري التحميل...' : (isLoginView ? 'تسجيل الدخول' : 'إنشاء الحساب')}
-                                </button>
-                            </div>
-                        </form>
-                    )}
-
-                    {!verificationMode && (
-                        <p className="mt-6 text-center text-sm text-gray-600">
-                            {isLoginView ? 'ليس لديك حساب؟' : 'لديك حساب بالفعل؟'}
-                            <a href="#" onClick={toggleView} className="font-medium text-blue-600 hover:text-blue-500 ms-1">
-                                {isLoginView ? 'أنشئ حساباً جديداً' : 'سجل الدخول'}
-                            </a>
-                        </p>
-                    )}
+                    <p className="mt-6 text-center text-sm text-gray-600">
+                        {isLoginView ? 'ليس لديك حساب؟' : 'لديك حساب بالفعل؟'}
+                        <a href="#" onClick={toggleView} className="font-medium text-blue-600 hover:text-blue-500 ms-1">
+                            {isLoginView ? 'أنشئ حساباً جديداً' : 'سجل الدخول'}
+                        </a>
+                    </p>
                 </div>
 
                 <div className="mt-6 text-center">
@@ -514,7 +416,7 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess, forc
                     </a>
                 </div>
                 <p className="mt-4 text-center text-xs text-gray-500">كافة الحقوق محفوظة للمحامي عبد الرحمن نحوي</p>
-                <p className="mt-1 text-center text-xs text-gray-400">الإصدار: 22-11-2025</p>
+                <p className="mt-1 text-center text-xs text-gray-400">الإصدار: 20-11-2025-3</p>
             </div>
         </div>
     );

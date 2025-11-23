@@ -1,16 +1,18 @@
-
 import * as React from 'react';
 import { ClipboardDocumentCheckIcon, ClipboardDocumentIcon, ExclamationTriangleIcon } from './icons';
 
 const unifiedScript = `
 -- =================================================================
--- السكربت الشامل والآمن (الإصدار 58) - System Settings & Verification
+-- السكربت الشامل والآمن (الإصدار 35) - Non-Destructive & Secure RLS
 -- =================================================================
--- هذا السكربت يقوم بإنشاء وتحديث قاعدة البيانات.
--- يضمن عدم ظهور المستخدمين الجدد كـ "مؤكدين" تلقائياً.
--- يضيف جدول إعدادات النظام لحفظ رسائل التفعيل.
+-- هذا السكربت يقوم بإنشاء وتحديث قاعدة البيانات دون حذف البيانات الموجودة.
+-- سيقوم بإنشاء الجداول والأعمدة الناقصة، وتحديث الدوال والصلاحيات.
+-- آمن للتشغيل عدة مرات.
+-- !! هام: عدّل رقم هاتف وكلمة مرور المدير في نهاية السكربت قبل التشغيل !!
 
 -- 1. FUNCTIONS & TRIGGERS
+-- Functions are created with CREATE OR REPLACE, so they are safe to run multiple times.
+-- Remove old trigger before creating new one to ensure idempotency.
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 
 CREATE OR REPLACE FUNCTION public.is_admin()
@@ -56,69 +58,41 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 GRANT EXECUTE ON FUNCTION public.check_if_mobile_exists(text) TO anon, authenticated;
 
--- Function to verify account using the code
-CREATE OR REPLACE FUNCTION public.verify_account(code_input text)
-RETURNS boolean AS $$
-DECLARE
-    target_code text;
-BEGIN
-    SELECT verification_code INTO target_code FROM public.profiles WHERE id = auth.uid();
-    
-    IF target_code IS NOT NULL AND target_code = code_input THEN
-        -- Clear the code to mark as verified
-        UPDATE public.profiles 
-        SET verification_code = NULL 
-        WHERE id = auth.uid();
-        RETURN true;
-    ELSE
-        RETURN false;
-    END IF;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
-GRANT EXECUTE ON FUNCTION public.verify_account(text) TO authenticated;
-
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 DECLARE
     raw_mobile TEXT;
     normalized_mobile TEXT;
-    v_code TEXT;
 BEGIN
+    -- Get mobile from metadata
     raw_mobile := new.raw_user_meta_data->>'mobile_number';
-    v_code := new.raw_user_meta_data->>'verification_code';
 
-    -- Normalize mobile
+    -- Normalize the mobile number to '09xxxxxxxx' format
     IF raw_mobile IS NOT NULL AND raw_mobile != '' THEN
-        IF raw_mobile LIKE '+%' THEN
-             normalized_mobile := raw_mobile; 
-        ELSE
-             normalized_mobile := '0' || RIGHT(regexp_replace(raw_mobile, '\\D', '', 'g'), 9);
-        END IF;
+        -- Remove non-digits and get the last 9 digits, then prepend '0'
+        normalized_mobile := '0' || RIGHT(regexp_replace(raw_mobile, '\D', '', 'g'), 9);
     ELSE
+        -- Fallback for safety, though mobile should always be provided from client
         normalized_mobile := '0' || regexp_replace(new.email, '^sy963|@email\\.com$', '', 'g');
     END IF;
 
-    -- CRITICAL FIX: Force random code generation if none is provided OR if it's invalid
-    -- This ensures no user is created with NULL verification_code (verified state) by accident
-    IF v_code IS NULL OR v_code = '' OR v_code = 'null' THEN
-        v_code := floor(random() * 899999 + 100000)::text;
-    END IF;
-
-    INSERT INTO public.profiles (id, full_name, mobile_number, verification_code, created_at)
+    -- Insert the new profile. The unique constraint on mobile_number will
+    -- cause this to fail if the number is a duplicate. This is the correct
+    -- behavior, and the client-side must handle this specific error.
+    INSERT INTO public.profiles (id, full_name, mobile_number, created_at)
     VALUES (
       new.id,
       new.raw_user_meta_data->>'full_name',
       normalized_mobile,
-      v_code,
       new.created_at
     )
     ON CONFLICT (id) DO UPDATE SET
       full_name = EXCLUDED.full_name,
       mobile_number = EXCLUDED.mobile_number,
-      verification_code = EXCLUDED.verification_code,
       created_at = EXCLUDED.created_at;
 
+    -- Confirm the user's email since we handle approval manually
     UPDATE auth.users SET email_confirmed_at = NOW() WHERE id = new.id;
     RETURN new;
 END;
@@ -129,13 +103,13 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
 
--- 2. TABLE & SCHEMA CREATION
+-- 2. TABLE & SCHEMA CREATION / MIGRATION (Non-Destructive)
+-- Create tables if they don't exist, and add columns if they don't exist.
 
 CREATE TABLE IF NOT EXISTS public.profiles (id uuid NOT NULL PRIMARY KEY);
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS full_name text;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS mobile_number text;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_approved boolean DEFAULT false;
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS verification_code text;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_active boolean DEFAULT true;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS subscription_start_date date;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS subscription_end_date date;
@@ -265,18 +239,8 @@ ALTER TABLE public.case_documents ADD COLUMN IF NOT EXISTS added_at timestamptz 
 ALTER TABLE public.case_documents ADD COLUMN IF NOT EXISTS storage_path text;
 ALTER TABLE public.case_documents ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
 
--- NEW: System Settings Table
-CREATE TABLE IF NOT EXISTS public.system_settings (key text NOT NULL PRIMARY KEY);
-ALTER TABLE public.system_settings ADD COLUMN IF NOT EXISTS value text;
-ALTER TABLE public.system_settings ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
-
--- Insert default verification message if not exists
-INSERT INTO public.system_settings (key, value)
-VALUES ('verification_message_template', 'مرحباً {{name}}،\nكود تفعيل حسابك في تطبيق مكتب المحامي هو: *{{code}}*\nيرجى إدخال هذا الكود في التطبيق لتأكيد رقم هاتفك.')
-ON CONFLICT (key) DO NOTHING;
-
-
--- 3. CONSTRAINTS
+-- 3. CONSTRAINTS (Non-Destructive)
+-- Add foreign keys and other constraints if they don't exist.
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'profiles_id_fkey') THEN
@@ -338,7 +302,8 @@ BEGIN
 END $$;
 
 
--- 4. SECURITY: RLS POLICIES
+-- 4. SECURITY: RLS POLICIES (MULTI-TENANT MODEL)
+-- Drop old policies to ensure the new, secure ones are applied correctly.
 DO $$
 DECLARE
     r RECORD;
@@ -361,7 +326,6 @@ ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.invoice_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.site_finances ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.case_documents ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
 
 -- Profiles Table Policies
 CREATE POLICY "Users can view their own profile." ON public.profiles FOR SELECT
@@ -378,11 +342,6 @@ CREATE POLICY "Admins can manage all profiles." ON public.profiles FOR ALL
   USING (public.is_admin())
   WITH CHECK (public.is_admin());
 
--- System Settings Policies (Admin Only for write, Admin for read - users don't need to read this directly usually)
-CREATE POLICY "Admins can manage system settings" ON public.system_settings FOR ALL
-  USING (public.is_admin())
-  WITH CHECK (public.is_admin());
-
 -- RLS policies for all other user-specific tables.
 DO $$
 DECLARE
@@ -394,11 +353,13 @@ BEGIN
         'invoices', 'invoice_items', 'case_documents', 'site_finances'
     ]
     LOOP
+        -- 1. Users can view their own data.
         EXECUTE format('
             CREATE POLICY "Users can view their own data" ON public.%I FOR SELECT
             USING (auth.uid() = user_id);
         ', table_name);
 
+        -- 2. Users can only insert, update, or delete their own data.
         EXECUTE format('
             CREATE POLICY "Users can insert their own data" ON public.%I FOR INSERT
             WITH CHECK (auth.uid() = user_id);
@@ -414,6 +375,7 @@ BEGIN
             USING (auth.uid() = user_id);
         ', table_name);
 
+        -- 3. Admins get full unrestricted access (this combines with the above policies via OR logic).
         EXECUTE format('
             CREATE POLICY "Admins can manage all data" ON public.%I FOR ALL
             USING (public.is_admin())
@@ -423,7 +385,7 @@ BEGIN
 END$$;
 
 
--- 5. REALTIME
+-- 5. REALTIME: Enable real-time updates for all user data tables idempotently.
 DO $$
 DECLARE
     table_name TEXT;
@@ -431,9 +393,10 @@ BEGIN
     FOREACH table_name IN ARRAY ARRAY[
         'profiles', 'assistants', 'clients', 'cases', 'stages', 'sessions', 
         'admin_tasks', 'appointments', 'accounting_entries', 'invoices', 
-        'invoice_items', 'site_finances', 'case_documents', 'system_settings'
+        'invoice_items', 'site_finances', 'case_documents'
     ]
     LOOP
+        -- Add the table to the publication only if it's not already there
         IF NOT EXISTS (
             SELECT 1 FROM pg_publication_tables
             WHERE pubname = 'supabase_realtime' AND tablename = table_name AND schemaname = 'public'
@@ -449,13 +412,16 @@ GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;
 GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 
--- 7. ADMIN ACCOUNT
+-- =================================================================
+-- 7. إنشاء حساب المدير تلقائياً وتصحيحه
+-- =================================================================
+-- !! هام: عدّل البيانات التالية قبل تشغيل السكربت !!
 DO $$
 DECLARE
-    admin_phone_local TEXT := '0987654321';
+    admin_phone_local TEXT := '0987654321'; -- <-- غيّر رقم هاتف المدير هنا
     admin_phone_no_plus TEXT := '963' || RIGHT(admin_phone_local, 9);
     admin_email TEXT := 'sy' || admin_phone_no_plus || '@email.com';
-    admin_password TEXT := 'changeme123';
+    admin_password TEXT := 'changeme123'; -- <-- غيّر كلمة المرور هنا إلى كلمة مرور قوية
     admin_full_name TEXT := 'المدير العام';
     admin_user_id uuid;
 BEGIN
@@ -495,6 +461,12 @@ BEGIN
         mobile_number = EXCLUDED.mobile_number;
 END $$;
 
+-- 8. REFRESH SCHEMA CACHE
+-- This final command is critical. It forces Supabase's API layer (PostgREST)
+-- to reload its internal schema cache, ensuring it recognizes all the newly
+-- created tables, columns, and functions immediately. Without this, you might
+-- encounter "relation ... does not exist" or "column ... does not exist" errors
+-- until the cache refreshes on its own.
 NOTIFY pgrst, 'reload schema';
 `;
 
@@ -512,7 +484,7 @@ BEGIN
     FOREACH table_name IN ARRAY ARRAY[
         'profiles', 'assistants', 'clients', 'cases', 'stages', 'sessions', 
         'admin_tasks', 'appointments', 'accounting_entries', 'invoices', 
-        'invoice_items', 'site_finances', 'case_documents', 'system_settings'
+        'invoice_items', 'site_finances', 'case_documents'
     ]
     LOOP
         -- Add the table to the publication only if it's not already there
@@ -526,108 +498,87 @@ BEGIN
 END$$;
 `;
 
-const repairScript = `
+const accountingScript = `
 -- =================================================================
--- سكربت إصلاح أخطاء (الإصدار 58) - Force Verification & RPC
+-- سكربت إنشاء الجداول المتعلقة بقسم المحاسبة
 -- =================================================================
--- هذا السكربت يضمن وجود جداول النظام، عمود الكود، ودالة التحقق RPC.
+-- هذا السكربت يحتوي على الأوامر اللازمة لإنشاء جداول المحاسبة وسياسات الأمان الخاصة بها.
+-- !! هام: هذا السكربت سيقوم بحذف وإعادة إنشاء جداول المحاسبة إذا كانت موجودة !!
+-- ملاحظة: يفترض هذا السكربت أن جداول profiles, clients, cases, auth.users موجودة مسبقاً.
 
--- 1. Ensure verification_code column exists
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS verification_code text;
-
--- 2. Update the trigger function to force verification code generation
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger AS $$
+DO $$
 DECLARE
-    raw_mobile TEXT;
-    normalized_mobile TEXT;
-    v_code TEXT;
+    r RECORD;
 BEGIN
-    raw_mobile := new.raw_user_meta_data->>'mobile_number';
-    v_code := new.raw_user_meta_data->>'verification_code';
+    FOR r IN (SELECT 'DROP POLICY IF EXISTS "' || policyname || '" ON public.' || tablename || ';' as statement FROM pg_policies WHERE schemaname = 'public' AND tablename IN ('site_finances', 'accounting_entries', 'invoices', 'invoice_items')) LOOP
+        EXECUTE r.statement;
+    END LOOP;
+END$$;
 
-    -- Normalize mobile
-    IF raw_mobile IS NOT NULL AND raw_mobile != '' THEN
-        IF raw_mobile LIKE '+%' THEN
-             normalized_mobile := raw_mobile; 
-        ELSE
-             normalized_mobile := '0' || RIGHT(regexp_replace(raw_mobile, '\\D', '', 'g'), 9);
-        END IF;
-    ELSE
-        normalized_mobile := '0' || regexp_replace(new.email, '^sy963|@email\\.com$', '', 'g');
-    END IF;
+DROP TABLE IF EXISTS public.invoice_items CASCADE;
+DROP TABLE IF EXISTS public.invoices CASCADE;
+DROP TABLE IF EXISTS public.accounting_entries CASCADE;
+DROP TABLE IF EXISTS public.site_finances CASCADE;
 
-    -- FORCE CODE GENERATION if missing
-    IF v_code IS NULL OR v_code = '' OR v_code = 'null' THEN
-        v_code := floor(random() * 899999 + 100000)::text;
-    END IF;
-
-    INSERT INTO public.profiles (id, full_name, mobile_number, verification_code, created_at)
-    VALUES (
-      new.id,
-      new.raw_user_meta_data->>'full_name',
-      normalized_mobile,
-      v_code,
-      new.created_at
-    )
-    ON CONFLICT (id) DO UPDATE SET
-      full_name = EXCLUDED.full_name,
-      mobile_number = EXCLUDED.mobile_number,
-      verification_code = EXCLUDED.verification_code,
-      created_at = EXCLUDED.created_at;
-
-    UPDATE auth.users SET email_confirmed_at = NOW() WHERE id = new.id;
-    RETURN new;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
-
--- 3. Define verify_account RPC function (Critical for Code Verification)
-CREATE OR REPLACE FUNCTION public.verify_account(code_input text)
+CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS boolean AS $$
 DECLARE
-    target_code text;
+    user_role TEXT;
 BEGIN
-    SELECT verification_code INTO target_code FROM public.profiles WHERE id = auth.uid();
-    
-    IF target_code IS NOT NULL AND target_code = code_input THEN
-        -- Clear the code to mark as verified
-        UPDATE public.profiles 
-        SET verification_code = NULL 
-        WHERE id = auth.uid();
-        RETURN true;
-    ELSE
-        RETURN false;
-    END IF;
+    SELECT role INTO user_role FROM public.profiles WHERE id = auth.uid();
+    RETURN COALESCE(user_role, 'user') = 'admin';
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
-GRANT EXECUTE ON FUNCTION public.verify_account(text) TO authenticated;
 
--- 4. Fix existing users who are stuck (Unapproved but have no code)
-UPDATE public.profiles
-SET verification_code = floor(random() * 899999 + 100000)::text
-WHERE is_approved = false AND (verification_code IS NULL OR verification_code = '');
+CREATE TABLE public.site_finances (id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, user_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL, type text DEFAULT 'income' NOT NULL, payment_date date NOT NULL, amount real NOT NULL, description text, payment_method text, category text, updated_at timestamptz DEFAULT now());
+CREATE TABLE public.accounting_entries (id text NOT NULL PRIMARY KEY, user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, type text NOT NULL, amount real NOT NULL, date timestamptz NOT NULL, description text, client_id text, case_id text, client_name text, updated_at timestamptz DEFAULT now());
+CREATE TABLE public.invoices (id text NOT NULL PRIMARY KEY, user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, client_id text NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE, client_name text, case_id text REFERENCES public.cases(id) ON DELETE SET NULL, case_subject text, issue_date timestamptz NOT NULL, due_date timestamptz NOT NULL, tax_rate real DEFAULT 0, discount real DEFAULT 0, status text DEFAULT 'draft', notes text, updated_at timestamptz DEFAULT now());
+CREATE TABLE public.invoice_items (id text NOT NULL PRIMARY KEY, user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, invoice_id text NOT NULL REFERENCES public.invoices(id) ON DELETE CASCADE, description text NOT NULL, amount real NOT NULL, updated_at timestamptz DEFAULT now());
 
--- 5. Create System Settings table if not exists
-CREATE TABLE IF NOT EXISTS public.system_settings (key text NOT NULL PRIMARY KEY);
-ALTER TABLE public.system_settings ADD COLUMN IF NOT EXISTS value text;
-ALTER TABLE public.system_settings ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
+ALTER TABLE public.site_finances ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.accounting_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.invoice_items ENABLE ROW LEVEL SECURITY;
 
--- 6. Insert Default Template SAFELY
-INSERT INTO public.system_settings (key, value)
-VALUES ('verification_message_template', 'مرحباً {{name}}،\nكود تفعيل حسابك في تطبيق مكتب المحامي هو: *{{code}}*\nيرجى إدخال هذا الكود في التطبيق لتأكيد رقم هاتفك.')
-ON CONFLICT (key) DO NOTHING;
+CREATE POLICY "Enable ALL for admin" ON public.site_finances FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "Users can select their own site finances" ON public.site_finances FOR SELECT USING (auth.uid() = user_id);
 
--- 7. RLS for System Settings
-ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Admins can manage system settings" ON public.system_settings;
-CREATE POLICY "Admins can manage system settings" ON public.system_settings FOR ALL
-  USING (public.is_admin())
-  WITH CHECK (public.is_admin());
+CREATE POLICY "Enable ALL for own data" ON public.accounting_entries FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Enable ALL for admin" ON public.accounting_entries FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "Enable ALL for own data" ON public.invoices FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Enable ALL for admin" ON public.invoices FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "Enable ALL for own data" ON public.invoice_items FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Enable ALL for admin" ON public.invoice_items FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+`;
 
--- 8. GRANT PERMISSIONS
-GRANT ALL ON public.system_settings TO anon, authenticated;
+const repairScript = `
+-- =================================================================
+-- سكربت إصلاح أخطاء (الإصدار 31.1)
+-- =================================================================
+-- هذا السكربت يقوم بإضافة الأعمدة المفقودة إلى الجداول الموجودة دون حذف البيانات.
+-- شغله إذا واجهت خطأ "Could not find the '...' column" أو ما شابه.
 
--- Force reload
+-- Add 'completed' column to 'appointments' if it doesn't exist.
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS completed BOOLEAN DEFAULT false;
+
+-- Add 'added_at' column to 'case_documents' if it doesn't exist.
+-- This was a common issue in early schema versions.
+ALTER TABLE public.case_documents ADD COLUMN IF NOT EXISTS added_at timestamptz DEFAULT now() NOT NULL;
+
+-- Remove 'localState' column from 'case_documents' if it was added by mistake.
+-- This column should only exist on the client-side.
+DO $$
+BEGIN
+   IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'case_documents' AND column_name = 'localstate'
+   ) THEN
+      ALTER TABLE public.case_documents DROP COLUMN localstate;
+   END IF;
+END $$;
+
+
+-- Force the API schema cache to reload to recognize the changes immediately.
 NOTIFY pgrst, 'reload schema';
 `;
 
@@ -733,19 +684,7 @@ const ConfigurationModal: React.FC<{ onRetry: () => void }> = ({ onRetry }) => {
                     </div>
                 )}
 
-                {view === 'repair' && ( 
-                    <div className="space-y-4 animate-fade-in"> 
-                        <h2 className="text-xl font-semibold">إصلاح أخطاء شائعة</h2> 
-                        <div className="p-4 bg-yellow-50 border-l-4 border-yellow-500 text-yellow-800">
-                            <strong>هام:</strong> إذا واجهت خطأ "Could not find the function verify_account" أو مشاكل في تأكيد الحساب، قم بتشغيل هذا السكربت.
-                        </div>
-                        <p className="text-sm text-gray-600"> 
-                            انسخ وشغّل السكربت التالي في <strong className="font-semibold">SQL Editor</strong> الخاص بـ Supabase.
-                        </p> 
-                        <ScriptDisplay script={repairScript} /> 
-                    </div> 
-                )}
-                
+                {view === 'repair' && ( <div className="space-y-4 animate-fade-in"> <h2 className="text-xl font-semibold">إصلاح أخطاء شائعة</h2> <p className="text-sm text-gray-600"> إذا كنت تواجه خطأً مثل <code className="bg-gray-200 p-1 rounded text-sm">Could not find the '...' column</code>، فهذا يعني أن مخطط قاعدة بياناتك قديم. انسخ وشغّل السكربت التالي في <strong className="font-semibold">SQL Editor</strong> الخاص بـ Supabase لإصلاح المشكلة دون فقدان بياناتك الحالية. </p> <ScriptDisplay script={repairScript} /> </div> )}
                 {view === 'realtime' && ( <div className="space-y-4 animate-fade-in"> <h2 className="text-xl font-semibold">تفعيل المزامنة الفورية (Real-time)</h2> <p className="text-sm text-gray-600"> إذا لم تعمل ميزة التحديث الفوري بين المستخدمين، قد تحتاج إلى تشغيل هذا السكربت يدوياً. </p> <ScriptDisplay script={realtimeScript} /> </div> )}
 
                 <div className="text-center border-t pt-6">

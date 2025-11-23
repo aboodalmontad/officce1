@@ -1,9 +1,8 @@
-
 import * as React from 'react';
 import { getSupabaseClient } from '../supabaseClient';
 import { Profile } from '../types';
 import { formatDate, toInputDateString } from '../utils/dateUtils';
-import { CheckCircleIcon, NoSymbolIcon, PencilIcon, TrashIcon, ExclamationTriangleIcon, ShareIcon, PhoneIcon, ArrowPathIcon } from '../components/icons';
+import { CheckCircleIcon, NoSymbolIcon, PencilIcon, TrashIcon, ExclamationTriangleIcon } from '../components/icons';
 import { useData } from '../context/DataContext';
 import UserDetailsModal from '../components/UserDetailsModal';
 
@@ -48,19 +47,23 @@ const formatSubscriptionDateRange = (user: Profile): string => {
  */
 const getDisplayPhoneNumber = (mobile: string | null | undefined): string => {
     if (!mobile) return '-';
+    // Strip all non-digit characters from the string.
     const digits = mobile.replace(/\D/g, '');
+    // Check if we have at least 9 digits (standard for Syrian mobile numbers without country code).
     if (digits.length >= 9) {
         const lastNine = digits.slice(-9);
+        // Ensure the number starts with '9' as expected for local Syrian numbers.
         if (lastNine.startsWith('9')) {
             return '0' + lastNine;
         }
     }
+    // If the format is unexpected, return the original string to avoid breaking display.
     return mobile;
 };
 
 
 const AdminPage: React.FC = () => {
-    const { profiles: users, setProfiles: setUsers, isDataLoading: loading, userId, systemSettings } = useData();
+    const { profiles: users, setProfiles: setUsers, isDataLoading: loading, userId } = useData();
     const [error, setError] = React.useState<string | null>(null);
     const [editingUser, setEditingUser] = React.useState<Profile | null>(null);
     const [userToDelete, setUserToDelete] = React.useState<Profile | null>(null);
@@ -107,62 +110,6 @@ const AdminPage: React.FC = () => {
         }
     };
     
-    const handleSendVerificationCode = (user: Profile) => {
-        if (!user.verification_code || !user.mobile_number) return;
-        
-        // Default template fallback
-        let template = 'مرحباً {{name}}،\nكود تفعيل حسابك في تطبيق مكتب المحامي هو: *{{code}}*\nيرجى إدخال هذا الكود في التطبيق لتأكيد رقم هاتفك.';
-        
-        // Try to get the template from system settings
-        const savedTemplate = systemSettings.find(s => s.key === 'verification_message_template');
-        if (savedTemplate && savedTemplate.value) {
-            template = savedTemplate.value;
-        }
-
-        // Use regex with 'g' flag to replace all occurrences
-        const message = template
-            .replace(/{{name}}/g, user.full_name)
-            .replace(/{{code}}/g, user.verification_code);
-
-        // Normalize phone for WhatsApp: remove non-digits
-        let phone = user.mobile_number.replace(/\D/g, '');
-        
-        // Handle '00' prefix -> remove it
-        if (phone.startsWith('00')) {
-            phone = phone.substring(2);
-        }
-        
-        // Handle local Syrian numbers starting with '09' (length 10) -> add '963' and remove '0'
-        if (phone.startsWith('09') && phone.length === 10) {
-            phone = '963' + phone.substring(1);
-        }
-        
-        // Use api.whatsapp.com for better reliability with text parameter
-        const whatsappUrl = `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`;
-        window.open(whatsappUrl, '_blank');
-    };
-
-    // Function to manually regenerate verification code if a user is stuck or erroneously confirmed
-    const handleGenerateNewCode = async (user: Profile) => {
-        if (!supabase) return;
-        
-        if (!window.confirm(`هل أنت متأكد من توليد كود تفعيل جديد للمستخدم ${user.full_name}؟\nسيؤدي هذا إلى إلغاء حالة تأكيد الرقم الحالية (إن وجدت) وإجبار المستخدم على إدخال الكود الجديد.`)) {
-            return;
-        }
-
-        const newCode = Math.floor(100000 + Math.random() * 900000).toString();
-        
-        try {
-            const { error } = await supabase.from('profiles').update({ verification_code: newCode, updated_at: new Date() }).eq('id', user.id);
-            if (error) throw error;
-            
-            setUsers(prev => prev.map(u => u.id === user.id ? { ...u, verification_code: newCode, updated_at: new Date() } : u));
-            alert(`تم توليد كود جديد: ${newCode}`);
-        } catch (err: any) {
-            alert(`فشل توليد الكود: ${err.message}`);
-        }
-    };
-
     // Quick toggle functions
     const toggleUserApproval = (user: Profile) => {
          if (!supabase || user.role === 'admin') return;
@@ -203,11 +150,11 @@ const AdminPage: React.FC = () => {
                     <thead className="text-xs text-gray-700 uppercase bg-gray-100">
                         <tr>
                             <th className="px-6 py-3">الاسم الكامل</th>
-                            <th className="px-6 py-3">رقم الجوال وتأكيده</th>
+                            <th className="px-6 py-3">رقم الجوال</th>
                             <th className="px-6 py-3">تاريخ التسجيل</th>
                             <th className="px-6 py-3">الاشتراك</th>
-                            <th className="px-6 py-3">تفعيل الحساب</th>
-                            <th className="px-6 py-3">نشاط الحساب</th>
+                            <th className="px-6 py-3">موافق عليه</th>
+                            <th className="px-6 py-3">الحساب نشط</th>
                             <th className="px-6 py-3">إجراءات</th>
                         </tr>
                     </thead>
@@ -220,58 +167,18 @@ const AdminPage: React.FC = () => {
                                     </button>
                                     {user.role === 'admin' && <span className="text-xs font-semibold text-blue-600 ms-2">(مدير)</span>}
                                 </td>
-                                <td className="px-6 py-4">
-                                    <div className="flex flex-col items-start">
-                                        <span className="font-mono text-gray-700" dir="ltr">{getDisplayPhoneNumber(user.mobile_number)}</span>
-                                        {user.verification_code ? (
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded border border-yellow-200 font-mono">
-                                                    كود: {user.verification_code}
-                                                </span>
-                                                <button 
-                                                    onClick={() => handleSendVerificationCode(user)} 
-                                                    className="p-1 text-green-600 hover:bg-green-100 rounded-full transition-colors"
-                                                    title="إرسال الكود عبر واتساب"
-                                                >
-                                                    <ShareIcon className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <span className="text-xs text-green-600 font-medium flex items-center gap-1">
-                                                    <CheckCircleIcon className="w-3 h-3" />
-                                                    تم تأكيد الرقم
-                                                </span>
-                                                {/* Show Reset Button if not approved yet, to handle cases where 'Confirmed' is an error */}
-                                                {!user.is_approved && user.role !== 'admin' && (
-                                                    <button 
-                                                        onClick={() => handleGenerateNewCode(user)} 
-                                                        className="p-1 bg-red-50 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full transition-colors border border-red-200 shadow-sm"
-                                                        title="إلغاء التأكيد وتوليد كود جديد (إصلاح الخطأ)"
-                                                    >
-                                                        <ArrowPathIcon className="w-3 h-3" />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                </td>
+                                <td className="px-6 py-4">{getDisplayPhoneNumber(user.mobile_number)}</td>
                                 <td className="px-6 py-4">{user.created_at ? formatDate(new Date(user.created_at)) : '-'}</td>
                                 <td className="px-6 py-4">
                                     {formatSubscriptionDateRange(user)}
                                 </td>
                                 <td className="px-6 py-4">
-                                    <button 
-                                        onClick={() => toggleUserApproval(user)} 
-                                        disabled={user.role === 'admin'} 
-                                        className="disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center w-full"
-                                        title={user.is_approved ? "إلغاء التفعيل" : "تفعيل الحساب"}
-                                    >
+                                    <button onClick={() => toggleUserApproval(user)} disabled={user.role === 'admin'} className="disabled:opacity-50 disabled:cursor-not-allowed">
                                         {user.is_approved ? <CheckCircleIcon className="w-6 h-6 text-green-500" /> : <NoSymbolIcon className="w-6 h-6 text-gray-400" />}
                                     </button>
                                 </td>
                                 <td className="px-6 py-4">
-                                     <button onClick={() => toggleUserActiveStatus(user)} disabled={user.role === 'admin'} className="disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center w-full">
+                                     <button onClick={() => toggleUserActiveStatus(user)} disabled={user.role === 'admin'} className="disabled:opacity-50 disabled:cursor-not-allowed">
                                         {user.is_active ? <CheckCircleIcon className="w-6 h-6 text-green-500" /> : <NoSymbolIcon className="w-6 h-6 text-red-500" />}
                                     </button>
                                 </td>
@@ -302,15 +209,9 @@ const AdminPage: React.FC = () => {
                                 <div><label className="block text-sm font-medium text-gray-700">تاريخ انتهاء الاشتراك</label><input type="date" value={toInputDateString(editingUser.subscription_end_date)} onChange={e => setEditingUser({ ...editingUser, subscription_end_date: e.target.value })} className="w-full p-2 border rounded" /></div>
                             </div>
                             <div className="flex items-center gap-6 pt-2">
-                                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editingUser.is_approved} onChange={e => setEditingUser({ ...editingUser, is_approved: e.target.checked })} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500" /> تفعيل الحساب (Approve)</label>
+                                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editingUser.is_approved} onChange={e => setEditingUser({ ...editingUser, is_approved: e.target.checked })} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500" /> موافق عليه</label>
                                 <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editingUser.is_active} onChange={e => setEditingUser({ ...editingUser, is_active: e.target.checked })} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500" /> الحساب نشط</label>
                             </div>
-                            {editingUser.verification_code && (
-                                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm">
-                                    <p className="text-yellow-800 font-bold">رقم الهاتف لم يتم تأكيده بعد.</p>
-                                    <p className="text-gray-600">كود التفعيل: <span className="font-mono select-all">{editingUser.verification_code}</span></p>
-                                </div>
-                            )}
                             <div className="flex justify-end gap-4 pt-4"><button type="button" onClick={() => setEditingUser(null)} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">إلغاء</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">حفظ التغييرات</button></div>
                         </form>
                     </div>
