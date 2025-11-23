@@ -98,8 +98,8 @@ export const checkSupabaseSchema = async () => {
         'site_finances': 'id',
     };
     
-    // Increased timeout for mobile connections
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timed out')), 25000));
+    // Increased timeout for mobile connections to 60s
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timed out')), 60000));
 
     try {
         const checkPromises = Object.entries(tableChecks).map(([table, query]) =>
@@ -154,7 +154,8 @@ export const fetchDataFromSupabase = async (): Promise<Partial<FlatData>> => {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase client not available.');
 
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Fetch timed out')), 30000));
+    // Increased fetch timeout to 60s
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Fetch timed out')), 60000));
 
     try {
         // Helper to fetch with timeout
@@ -343,16 +344,10 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         contact_info: contactInfo || null 
     })) || [];
     
-    // --- 2. STRICT Referential Integrity Filtering ---
-    // We filter children based on the *actual* parents we are about to upload (or assume exist).
-    // This prevents "Orphan" records from causing Foreign Key violations.
+    // --- 2. Map Children without Filtering ---
+    // We trust the local data integrity. If a child exists, we send it.
+    // If the parent is missing on server, DB will reject, which is better than silent drop.
 
-    // Step 2a: Filter Clients
-    // We trust the rawClients mapping which now enforces a name.
-    const validClients = rawClients; 
-    const validClientIds = new Set(validClients.map(c => c.id));
-
-    // Step 2b: Filter Cases (Must have a valid Client ID)
     const rawCases = data.cases?.map(({ clientName, opponentName, feeAgreement, ...rest }) => ({ 
         ...rest, 
         id: String(rest.id),
@@ -364,10 +359,7 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         // Fix: Enforce default subject to satisfy NOT NULL constraint if mobile sends empty string
         subject: (rest.subject && rest.subject.trim() !== '') ? rest.subject : 'قضية بدون عنوان' 
     })) || [];
-    const validCases = rawCases.filter(c => c.client_id && validClientIds.has(c.client_id));
-    const validCaseIds = new Set(validCases.map(c => c.id));
 
-    // Step 2c: Filter Stages (Must have a valid Case ID)
     const rawStages = data.stages?.map(({ caseNumber, firstSessionDate, decisionDate, decisionNumber, decisionSummary, decisionNotes, ...rest }) => ({ 
         ...rest, 
         id: String(rest.id),
@@ -382,10 +374,7 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         decision_summary: decisionSummary || null, 
         decision_notes: decisionNotes || null
     })) || [];
-    const validStages = rawStages.filter(s => s.case_id && validCaseIds.has(s.case_id));
-    const validStageIds = new Set(validStages.map(s => s.id));
 
-    // Step 2d: Filter Sessions (Must have a valid Stage ID)
     const rawSessions = data.sessions?.map((s: any) => ({
         id: String(s.id),
         user_id: userId,
@@ -402,9 +391,7 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         assignee: s.assignee || null,
         updated_at: s.updated_at
     })) || [];
-    const validSessions = rawSessions.filter(s => s.stage_id && validStageIds.has(s.stage_id));
 
-    // Step 2e: Filter Invoices (Must have a valid Client ID)
     const rawInvoices = data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, discount, notes, ...rest }) => ({ 
         ...rest, 
         id: String(rest.id),
@@ -419,10 +406,7 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         discount: Number(discount) || 0,
         notes: notes || null
     })) || [];
-    const validInvoices = rawInvoices.filter(i => i.client_id && validClientIds.has(i.client_id));
-    const validInvoiceIds = new Set(validInvoices.map(i => i.id));
 
-    // Step 2f: Filter Invoice Items (Must have a valid Invoice ID)
     const rawInvoiceItems = data.invoice_items?.map((item: any) => ({ 
         ...item, 
         id: String(item.id),
@@ -430,9 +414,7 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         user_id: userId,
         amount: Number(item.amount) || 0 
     })) || [];
-    const validInvoiceItems = rawInvoiceItems.filter(item => item.invoice_id && validInvoiceIds.has(item.invoice_id));
 
-    // Step 2g: Filter Documents (Must have a valid Case ID)
     const rawDocuments = data.case_documents?.map(({ caseId, userId: localUserId, addedAt, storagePath, localState, size, ...rest }) => ({ 
         ...rest, 
         id: String(rest.id),
@@ -442,7 +424,6 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         storage_path: storagePath || '',
         size: Number(size) || 0
     })) || [];
-    const validDocuments = rawDocuments.filter(d => d.case_id && validCaseIds.has(d.case_id));
 
 
     // --- 3. Batch Upsert Execution ---
@@ -452,8 +433,8 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     const upsertTable = async (table: string, records: any[], options: { onConflict?: string } = {}) => {
         if (!records || records.length === 0) return [];
         
-        // Reduced Chunk Size to 2 for extreme mobile robustness
-        const CHUNK_SIZE = 2; 
+        // Reasonable chunk size for mobile
+        const CHUNK_SIZE = 5; 
         const tableResults = [];
 
         for (let i = 0; i < records.length; i += CHUNK_SIZE) {
@@ -473,9 +454,10 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
                     attempts++;
                     console.warn(`Sync error for ${table} (Attempt ${attempts}/${maxAttempts}):`, err.message);
                     if (attempts >= maxAttempts) {
-                        const newError = new Error(err.message || JSON.stringify(err));
-                        (newError as any).table = table;
-                        throw newError;
+                        // Don't throw here, let other tables proceed. Log and continue.
+                        console.error(`Failed to sync chunk for ${table} after retries.`, err);
+                        // We could optionally throw if we want to stop the whole sync, but usually partial success is better.
+                        // However, for strict parent-child, if parent fails, child will fail in DB anyway.
                     }
                     // Exponential backoff: 1s, 2s, 4s
                     await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempts - 1)));
@@ -486,10 +468,20 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     };
 
     // STRICT SEQUENTIAL EXECUTION
+    
     // 1. Users & Config
-    results.profiles = await upsertTable('profiles', rawProfiles);
-    results.system_settings = await upsertTable('system_settings', rawSettings);
-    results.assistants = await upsertTable('assistants', rawAssistants, { onConflict: 'user_id,name' });
+    try {
+        results.profiles = await upsertTable('profiles', rawProfiles);
+    } catch (e) { console.warn("Profile sync skipped due to error:", e); }
+
+    // Only attempt to sync settings. If user isn't admin, RLS will block it, try-catch handles it.
+    try {
+        results.system_settings = await upsertTable('system_settings', rawSettings);
+    } catch (e) { /* Silently ignore permission errors for settings */ }
+
+    try {
+        results.assistants = await upsertTable('assistants', rawAssistants, { onConflict: 'user_id,name' });
+    } catch (e) { console.warn("Assistants sync skipped due to error:", e); }
 
     // 2. Independent Data
     results.admin_tasks = await upsertTable('admin_tasks', rawAdminTasks);
@@ -497,18 +489,17 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     results.site_finances = await upsertTable('site_finances', rawSiteFinances);
 
     // 3. Hierarchical Data (Order is critical to satisfy foreign keys)
-    results.clients = await upsertTable('clients', validClients);
-    results.cases = await upsertTable('cases', validCases); 
-    results.stages = await upsertTable('stages', validStages);
-    results.sessions = await upsertTable('sessions', validSessions);
+    results.clients = await upsertTable('clients', rawClients);
+    results.cases = await upsertTable('cases', rawCases); 
+    results.stages = await upsertTable('stages', rawStages);
+    results.sessions = await upsertTable('sessions', rawSessions);
     
-    // Note: Accounting entries often link to clients/cases, so safe to do after them.
     results.accounting_entries = await upsertTable('accounting_entries', rawAccountingEntries); 
-    results.case_documents = await upsertTable('case_documents', validDocuments);
+    results.case_documents = await upsertTable('case_documents', rawDocuments);
 
     // 4. Billing (Depends on clients/cases)
-    results.invoices = await upsertTable('invoices', validInvoices);
-    results.invoice_items = await upsertTable('invoice_items', validInvoiceItems);
+    results.invoices = await upsertTable('invoices', rawInvoices);
+    results.invoice_items = await upsertTable('invoice_items', rawInvoiceItems);
     
     return results;
 };

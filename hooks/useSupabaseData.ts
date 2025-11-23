@@ -328,7 +328,14 @@ const validateAndFixData = (loadedData: any, user: User | null): AppData => {
 export const useSupabaseData = (user: User | null, isAuthLoading: boolean, accessToken?: string) => {
     const [data, setData] = React.useState<AppData>(getInitialData);
     const [deletedIds, setDeletedIds] = React.useState<DeletedIds>(getInitialDeletedIds);
-    const [isDirty, setDirty] = React.useState(false);
+    // Initialize isDirty from localStorage to handle mobile app killing/reloading
+    const [isDirty, setDirty] = React.useState(() => {
+        try {
+            return localStorage.getItem('app_is_dirty') === 'true';
+        } catch {
+            return false;
+        }
+    });
     const [syncStatus, setSyncStatus] = React.useState<SyncStatus>('loading');
     const [lastSyncError, setLastSyncError] = React.useState<string | null>(null);
     const [isDataLoading, setIsDataLoading] = React.useState(true);
@@ -356,9 +363,14 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean, acces
         setData(updater);
     }, []);
 
-    // Safe wrapper for setDirty to prevent React Error #310
+    // Safe wrapper for setDirty that also updates localStorage
     const safeSetDirty = React.useCallback((value: boolean) => {
         setDirty(value);
+        try {
+            localStorage.setItem('app_is_dirty', String(value));
+        } catch (e) {
+            // ignore storage errors
+        }
     }, []);
 
     // The core function to update state and persist to IndexedDB
@@ -556,6 +568,38 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean, acces
         }
     }, [isOnline]); // Only triggers when isOnline changes
     
+    // 3. CRITICAL: Sync immediately when app visibility changes (hidden/background)
+    // This handles the mobile case where users switch apps right after editing.
+    React.useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'hidden' && isOnline && isDirty && isAutoSyncEnabled) {
+                console.log("App hidden. Triggering immediate sync...");
+                // We call manualSync directly. Note: Browsers throttle JS in background, 
+                // but visibilitychange fires *before* freezing.
+                manualSync();
+            }
+        };
+
+        // For desktop close events
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (isDirty && isAutoSyncEnabled) {
+                // We can't reliably await async here, but we can try
+                manualSync();
+                // Optionally warn user
+                // e.preventDefault();
+                // e.returnValue = '';
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('beforeunload', handleBeforeUnload);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
+    }, [isOnline, isDirty, isAutoSyncEnabled, manualSync]);
+
     const exportData = React.useCallback((): boolean => {
         try {
             const dataToExport = {
