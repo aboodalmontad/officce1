@@ -251,62 +251,83 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
 
     const userId = user.id;
 
-    // Mapping Logic (CamelCase -> SnakeCase)
-    // Note: For child tables like stages, sessions, and invoice_items, `flattenData` in `useSync.ts`
-    // appends parent IDs in snake_case (case_id, stage_id, invoice_id). We must rely on these properties.
-    const dataToUpsert = {
-        profiles: data.profiles?.map(({ full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, verification_code, ...rest }) => ({ ...rest, full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, verification_code })),
-        clients: data.clients?.map(({ contactInfo, ...rest }) => ({ ...rest, user_id: userId, contact_info: contactInfo })),
-        cases: data.cases?.filter(c => c.clientName).map(({ clientName, opponentName, feeAgreement, ...rest }) => ({ ...rest, user_id: userId, client_name: clientName, opponent_name: opponentName, fee_agreement: feeAgreement })),
-        stages: data.stages?.filter(s => s.case_id).map(({ caseNumber, firstSessionDate, decisionDate, decisionNumber, decisionSummary, decisionNotes, ...rest }) => ({ ...rest, user_id: userId, case_number: caseNumber, first_session_date: firstSessionDate, decision_date: decisionDate, decision_number: decisionNumber, decision_summary: decisionSummary, decision_notes: decisionNotes })),
-        sessions: data.sessions?.filter(s => s.stage_id).map((s: any) => ({
-            id: s.id,
-            user_id: userId,
-            stage_id: s.stage_id,
-            court: s.court,
-            case_number: s.caseNumber,
-            date: s.date,
-            client_name: s.clientName,
-            opponent_name: s.opponentName,
-            postponement_reason: s.postponementReason,
-            next_postponement_reason: s.nextPostponementReason,
-            is_postponed: s.isPostponed,
-            next_session_date: s.nextSessionDate,
-            assignee: s.assignee,
-            updated_at: s.updated_at
-        })),
-        admin_tasks: data.admin_tasks?.map(({ dueDate, orderIndex, ...rest }) => ({ ...rest, user_id: userId, due_date: dueDate, order_index: orderIndex })),
-        appointments: data.appointments?.map(({ reminderTimeInMinutes, ...rest }) => ({ ...rest, user_id: userId, reminder_time_in_minutes: reminderTimeInMinutes })),
-        accounting_entries: data.accounting_entries?.map(({ clientId, caseId, clientName, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, case_id: caseId, client_name: clientName })),
-        assistants: data.assistants?.map(item => ({ ...item, user_id: userId })),
-        invoices: data.invoices?.filter(i => i.clientId).map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, client_name: clientName, case_id: caseId, case_subject: caseSubject, issue_date: issueDate, due_date: dueDate, tax_rate: taxRate })),
-        invoice_items: data.invoice_items?.filter(i => i.invoice_id).map((item: any) => ({ ...item, user_id: userId })),
-        case_documents: data.case_documents?.filter(d => d.caseId).map(({ caseId, userId: localUserId, addedAt, storagePath, localState, ...rest }) => ({ ...rest, user_id: localUserId || userId, case_id: caseId, added_at: addedAt, storage_path: storagePath })),
-        site_finances: data.site_finances?.map(({ user_id, payment_date, ...rest }) => ({ ...rest, user_id, payment_date })),
-        system_settings: data.system_settings,
-    };
+    // --- 1. Transform Objects to Database Format (Snake Case) ---
     
+    const rawProfiles = data.profiles?.map(({ full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, verification_code, ...rest }) => ({ ...rest, full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, verification_code })) || [];
+    const rawSettings = data.system_settings || [];
+    const rawAssistants = data.assistants?.map(item => ({ ...item, user_id: userId })) || [];
+    const rawAdminTasks = data.admin_tasks?.map(({ dueDate, orderIndex, ...rest }) => ({ ...rest, user_id: userId, due_date: dueDate, order_index: orderIndex })) || [];
+    const rawAppointments = data.appointments?.map(({ reminderTimeInMinutes, ...rest }) => ({ ...rest, user_id: userId, reminder_time_in_minutes: reminderTimeInMinutes })) || [];
+    const rawSiteFinances = data.site_finances?.map(({ user_id, payment_date, ...rest }) => ({ ...rest, user_id, payment_date })) || [];
+    const rawAccountingEntries = data.accounting_entries?.map(({ clientId, caseId, clientName, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, case_id: caseId, client_name: clientName })) || [];
+
+    // Parent: Clients
+    const rawClients = data.clients?.map(({ contactInfo, ...rest }) => ({ ...rest, user_id: userId, contact_info: contactInfo })) || [];
+    
+    // --- 2. STRICT Referential Integrity Filtering ---
+    // We filter children based on the *actual* parents we are about to upload (or assume exist).
+    // This prevents "Orphan" records from causing Foreign Key violations.
+
+    // Step 2a: Filter Clients
+    // (Assume all clients with a name are valid)
+    const validClients = rawClients.filter(c => c.name && c.name.trim() !== '');
+    const validClientIds = new Set(validClients.map(c => c.id));
+
+    // Step 2b: Filter Cases (Must have a valid Client ID)
+    const rawCases = data.cases?.map(({ clientName, opponentName, feeAgreement, ...rest }) => ({ ...rest, user_id: userId, client_name: clientName, opponent_name: opponentName, fee_agreement: feeAgreement })) || [];
+    const validCases = rawCases.filter(c => c.client_id && validClientIds.has(c.client_id));
+    const validCaseIds = new Set(validCases.map(c => c.id));
+
+    // Step 2c: Filter Stages (Must have a valid Case ID)
+    const rawStages = data.stages?.map(({ caseNumber, firstSessionDate, decisionDate, decisionNumber, decisionSummary, decisionNotes, ...rest }) => ({ ...rest, user_id: userId, case_number: caseNumber, first_session_date: firstSessionDate, decision_date: decisionDate, decision_number: decisionNumber, decision_summary: decisionSummary, decision_notes: decisionNotes })) || [];
+    const validStages = rawStages.filter(s => s.case_id && validCaseIds.has(s.case_id));
+    const validStageIds = new Set(validStages.map(s => s.id));
+
+    // Step 2d: Filter Sessions (Must have a valid Stage ID)
+    const rawSessions = data.sessions?.map((s: any) => ({
+        id: s.id,
+        user_id: userId,
+        stage_id: s.stage_id,
+        court: s.court,
+        case_number: s.caseNumber,
+        date: s.date,
+        client_name: s.clientName,
+        opponent_name: s.opponentName,
+        postponement_reason: s.postponementReason,
+        next_postponement_reason: s.nextPostponementReason,
+        is_postponed: s.isPostponed,
+        next_session_date: s.nextSessionDate,
+        assignee: s.assignee,
+        updated_at: s.updated_at
+    })) || [];
+    const validSessions = rawSessions.filter(s => s.stage_id && validStageIds.has(s.stage_id));
+
+    // Step 2e: Filter Invoices (Must have a valid Client ID)
+    const rawInvoices = data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, client_name: clientName, case_id: caseId, case_subject: caseSubject, issue_date: issueDate, due_date: dueDate, tax_rate: taxRate })) || [];
+    const validInvoices = rawInvoices.filter(i => i.client_id && validClientIds.has(i.client_id));
+    const validInvoiceIds = new Set(validInvoices.map(i => i.id));
+
+    // Step 2f: Filter Invoice Items (Must have a valid Invoice ID)
+    const rawInvoiceItems = data.invoice_items?.map((item: any) => ({ ...item, user_id: userId })) || [];
+    const validInvoiceItems = rawInvoiceItems.filter(item => item.invoice_id && validInvoiceIds.has(item.invoice_id));
+
+    // Step 2g: Filter Documents (Must have a valid Case ID)
+    const rawDocuments = data.case_documents?.map(({ caseId, userId: localUserId, addedAt, storagePath, localState, ...rest }) => ({ ...rest, user_id: localUserId || userId, case_id: caseId, added_at: addedAt, storage_path: storagePath })) || [];
+    const validDocuments = rawDocuments.filter(d => d.case_id && validCaseIds.has(d.case_id));
+
+
+    // --- 3. Batch Upsert Execution ---
     const results: Partial<Record<keyof FlatData, any[]>> = {};
 
-    // Helper function for batching
-    const upsertTable = async (table: string, records: any[] | undefined, options: { onConflict?: string } = {}) => {
+    // Helper function for batching with retry logic
+    const upsertTable = async (table: string, records: any[], options: { onConflict?: string } = {}) => {
         if (!records || records.length === 0) return [];
         
-        // Filter out orphaned records before sending
-        let validRecords = records;
-        if (table === 'cases') validRecords = records.filter(r => r.client_id);
-        if (table === 'stages') validRecords = records.filter(r => r.case_id);
-        if (table === 'sessions') validRecords = records.filter(r => r.stage_id);
-        if (table === 'invoice_items') validRecords = records.filter(r => r.invoice_id);
-        if (table === 'case_documents') validRecords = records.filter(r => r.case_id);
-
-        if (validRecords.length === 0) return [];
-
-        const CHUNK_SIZE = 5; // Small chunk size for mobile reliability
+        const CHUNK_SIZE = 5; // Conservative chunk size for mobile reliability
         const tableResults = [];
 
-        for (let i = 0; i < validRecords.length; i += CHUNK_SIZE) {
-            const chunk = validRecords.slice(i, i + CHUNK_SIZE);
+        for (let i = 0; i < records.length; i += CHUNK_SIZE) {
+            const chunk = records.slice(i, i + CHUNK_SIZE);
             const sanitizedChunk = sanitizePayload(chunk);
 
             let attempts = 0;
@@ -326,8 +347,8 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
                         (newError as any).table = table;
                         throw newError;
                     }
-                    // Exponential backoff
-                    await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempts)));
+                    // Exponential backoff: 1s, 2s, 4s
+                    await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempts - 1)));
                 }
             }
         }
@@ -335,31 +356,29 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     };
 
     // STRICT SEQUENTIAL EXECUTION
-    // Parallel execution causes connection issues on mobile.
-    
     // 1. Users & Config
-    results.profiles = await upsertTable('profiles', dataToUpsert.profiles);
-    results.system_settings = await upsertTable('system_settings', dataToUpsert.system_settings);
-    results.assistants = await upsertTable('assistants', dataToUpsert.assistants, { onConflict: 'user_id,name' });
+    results.profiles = await upsertTable('profiles', rawProfiles);
+    results.system_settings = await upsertTable('system_settings', rawSettings);
+    results.assistants = await upsertTable('assistants', rawAssistants, { onConflict: 'user_id,name' });
 
     // 2. Independent Data
-    results.admin_tasks = await upsertTable('admin_tasks', dataToUpsert.admin_tasks);
-    results.appointments = await upsertTable('appointments', dataToUpsert.appointments);
-    results.site_finances = await upsertTable('site_finances', dataToUpsert.site_finances);
+    results.admin_tasks = await upsertTable('admin_tasks', rawAdminTasks);
+    results.appointments = await upsertTable('appointments', rawAppointments);
+    results.site_finances = await upsertTable('site_finances', rawSiteFinances);
 
-    // 3. Hierarchical Data (Order is critical)
-    results.clients = await upsertTable('clients', dataToUpsert.clients);
-    results.cases = await upsertTable('cases', dataToUpsert.cases); // Depends on clients
+    // 3. Hierarchical Data (Order is critical to satisfy foreign keys)
+    results.clients = await upsertTable('clients', validClients);
+    results.cases = await upsertTable('cases', validCases); 
+    results.stages = await upsertTable('stages', validStages);
+    results.sessions = await upsertTable('sessions', validSessions);
     
-    // 4. Case Dependencies
-    results.stages = await upsertTable('stages', dataToUpsert.stages); // Depends on cases
-    results.sessions = await upsertTable('sessions', dataToUpsert.sessions); // Depends on stages
-    results.accounting_entries = await upsertTable('accounting_entries', dataToUpsert.accounting_entries); // Depends on cases/clients
-    results.case_documents = await upsertTable('case_documents', dataToUpsert.case_documents); // Depends on cases
+    // Note: Accounting entries often link to clients/cases, so safe to do after them.
+    results.accounting_entries = await upsertTable('accounting_entries', rawAccountingEntries); 
+    results.case_documents = await upsertTable('case_documents', validDocuments);
 
-    // 5. Billing
-    results.invoices = await upsertTable('invoices', dataToUpsert.invoices); // Depends on clients/cases
-    results.invoice_items = await upsertTable('invoice_items', dataToUpsert.invoice_items); // Depends on invoices
+    // 4. Billing (Depends on clients/cases)
+    results.invoices = await upsertTable('invoices', validInvoices);
+    results.invoice_items = await upsertTable('invoice_items', validInvoiceItems);
     
     return results;
 };
