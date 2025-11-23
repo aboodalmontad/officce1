@@ -179,7 +179,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         const NavButton: React.FC<{ active: boolean, onClick: () => void, icon: React.ReactNode, label: string }> = ({ active, onClick, icon, label }) => (
             <button
                 onClick={onClick}
-                className={`group flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl transition-all duration-200 min-w-[3rem] sm:min-w-auto ${
+                className={`group flex items-center justify-center gap-2 px-3 py-2 rounded-xl transition-all duration-200 ${
                     active
                         ? 'bg-blue-600 text-white shadow-md transform scale-105' 
                         : 'text-gray-600 hover:bg-gray-100 hover:text-blue-600'
@@ -188,11 +188,11 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
             >
                 <div className={`flex-shrink-0 ${active ? 'text-white' : 'text-current'}`}>
                     {React.cloneElement(icon as React.ReactElement, { 
-                        className: "w-6 h-6 sm:w-5 sm:h-5 md:w-6 md:h-6" 
+                        className: "w-6 h-6 sm:w-7 sm:h-7" 
                     })}
                 </div>
-                {/* Text visible on md screens and up */}
-                <span className={`font-bold text-sm md:text-base hidden md:block whitespace-nowrap ${active ? 'text-white' : 'text-gray-700'}`}>
+                {/* Text only visible on larger screens to prevent scrollbar */}
+                <span className={`font-bold text-sm lg:text-base hidden lg:block whitespace-nowrap ${active ? 'text-white' : 'text-gray-700'}`}>
                     {label}
                 </span>
             </button>
@@ -202,12 +202,12 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         const IconButton: React.FC<{ onClick: () => void, icon: React.ReactNode, title: string, color?: string, active?: boolean }> = ({ onClick, icon, title, color, active }) => (
             <button
                 onClick={onClick}
-                className={`p-2 sm:p-2.5 rounded-full transition-colors duration-200 flex-shrink-0 ${
+                className={`p-2 rounded-full transition-colors duration-200 flex-shrink-0 ${
                     active ? 'bg-blue-100 text-blue-600' : (color || 'text-gray-500 hover:bg-gray-100 hover:text-gray-700')
                 }`}
                 title={title}
             >
-                <div className="w-6 h-6 sm:w-6 sm:h-6">
+                <div className="w-6 h-6 sm:w-7 sm:h-7">
                     {icon}
                 </div>
             </button>
@@ -216,25 +216,22 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         return (
             <DataProvider value={data}>
                 <div className="flex flex-col h-screen bg-gray-100 overflow-hidden">
-                    {/* Top Navigation Bar (Header) */}
+                    {/* Top Navigation Bar (Header) - Single Row, No Scrollbar */}
                     <header className="bg-white shadow-md z-30 flex-shrink-0">
                         <div className="w-full px-2 sm:px-4">
                             <div className="flex items-center justify-between h-16 sm:h-20">
                                 
-                                {/* Right Section (RTL Start): Logo, Title, User Name */}
+                                {/* Right Section: Identity */}
                                 <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-                                    {/* Logo */}
                                     <div className="bg-blue-600 text-white w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center rounded-xl text-xl font-bold shadow-sm flex-shrink-0 select-none">
                                         م
                                     </div>
-                                    
-                                    {/* Title & User Info */}
                                     <div className="flex flex-col justify-center min-w-0">
                                         <div className="flex items-baseline gap-2">
-                                            <h1 className="text-base sm:text-lg font-bold text-gray-800 whitespace-nowrap hidden sm:block">
+                                            <h1 className="text-base sm:text-lg font-bold text-gray-800 whitespace-nowrap">
                                                 مكتب المحامي
                                             </h1>
-                                            <span className="text-xs sm:text-sm font-medium text-gray-500 hidden lg:block truncate max-w-[150px]">
+                                            <span className="text-xs sm:text-sm font-medium text-gray-500 truncate max-w-[100px] sm:max-w-[150px]">
                                                 {currentUserProfile.full_name}
                                             </span>
                                         </div>
@@ -242,7 +239,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                                 </div>
 
                                 {/* Center Section: Main Navigation */}
-                                <div className="flex items-center justify-center gap-1 sm:gap-2 flex-grow px-2">
+                                <div className="flex items-center justify-center gap-1 sm:gap-4 flex-grow px-2">
                                     <NavButton 
                                         active={currentView === 'home'} 
                                         onClick={() => setCurrentView('home')} 
@@ -269,8 +266,8 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
                                     />
                                 </div>
 
-                                {/* Left Section (RTL End): Actions */}
-                                <div className="flex items-center gap-1 sm:gap-1 flex-shrink-0">
+                                {/* Left Section: Actions */}
+                                <div className="flex items-center gap-1 flex-shrink-0">
                                     <IconButton 
                                         onClick={() => data.manualSync()} 
                                         icon={<ArrowPathIcon className={data.syncStatus === 'syncing' ? 'animate-spin' : ''} />} 
