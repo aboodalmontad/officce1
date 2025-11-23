@@ -141,7 +141,7 @@ const Navbar: React.FC<{
                     <div className="flex flex-col items-start sm:flex-row sm:items-baseline gap-0 sm:gap-2">
                         <h1 className="text-xl font-bold text-gray-800">مكتب المحامي</h1>
                         <div className="flex items-center gap-1 text-xs text-gray-500">
-                            <span>الإصدار: 20-11-2025-3</span>
+                            <span>الإصدار: 23-11-2025</span>
                             {profile && (
                                 <>
                                     <span className="mx-1 text-gray-300">|</span>
@@ -424,6 +424,15 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         }
 
     }, [session, data.profiles, data.unpostponedSessions, data.setShowUnpostponedSessionsModal]);
+
+    // Check for forced update flag on mount
+    React.useEffect(() => {
+        const justUpdated = localStorage.getItem('lawyerAppUpdated');
+        if (justUpdated === 'true') {
+            data.addRealtimeAlert('تم تحديث التطبيق إلى آخر إصدار بنجاح', 'sync');
+            localStorage.removeItem('lawyerAppUpdated');
+        }
+    }, [data.addRealtimeAlert]);
 
     // Close actions menu on outside click
     React.useEffect(() => {

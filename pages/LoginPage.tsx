@@ -416,7 +416,7 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                     </a>
                 </div>
                 <p className="mt-4 text-center text-xs text-gray-500">كافة الحقوق محفوظة للمحامي عبد الرحمن نحوي</p>
-                <p className="mt-1 text-center text-xs text-gray-400">الإصدار: 20-11-2025-3</p>
+                <p className="mt-1 text-center text-xs text-gray-400">الإصدار: 23-11-2025</p>
             </div>
         </div>
     );
