@@ -325,7 +325,7 @@ const validateAndFixData = (loadedData: any, user: User | null): AppData => {
     return validatedData;
 };
 
-export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
+export const useSupabaseData = (user: User | null, isAuthLoading: boolean, accessToken?: string) => {
     const [data, setData] = React.useState<AppData>(getInitialData);
     const [deletedIds, setDeletedIds] = React.useState<DeletedIds>(getInitialDeletedIds);
     const [isDirty, setDirty] = React.useState(false);
@@ -640,23 +640,34 @@ export const useSupabaseData = (user: User | null, isAuthLoading: boolean) => {
         const supabase = getSupabaseClient();
         if (!supabase) return;
 
+        // Explicitly set the auth token for the socket connection
+        if (accessToken) {
+            supabase.realtime.setAuth(accessToken);
+        }
+
         const handleRealtimeUpdate = (payload: any) => {
             console.log('Realtime change received:', payload);
-            // setRealtimeAlerts(prev => [...prev, { id: Date.now(), message: `تم تحديث البيانات من قبل مستخدم آخر.`, type: 'sync' }]);
             fetchAndRefresh();
         };
 
+        // Creating a channel returns a new subscription instance.
+        // React's cleanup function will handle unsubscribing when accessToken changes.
         const channel = supabase.channel('public:all_tables')
             .on('postgres_changes', { event: '*', schema: 'public' }, handleRealtimeUpdate)
             .subscribe((status, err) => {
                 if (status === 'SUBSCRIBED') console.log('Real-time subscription active.');
-                if (err) console.error('Real-time subscription error.', err);
+                if (err) {
+                    console.error('Real-time subscription error.', err);
+                    // If token is expired, this error will log. The parent App component should have updated the accessToken prop,
+                    // which triggers this effect to re-run and re-subscribe with the new token.
+                }
             });
 
         return () => {
-            channel.unsubscribe();
+            console.log('Cleaning up Real-time subscription...');
+            supabase.removeChannel(channel);
         };
-    }, [isOnline, user, fetchAndRefresh]);
+    }, [isOnline, user, fetchAndRefresh, accessToken]); // Dependency on accessToken ensures re-subscription on token refresh
 
     React.useEffect(() => {
         if (currentUserProfile?.role !== 'admin' || isDataLoading) {

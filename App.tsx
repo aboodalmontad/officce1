@@ -30,7 +30,7 @@ import PrintableReport from './components/PrintableReport';
 import { printElement } from './utils/printUtils';
 import { formatDate, isSameDay } from './utils/dateUtils';
 
-const APP_VERSION = '22-11-2025-fix-16';
+const APP_VERSION = '22-11-2025-fix-18';
 
 type Page = 'home' | 'admin-tasks' | 'clients' | 'accounting' | 'settings';
 
@@ -421,7 +421,8 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     }, [supabase, onRefresh, isOnline]); // Added isOnline dependency to re-check if connectivity changes
     
     // Fetch user profile when session is available
-    const data = useSupabaseData(session?.user ?? null, isAuthLoading);
+    // FIX: Pass session.access_token to the hook so it can refresh the Realtime subscription when the token changes.
+    const data = useSupabaseData(session?.user ?? null, isAuthLoading, session?.access_token);
 
     React.useEffect(() => {
         if (session && data.profiles) {
