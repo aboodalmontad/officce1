@@ -30,7 +30,7 @@ import PrintableReport from './components/PrintableReport';
 import { printElement } from './utils/printUtils';
 import { formatDate, isSameDay } from './utils/dateUtils';
 
-const APP_VERSION = '22-11-2025-fix-19';
+const APP_VERSION = '22-11-2025-fix-20';
 
 type Page = 'home' | 'admin-tasks' | 'clients' | 'accounting' | 'settings';
 
@@ -620,7 +620,7 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
     // --- Render Logic ---
 
     // Do not show loader if we have a session (optimistic load). 
-    // Only show it if we are truly waiting for initial auth and have no cached session.
+    // Only show it if we are strictly waiting for initial auth and have no cached session.
     if (isAuthLoading && !session) {
         return <FullScreenLoader text="جاري تحميل البيانات..." />;
     }

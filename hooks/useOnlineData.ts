@@ -22,6 +22,15 @@ export type FlatData = {
     system_settings: SystemSetting[];
 };
 
+// Helper to ensure valid date strings for DB.
+// Prevents "Invalid Date" objects from becoming null in JSON.stringify and violating NOT NULL constraints.
+const safeDate = (date: any): string => {
+    if (!date) return new Date().toISOString();
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return new Date().toISOString(); // Default to now if invalid
+    return d.toISOString();
+};
+
 // Helper to sanitize payload for Supabase
 // 1. Removes undefined values (JSON.stringify does this).
 // 2. Converts NaN to 0 for specific numeric fields to prevent DB errors.
@@ -50,8 +59,8 @@ const sanitizePayload = (data: any[]) => {
                     // Trim whitespace
                     obj[key] = val.trim();
                     // Convert empty strings to null for Foreign Keys to avoid constraint violations
-                    if (['client_id', 'case_id', 'stage_id', 'user_id'].includes(key)) {
-                        if (obj[key] === '') obj[key] = null;
+                    if (['client_id', 'case_id', 'stage_id', 'user_id', 'invoice_id'].includes(key)) {
+                        if (obj[key] === '' || obj[key] === 'null' || obj[key] === 'undefined') obj[key] = null;
                     }
                 }
                 // Recurse
@@ -251,15 +260,51 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
 
     const userId = user.id;
 
-    // --- 1. Transform Objects to Database Format (Snake Case) ---
+    // --- 1. Transform Objects to Database Format (Snake Case) & Enforce Safe Data Types ---
     
-    const rawProfiles = data.profiles?.map(({ full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, verification_code, ...rest }) => ({ ...rest, full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, verification_code })) || [];
+    const rawProfiles = data.profiles?.map(({ full_name, mobile_number, is_approved, is_active, subscription_start_date, subscription_end_date, verification_code, ...rest }) => ({ 
+        ...rest, 
+        full_name, 
+        mobile_number, 
+        is_approved, 
+        is_active, 
+        subscription_start_date, 
+        subscription_end_date, 
+        verification_code 
+    })) || [];
+
     const rawSettings = data.system_settings || [];
+    
     const rawAssistants = data.assistants?.map(item => ({ ...item, user_id: userId })) || [];
-    const rawAdminTasks = data.admin_tasks?.map(({ dueDate, orderIndex, ...rest }) => ({ ...rest, user_id: userId, due_date: dueDate, order_index: orderIndex })) || [];
-    const rawAppointments = data.appointments?.map(({ reminderTimeInMinutes, ...rest }) => ({ ...rest, user_id: userId, reminder_time_in_minutes: reminderTimeInMinutes })) || [];
-    const rawSiteFinances = data.site_finances?.map(({ user_id, payment_date, ...rest }) => ({ ...rest, user_id, payment_date })) || [];
-    const rawAccountingEntries = data.accounting_entries?.map(({ clientId, caseId, clientName, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, case_id: caseId, client_name: clientName })) || [];
+    
+    const rawAdminTasks = data.admin_tasks?.map(({ dueDate, orderIndex, ...rest }) => ({ 
+        ...rest, 
+        user_id: userId, 
+        due_date: safeDate(dueDate), // MANDATORY: Safe Date
+        order_index: orderIndex 
+    })) || [];
+    
+    const rawAppointments = data.appointments?.map(({ reminderTimeInMinutes, date, ...rest }) => ({ 
+        ...rest, 
+        user_id: userId, 
+        date: safeDate(date), // MANDATORY: Safe Date
+        reminder_time_in_minutes: reminderTimeInMinutes 
+    })) || [];
+    
+    const rawSiteFinances = data.site_finances?.map(({ user_id, payment_date, ...rest }) => ({ 
+        ...rest, 
+        user_id, 
+        payment_date: safeDate(payment_date) // MANDATORY: Safe Date
+    })) || [];
+    
+    const rawAccountingEntries = data.accounting_entries?.map(({ clientId, caseId, clientName, date, ...rest }) => ({ 
+        ...rest, 
+        user_id: userId, 
+        client_id: clientId, 
+        case_id: caseId, 
+        client_name: clientName,
+        date: safeDate(date) // MANDATORY: Safe Date
+    })) || [];
 
     // Parent: Clients
     const rawClients = data.clients?.map(({ contactInfo, ...rest }) => ({ ...rest, user_id: userId, contact_info: contactInfo })) || [];
@@ -279,7 +324,16 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     const validCaseIds = new Set(validCases.map(c => c.id));
 
     // Step 2c: Filter Stages (Must have a valid Case ID)
-    const rawStages = data.stages?.map(({ caseNumber, firstSessionDate, decisionDate, decisionNumber, decisionSummary, decisionNotes, ...rest }) => ({ ...rest, user_id: userId, case_number: caseNumber, first_session_date: firstSessionDate, decision_date: decisionDate, decision_number: decisionNumber, decision_summary: decisionSummary, decision_notes: decisionNotes })) || [];
+    const rawStages = data.stages?.map(({ caseNumber, firstSessionDate, decisionDate, decisionNumber, decisionSummary, decisionNotes, ...rest }) => ({ 
+        ...rest, 
+        user_id: userId, 
+        case_number: caseNumber, 
+        first_session_date: firstSessionDate ? safeDate(firstSessionDate) : null, // Safe Optional Date
+        decision_date: decisionDate ? safeDate(decisionDate) : null, 
+        decision_number: decisionNumber, 
+        decision_summary: decisionSummary, 
+        decision_notes: decisionNotes 
+    })) || [];
     const validStages = rawStages.filter(s => s.case_id && validCaseIds.has(s.case_id));
     const validStageIds = new Set(validStages.map(s => s.id));
 
@@ -290,20 +344,30 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         stage_id: s.stage_id,
         court: s.court,
         case_number: s.caseNumber,
-        date: s.date,
+        date: safeDate(s.date), // MANDATORY: Safe Date
         client_name: s.clientName,
         opponent_name: s.opponentName,
         postponement_reason: s.postponementReason,
         next_postponement_reason: s.nextPostponementReason,
         is_postponed: s.isPostponed,
-        next_session_date: s.nextSessionDate,
+        next_session_date: s.nextSessionDate ? safeDate(s.nextSessionDate) : null,
         assignee: s.assignee,
         updated_at: s.updated_at
     })) || [];
     const validSessions = rawSessions.filter(s => s.stage_id && validStageIds.has(s.stage_id));
 
     // Step 2e: Filter Invoices (Must have a valid Client ID)
-    const rawInvoices = data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, ...rest }) => ({ ...rest, user_id: userId, client_id: clientId, client_name: clientName, case_id: caseId, case_subject: caseSubject, issue_date: issueDate, due_date: dueDate, tax_rate: taxRate })) || [];
+    const rawInvoices = data.invoices?.map(({ clientId, clientName, caseId, caseSubject, issueDate, dueDate, taxRate, ...rest }) => ({ 
+        ...rest, 
+        user_id: userId, 
+        client_id: clientId, 
+        client_name: clientName, 
+        case_id: caseId, 
+        case_subject: caseSubject, 
+        issue_date: safeDate(issueDate), // MANDATORY: Safe Date
+        due_date: safeDate(dueDate), // MANDATORY: Safe Date
+        tax_rate: taxRate 
+    })) || [];
     const validInvoices = rawInvoices.filter(i => i.client_id && validClientIds.has(i.client_id));
     const validInvoiceIds = new Set(validInvoices.map(i => i.id));
 
@@ -312,7 +376,13 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     const validInvoiceItems = rawInvoiceItems.filter(item => item.invoice_id && validInvoiceIds.has(item.invoice_id));
 
     // Step 2g: Filter Documents (Must have a valid Case ID)
-    const rawDocuments = data.case_documents?.map(({ caseId, userId: localUserId, addedAt, storagePath, localState, ...rest }) => ({ ...rest, user_id: localUserId || userId, case_id: caseId, added_at: addedAt, storage_path: storagePath })) || [];
+    const rawDocuments = data.case_documents?.map(({ caseId, userId: localUserId, addedAt, storagePath, localState, ...rest }) => ({ 
+        ...rest, 
+        user_id: localUserId || userId, 
+        case_id: caseId, 
+        added_at: safeDate(addedAt), // MANDATORY: Safe Date
+        storage_path: storagePath 
+    })) || [];
     const validDocuments = rawDocuments.filter(d => d.case_id && validCaseIds.has(d.case_id));
 
 
@@ -323,7 +393,7 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     const upsertTable = async (table: string, records: any[], options: { onConflict?: string } = {}) => {
         if (!records || records.length === 0) return [];
         
-        const CHUNK_SIZE = 5; // Conservative chunk size for mobile reliability
+        const CHUNK_SIZE = 3; // Ultra-conservative chunk size for mobile reliability
         const tableResults = [];
 
         for (let i = 0; i < records.length; i += CHUNK_SIZE) {
