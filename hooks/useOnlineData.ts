@@ -272,8 +272,9 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         mobile_number, 
         is_approved, 
         is_active, 
-        subscription_start_date: subscription_start_date || null, 
-        subscription_end_date: subscription_end_date || null, 
+        // Fix: Use safeDate only if the value exists, otherwise null. safeDate handles invalid strings gracefully.
+        subscription_start_date: subscription_start_date ? safeDate(subscription_start_date) : null, 
+        subscription_end_date: subscription_end_date ? safeDate(subscription_end_date) : null, 
         verification_code: verification_code || null
     })) || [];
 
@@ -359,7 +360,9 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         client_id: String(rest.client_id),
         client_name: clientName || null, 
         opponent_name: opponentName || null, 
-        fee_agreement: feeAgreement || null 
+        fee_agreement: feeAgreement || null,
+        // Fix: Enforce default subject to satisfy NOT NULL constraint if mobile sends empty string
+        subject: (rest.subject && rest.subject.trim() !== '') ? rest.subject : 'قضية بدون عنوان' 
     })) || [];
     const validCases = rawCases.filter(c => c.client_id && validClientIds.has(c.client_id));
     const validCaseIds = new Set(validCases.map(c => c.id));
@@ -370,7 +373,8 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
         id: String(rest.id),
         user_id: userId, 
         case_id: String(rest.case_id),
-        court: rest.court || 'غير محدد',
+        // Fix: Enforce default court to satisfy NOT NULL constraint if mobile sends empty string
+        court: (rest.court && rest.court.trim() !== '') ? rest.court : 'غير محدد',
         case_number: caseNumber || null, 
         first_session_date: firstSessionDate ? safeDate(firstSessionDate) : null, // Safe Optional Date
         decision_date: decisionDate ? safeDate(decisionDate) : null, 
@@ -448,7 +452,8 @@ export const upsertDataToSupabase = async (data: Partial<FlatData>, user: User) 
     const upsertTable = async (table: string, records: any[], options: { onConflict?: string } = {}) => {
         if (!records || records.length === 0) return [];
         
-        const CHUNK_SIZE = 3; // Ultra-conservative chunk size for mobile reliability
+        // Reduced Chunk Size to 2 for extreme mobile robustness
+        const CHUNK_SIZE = 2; 
         const tableResults = [];
 
         for (let i = 0; i < records.length; i += CHUNK_SIZE) {
