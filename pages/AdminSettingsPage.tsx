@@ -16,7 +16,7 @@ const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ onOpenConfig }) =
 
     const showFeedback = (message: string, type: 'success' | 'error') => {
         setFeedback({ message, type });
-        setTimeout(() => setFeedback(null), 4000);
+        setTimeout(() => setFeedback(null), 3000);
     };
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -43,8 +43,8 @@ const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ onOpenConfig }) =
     const playSound = () => {
         const soundSource = customSound || defaultUserApprovalSoundBase64;
         
-        if (!soundSource || soundSource.length < 100) {
-             showFeedback('الملف الصوتي المعتمد للتنبيه غير موجود أو تالف. الرجاء اختيار نغمة جديدة لضمان عمل التنبيهات.', 'error');
+        if (!soundSource) {
+             showFeedback('الملف الصوتي المعتمد للتنبيه غير موجود. الرجاء اختيار نغمة جديدة.', 'error');
              return;
         }
 
