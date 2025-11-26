@@ -451,6 +451,10 @@ const App: React.FC<AppProps> = ({ onRefresh }) => {
         } catch (error) {
             console.warn("Logout network failed, clearing local state anyway:", error);
         } finally {
+            // Explicitly clear local storage items related to session to prevent optimistic re-login
+            localStorage.removeItem(LAST_USER_CACHE_KEY);
+            localStorage.removeItem(LAST_USER_CREDENTIALS_CACHE_KEY);
+            setSession(null);
             onRefresh(); // Trigger a full app remount to clear all state
         }
     };
