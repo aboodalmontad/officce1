@@ -2,7 +2,6 @@
 import * as React from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { MusicalNoteIcon, PlayCircleIcon, TrashIcon, ArrowUpTrayIcon, ServerIcon } from '../components/icons';
-// Fix: The imported variable name contained hyphens, which is invalid syntax. Corrected to use the camelCase version.
 import { defaultUserApprovalSoundBase64 } from '../components/RealtimeNotifier';
 
 const USER_APPROVAL_SOUND_KEY = 'customUserApprovalSound';
@@ -42,18 +41,24 @@ const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ onOpenConfig }) =
     };
 
     const playSound = () => {
-// Fix: Use the valid camelCase variable name 'defaultUserApprovalSoundBase64'.
         const soundSource = customSound || defaultUserApprovalSoundBase64;
+        
+        if (!soundSource) {
+             showFeedback('الملف الصوتي المعتمد للتنبيه غير موجود. الرجاء اختيار نغمة جديدة.', 'error');
+             return;
+        }
+
         try {
             // Create a new Audio object on demand for robust preview playback.
             const audio = new Audio(soundSource);
             audio.play().catch(e => {
                 console.error("Audio preview playback failed:", e);
-                showFeedback('فشل تشغيل الصوت. قد يكون الملف تالفًا أو غير مدعوم.', 'error');
+                // Specific feedback based on the playback error
+                showFeedback('فشل تشغيل الملف الصوتي. قد يكون الملف تالفاً أو غير مدعوم. الرجاء اختيار نغمة تنبيه جديدة.', 'error');
             });
         } catch (e) {
             console.error("Error creating Audio object for preview:", e);
-            showFeedback('فشل تهيئة الصوت. قد يكون الملف تالفًا.', 'error');
+            showFeedback('حدث خطأ في تهيئة الصوت. الرجاء إعادة تحميل الصفحة أو اختيار نغمة جديدة.', 'error');
         }
     };
 

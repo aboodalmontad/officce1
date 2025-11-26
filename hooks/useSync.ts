@@ -1,3 +1,4 @@
+
 import * as React from 'react';
 // Fix: Use `import type` for User as it is used as a type, not a value. This resolves module resolution errors in some environments.
 import type { User } from '@supabase/supabase-js';
@@ -299,14 +300,22 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
             onDeletionsSynced(successfulDeletions);
             setStatus('synced');
         } catch (err: any) {
-            console.error("Error during sync:", err);
             let errorMessage = err.message || 'حدث خطأ غير متوقع.';
             const lowerErrorMessage = errorMessage.toLowerCase();
+            
+            // Don't log network errors as errors to avoid console noise
+            if (lowerErrorMessage.includes('failed to fetch')) {
+                console.warn("Sync warning: Network unavailable or failed to fetch.");
+                errorMessage = 'فشل الاتصال بالخادم. تحقق من اتصالك بالإنترنت وإعدادات CORS.';
+            } else {
+                console.error("Error during sync:", err);
+            }
+
             if ((lowerErrorMessage.includes('column') && lowerErrorMessage.includes('does not exist')) || lowerErrorMessage.includes('schema cache') || (lowerErrorMessage.includes('relation') && lowerErrorMessage.includes('does not exist'))) {
                 setStatus('uninitialized', `هناك عدم تطابق في مخطط قاعدة البيانات: ${errorMessage}`); return;
             }
-            if (String(errorMessage).toLowerCase().includes('failed to fetch')) errorMessage = 'فشل الاتصال بالخادم. تحقق من اتصالك بالإنترنت وإعدادات CORS.';
-            else if (err.table) errorMessage = `[جدول: ${err.table}] ${errorMessage}`;
+            
+            if (err.table) errorMessage = `[جدول: ${err.table}] ${errorMessage}`;
             setStatus('error', `فشل المزامنة: ${errorMessage}`);
         }
     }, [localData, userRef, isOnline, onDataSynced, deletedIds, onDeletionsSynced, isAuthLoading, syncStatus]);
@@ -384,13 +393,19 @@ export const useSync = ({ user, localData, deletedIds, onDataSynced, onDeletions
             onDataSynced(mergedData);
             setStatus('synced');
         } catch (err: any) {
-            console.error("Error during realtime refresh:", err);
             let errorMessage = err.message || 'حدث خطأ غير متوقع.';
             const lowerErrorMessage = errorMessage.toLowerCase();
+
+            if (String(errorMessage).toLowerCase().includes('failed to fetch')) {
+                 console.warn("Refresh warning: Network unavailable or failed to fetch.");
+                 errorMessage = 'فشل الاتصال بالخادم. تحقق من اتصالك بالإنترنت وإعدادات CORS.';
+            } else {
+                 console.error("Error during realtime refresh:", err);
+            }
+
             if ((lowerErrorMessage.includes('column') && lowerErrorMessage.includes('does not exist')) || lowerErrorMessage.includes('schema cache') || (lowerErrorMessage.includes('relation') && lowerErrorMessage.includes('does not exist'))) {
                 setStatus('uninitialized', `هناك عدم تطابق في مخطط قاعدة البيانات: ${errorMessage}`); return;
             }
-            if (String(errorMessage).toLowerCase().includes('failed to fetch')) errorMessage = 'فشل الاتصال بالخادم. تحقق من اتصالك بالإنترنت وإعدادات CORS.';
             setStatus('error', `فشل تحديث البيانات: ${errorMessage}`);
         }
     }, [localData, deletedIds, userRef, isOnline, onDataSynced, isAuthLoading, syncStatus]);

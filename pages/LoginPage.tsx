@@ -210,17 +210,22 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                     password: form.password,
                 }));
             } catch (err: any) {
-                const lowerMsg = String(err.message).toLowerCase();
+                const errorMsg = err?.message || (typeof err === 'string' ? err : JSON.stringify(err));
+                const lowerMsg = String(errorMsg).toLowerCase();
                 
                 // Suppress loud console errors for network issues as we handle them with fallback
-                if (!lowerMsg.includes('failed to fetch') && !lowerMsg.includes('networkerror')) {
+                // Also suppress invalid login credentials error as it's a common user error
+                const isNetworkError = lowerMsg.includes('failed to fetch') || lowerMsg.includes('networkerror');
+                const isAuthError = lowerMsg.includes('invalid login credentials') || lowerMsg.includes('invalid credentials');
+
+                if (!isNetworkError && !isAuthError) {
                     console.error('Online Login error:', err);
-                } else {
+                } else if (isNetworkError) {
                     console.warn('Online login failed due to network issue. Attempting offline fallback.');
                 }
 
                 // Fallback to offline login if online attempt fails due to network issues.
-                if (lowerMsg.includes('failed to fetch') || lowerMsg.includes('networkerror')) {
+                if (isNetworkError) {
                     setInfo("فشل الاتصال بالخادم. جاري محاولة تسجيل الدخول دون اتصال...");
                     performOfflineLogin();
                     return;
@@ -228,7 +233,7 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                 
                 let displayError: React.ReactNode = 'حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.';
     
-                if (lowerMsg.includes('invalid login credentials')) {
+                if (isAuthError) {
                     displayError = "بيانات الدخول غير صحيحة. يرجى التحقق من رقم الجوال وكلمة المرور.";
                     setAuthFailed(true);
                 } else if (lowerMsg.includes('email not confirmed')) {
@@ -415,8 +420,16 @@ const LoginPage: React.FC<AuthPageProps> = ({ onForceSetup, onLoginSuccess }) =>
                         <ArrowTopRightOnSquareIcon className="w-4 h-4" />
                     </a>
                 </div>
-                <p className="mt-4 text-center text-xs text-gray-500">كافة الحقوق محفوظة لشركة الحلول الرقمية Digital Solutions</p>
-                <p className="mt-1 text-center text-xs text-gray-400">الإصدار: 26-11-2025</p>
+                
+                <div className="mt-4 flex flex-col items-center">
+                    <p className="text-center text-xs text-gray-500">كافة الحقوق محفوظة لشركة الحلول الرقمية Digital Solutions</p>
+                    <div className="flex items-center gap-2 mt-1">
+                        <p className="text-xs text-gray-400">الإصدار: 26-11-2025</p>
+                        <button onClick={onForceSetup} className="text-xs text-gray-300 hover:text-gray-500" title="إعداد النظام">
+                            <DatabaseIcon className="w-3 h-3" />
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     );
